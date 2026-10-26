@@ -10,7 +10,7 @@ The web service coordinates six private FastAPI agents with plain JSON REST. Eve
 4. It sends the same findings to SecurityAgent at `POST /assess`.
 5. It sends the current question and structured team results to Privacy Review at `POST /process`.
 6. It sends the question and all structured results to Synthesis at `POST /process`.
-7. The web service returns the typed findings, four specialist outputs, and synthesis to the browser.
+7. The web service returns the typed findings, four specialist outputs, synthesis, and an ordered activity trace to the browser.
 
 Fact Check only compares supplied claims with supplied evidence. Source Quality only inspects provided references; it does not fetch them. Both report these limits. The coordinator currently calls the services sequentially and logs each destination, duration, and error type without logging prompts or results.
 
@@ -21,6 +21,8 @@ Fact Check only compares supplied claims with supplied evidence. Source Quality 
 - SecurityAgent accepts `{ "findings": ResearchFindings }` and returns `SecurityAssessment`.
 - Privacy Review and Synthesis accept `{ "question": "...", "context": { ... } }` and return their respective typed result in a `result` field.
 - The browser-facing response contains `request_id`, `findings`, `fact_check`, `source_quality`, `assessment`, `privacy_review`, and `synthesis`.
+
+`agent_activity` preserves call order and reports each agent's model alias, complete/failed status, and round-trip duration. The duration is measured around the private REST request and includes inference time. Calls currently run sequentially through one shared LiteLLM service.
 
 Pydantic validates all public and agent result structures. A malformed incoming request ID is replaced with a UUID. Model output failures return a generic error and do not disclose prompts or provider response bodies.
 

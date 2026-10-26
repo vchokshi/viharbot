@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel, Field
 
-from .demo import run_pipeline
+from .demo import AgentPipelineError, run_pipeline
 from .observability import configure_logging, get_request_id
 from .schemas import (
     FactCheckReview,
@@ -43,6 +43,14 @@ class ChatRequest(BaseModel):
     history: list[ChatTurn] = Field(default_factory=list, max_length=4)
 
 
+class AgentActivity(BaseModel):
+    agent: str
+    display_name: str
+    model_alias: str | None = None
+    duration_ms: float
+    status: Literal["complete", "failed"]
+
+
 class ChatResponse(BaseModel):
     request_id: str
     findings: ResearchFindings
@@ -51,6 +59,7 @@ class ChatResponse(BaseModel):
     source_quality: SourceQualityReview | None = None
     privacy_review: PrivacyAssessment | None = None
     synthesis: FinalSynthesis | None = None
+    agent_activity: list[AgentActivity]
 
 
 def require_web_access(
@@ -160,6 +169,7 @@ def chat(
                 PrivacyAssessment.model_validate(privacy_payload) if privacy_payload else None
             ),
             synthesis=FinalSynthesis.model_validate(synthesis_payload) if synthesis_payload else None,
+            agent_activity=pipeline_result["agent_activity"],
         )
         logger.info(
             "chat request completed",
@@ -170,6 +180,24 @@ def chat(
             },
         )
         return result
+    except AgentPipelineError as exc:
+        logger.error(
+            "chat request failed",
+            extra={
+                "agent": "web",
+                "request_id": request_id,
+                "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+                "error": "AgentPipelineError",
+            },
+        )
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": "The agent team could not complete this request",
+                "agent_activity": exc.activity,
+            },
+            headers={"X-Request-ID": request_id},
+        ) from None
     except Exception as exc:
         logger.error(
             "chat request failed",

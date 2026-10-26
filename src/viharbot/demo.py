@@ -15,6 +15,21 @@ from .observability import configure_logging
 configure_logging()
 logger = logging.getLogger("orchestrator")
 
+AGENT_LABELS = {
+    "research": "Research",
+    "fact-check": "Fact Check",
+    "source-quality": "Source Quality",
+    "security": "Security",
+    "privacy-review": "Privacy Review",
+    "synthesis": "Synthesis",
+}
+
+
+class AgentPipelineError(RuntimeError):
+    def __init__(self, activity: list[dict]) -> None:
+        super().__init__("an agent call failed")
+        self.activity = activity
+
 
 def post_json(url: str, payload: dict, request_id: str, destination: str) -> dict:
     started = time.perf_counter()
@@ -61,7 +76,36 @@ def run_pipeline(
     specialist_urls: dict[str, str] | None = None,
     send: Callable[[str, dict, str, str], dict] = post_json,
 ) -> dict:
-    research = send(research_url, {"question": question}, request_id, "research")
+    activity: list[dict] = []
+
+    def invoke(url: str, payload: dict, destination: str) -> dict:
+        started = time.perf_counter()
+        try:
+            result = send(url, payload, request_id, destination)
+        except Exception as exc:
+            activity.append(
+                {
+                    "agent": destination,
+                    "display_name": AGENT_LABELS.get(destination, destination),
+                    "model_alias": None,
+                    "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+                    "status": "failed",
+                    "error": type(exc).__name__,
+                }
+            )
+            raise AgentPipelineError(activity) from None
+        activity.append(
+            {
+                "agent": destination,
+                "display_name": AGENT_LABELS.get(destination, destination),
+                "model_alias": result.get("requested_model_alias"),
+                "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+                "status": "complete",
+            }
+        )
+        return result
+
+    research = invoke(research_url, {"question": question}, "research")
     results: dict[str, dict] = {"research": research}
 
     specialist_inputs = {
@@ -71,12 +115,12 @@ def run_pipeline(
     for name in ("fact_check", "source_quality"):
         url = (specialist_urls or {}).get(name)
         if url:
-            results[name] = send(url, specialist_inputs[name], request_id, name)
+            destination = name.replace("_", "-")
+            results[name] = invoke(url, specialist_inputs[name], destination)
 
-    security = send(
+    security = invoke(
         security_url,
         {"findings": research["findings"]},
-        request_id,
         "security",
     )
     results["security"] = security
@@ -91,16 +135,15 @@ def run_pipeline(
     )
     privacy_url = (specialist_urls or {}).get("privacy_review")
     if privacy_url:
-        results["privacy_review"] = send(
+        results["privacy_review"] = invoke(
             privacy_url,
             {"question": question, "context": context},
-            request_id,
             "privacy-review",
         )
 
     synthesis_url = (specialist_urls or {}).get("synthesis")
     if synthesis_url:
-        results["synthesis"] = send(
+        results["synthesis"] = invoke(
             synthesis_url,
             {
                 "question": question,
@@ -109,11 +152,10 @@ def run_pipeline(
                     "privacy_review": results.get("privacy_review", {}).get("result"),
                 },
             },
-            request_id,
             "synthesis",
         )
 
-    return {"request_id": request_id, **results}
+    return {"request_id": request_id, "agent_activity": activity, **results}
 
 
 def main() -> None:

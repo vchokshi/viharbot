@@ -6,6 +6,10 @@
 
 ## DigitalOcean App Platform
 
+### Promotion approval
+
+Local Docker Compose is dev; the DigitalOcean App Platform app is Stage. Finish the local implementation and verification, summarize the exact change and any added monthly cost, then ask the user explicitly whether to promote that dev build to Stage. Wait for an affirmative answer before running `doctl apps update`, creating a deployment, or pushing to a Stage-connected branch. Approval is specific to the reviewed build. After deploying, verify the deployment phase, running components, and public health endpoint, then report the outcome.
+
 `deploy/digitalocean/app.yaml` describes seven Dockerfile-backed components from the GitHub repository. Web serves the public browser interface on port 8080. All six agents are private services on internal port 8000. The four specialist agents share `Dockerfile.specialist` but each has a distinct component name, `AGENT_KIND`, model alias, and private memory path.
 
 Configure encrypted runtime values for `LITELLM_API_KEY` on every model-using agent, plus `WEB_USERNAME` and `WEB_PASSWORD` on Web. Keep the web component free of model credentials. The app spec enables Basic Auth on the web UI and chat endpoint; `/health` does not require login.

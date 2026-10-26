@@ -3,143 +3,298 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#f4f6f3" />
-    <title>ViharBot · Research desk</title>
+    <meta name="theme-color" content="#fbfaf7" />
+    <title>ViharBot — A brighter way to think</title>
     <style>
       :root {
         color-scheme: light;
-        --ink: #1b2828;
-        --muted: #687775;
-        --line: #dce4df;
-        --paper: #fbfcfa;
-        --surface: #ffffff;
-        --teal: #176d65;
-        --teal-dark: #10564f;
-        --mint: #e8f3ee;
-        --amber: #f4ebd8;
-        --shadow: 0 16px 50px rgba(35, 57, 51, 0.09);
+        --ink: #242522;
+        --muted: #77796f;
+        --line: #e9e7df;
+        --paper: #fbfaf7;
+        --card: rgba(255, 255, 255, .9);
+        --coral: #e6785d;
+        --coral-soft: #fff0e9;
+        --blue: #6683c2;
+        --blue-soft: #edf3ff;
+        --lilac: #9a83c9;
+        --lilac-soft: #f3eefc;
+        --green: #688c70;
+        --green-soft: #edf5ec;
+        --gold: #c99137;
+        --gold-soft: #fbf4e5;
+        --shadow: 0 24px 80px rgba(61, 53, 40, .075);
       }
       * { box-sizing: border-box; }
       body {
-        margin: 0;
         min-height: 100vh;
+        margin: 0;
         color: var(--ink);
         background:
-          radial-gradient(ellipse at 12% 0%, rgba(201, 226, 211, .52), transparent 34rem),
-          #f4f6f3;
-        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          radial-gradient(ellipse at 8% 4%, rgba(255, 222, 196, .43), transparent 29rem),
+          radial-gradient(ellipse at 94% 10%, rgba(214, 225, 255, .46), transparent 32rem),
+          var(--paper);
+        font-family: "Avenir Next", Avenir, Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        -webkit-font-smoothing: antialiased;
       }
       button, textarea { font: inherit; }
-      .shell { width: min(1050px, calc(100% - 40px)); margin: 0 auto; padding: 28px 0 40px; }
-      header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
-      .brand { display: flex; align-items: center; gap: 12px; font-weight: 740; letter-spacing: -.03em; }
-      .mark { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 13px; color: white; background: var(--teal); font-size: 19px; }
-      .brand small { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .11em; text-transform: uppercase; }
-      .status { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
-      .status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #61a887; box-shadow: 0 0 0 4px #e4f1e9; }
-      .workspace { display: grid; grid-template-columns: 245px minmax(0, 1fr); overflow: hidden; min-height: 690px; border: 1px solid var(--line); border-radius: 22px; background: var(--surface); box-shadow: var(--shadow); }
-      aside { padding: 26px 20px; border-right: 1px solid var(--line); background: #f9fbf8; }
-      .eyebrow { color: var(--teal); font-size: 11px; font-weight: 750; letter-spacing: .13em; text-transform: uppercase; }
-      h1 { margin: 12px 0 9px; font-size: 25px; line-height: 1.14; letter-spacing: -.045em; }
-      .intro { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
-      .team { display: grid; gap: 10px; margin-top: 30px; }
-      .member { display: flex; align-items: center; gap: 10px; padding: 11px; border: 1px solid var(--line); border-radius: 12px; background: white; }
-      .avatar { display: grid; flex: 0 0 32px; place-items: center; height: 32px; border-radius: 10px; color: var(--teal-dark); background: var(--mint); font-size: 13px; font-weight: 800; }
-      .member strong { display: block; font-size: 12px; }
-      .member span { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
-      .side-note { margin-top: 24px; padding: 12px; border-radius: 12px; color: #5f665d; background: #f2f0e8; font-size: 11px; line-height: 1.55; }
-      main { display: flex; min-width: 0; flex-direction: column; }
-      .chat-head { display: flex; justify-content: space-between; align-items: center; padding: 20px 24px; border-bottom: 1px solid var(--line); }
-      .chat-head strong { font-size: 14px; }
-      .chat-head span { color: var(--muted); font-size: 12px; }
-      #conversation { display: flex; flex: 1; flex-direction: column; gap: 18px; overflow: auto; padding: 24px; }
-      .welcome { max-width: 530px; margin: auto; text-align: center; }
-      .welcome-icon { display: grid; place-items: center; width: 52px; height: 52px; margin: 0 auto 14px; border-radius: 17px; color: var(--teal); background: var(--mint); font-size: 23px; }
-      .welcome h2 { margin: 0 0 8px; font-size: 19px; letter-spacing: -.03em; }
-      .welcome p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.65; }
-      .message { display: flex; align-items: flex-start; gap: 11px; max-width: 100%; animation: arrive .2s ease-out; }
-      @keyframes arrive { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+      button:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 3px solid #8a9ed3; outline-offset: 3px; }
+      .shell { width: min(1330px, calc(100% - 64px)); margin: 0 auto; padding: 25px 0 36px; }
+      .topbar { display: flex; align-items: center; justify-content: space-between; min-height: 48px; }
+      .brand { display: inline-flex; align-items: center; gap: 12px; color: inherit; text-decoration: none; }
+      .brand-mark { width: 44px; height: 44px; filter: drop-shadow(0 5px 9px rgba(83, 75, 60, .12)); }
+      .brand-name { display: block; font-size: 17px; font-weight: 720; letter-spacing: -.055em; line-height: 1.05; }
+      .brand-note { display: block; margin-top: 4px; color: var(--muted); font-size: 10px; font-weight: 600; letter-spacing: .12em; line-height: 1.2; text-transform: uppercase; }
+      .top-right { display: flex; align-items: center; gap: 18px; }
+      .privacy-label { color: #8c8c82; font-size: 11px; }
+      .team-status { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid #e4e9dd; border-radius: 999px; color: #5f7561; background: rgba(255,255,255,.7); font-size: 11px; font-weight: 650; }
+      .team-status i { width: 7px; height: 7px; border-radius: 50%; background: #78a47a; box-shadow: 0 0 0 4px #eaf3e8; }
+      .layout { display: grid; grid-template-columns: 292px minmax(0, 1fr); gap: 20px; min-height: min(820px, calc(100dvh - 116px)); margin-top: 26px; }
+      .sidebar, .chat-panel { border: 1px solid rgba(228, 225, 215, .9); border-radius: 25px; background: var(--card); box-shadow: var(--shadow); backdrop-filter: blur(16px); }
+      .sidebar { display: flex; flex-direction: column; padding: 25px 19px 18px; }
+      .eyebrow { color: #a06d5b; font-size: 10px; font-weight: 750; letter-spacing: .16em; text-transform: uppercase; }
+      .sidebar h1 { max-width: 230px; margin: 13px 0 10px; font-family: Iowan Old Style, "Palatino Linotype", Georgia, serif; font-size: 32px; font-weight: 400; line-height: 1.04; letter-spacing: -.045em; }
+      .intro { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
+      .team-heading { display: flex; align-items: baseline; justify-content: space-between; margin: 27px 2px 10px; }
+      .team-heading strong { font-size: 11px; font-weight: 720; }
+      .team-heading span { color: #99988f; font-size: 10px; }
+      .agent-list { display: grid; gap: 7px; }
+      .agent { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 8px; border: 1px solid transparent; border-radius: 14px; background: #fff; }
+      .agent-icon { display: grid; flex: 0 0 30px; place-items: center; width: 30px; height: 30px; border-radius: 10px; font-size: 11px; font-weight: 750; }
+      .agent:nth-child(1) .agent-icon { color: #bd6348; background: var(--coral-soft); }
+      .agent:nth-child(2) .agent-icon { color: #536fae; background: var(--blue-soft); }
+      .agent:nth-child(3) .agent-icon { color: #8368b3; background: var(--lilac-soft); }
+      .agent:nth-child(4) .agent-icon { color: #a27632; background: var(--gold-soft); }
+      .agent:nth-child(5) .agent-icon { color: #4f8058; background: var(--green-soft); }
+      .agent:nth-child(6) .agent-icon { color: #a65982; background: #faedf4; }
+      .agent-copy { min-width: 0; }
+      .agent-name { display: block; overflow: hidden; font-size: 11px; font-weight: 700; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+      .agent-desc { display: block; overflow: hidden; margin-top: 3px; color: #888980; font-size: 9px; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
+      .sidebar-foot { margin-top: auto; padding: 13px 12px; border: 1px solid #f0e8d8; border-radius: 15px; color: #756b5b; background: linear-gradient(135deg, #fffaf0, #fff5ed); font-size: 10px; line-height: 1.6; }
+      .sidebar-foot strong { display: block; margin-bottom: 3px; color: #4f4c43; font-size: 10px; }
+      .chat-panel { display: flex; min-width: 0; flex-direction: column; overflow: hidden; }
+      .chat-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 62px; padding: 0 24px; border-bottom: 1px solid #efeee9; }
+      .chat-title { font-size: 12px; font-weight: 700; }
+      .route-label { display: inline-flex; align-items: center; gap: 7px; color: #898a81; font-size: 10px; }
+      .route-label i { width: 5px; height: 5px; border-radius: 50%; background: var(--coral); }
+      #conversation { display: flex; flex: 1; flex-direction: column; gap: 18px; min-height: 480px; overflow: auto; padding: 30px clamp(18px, 4vw, 54px); scroll-behavior: smooth; }
+      .welcome { width: min(700px, 100%); margin: auto; padding: 6px 0 18px; }
+      .welcome-art { display: block; width: 100%; height: clamp(190px, 23vw, 270px); margin: 0 0 21px; border: 1px solid #e8dfd2; border-radius: 20px; object-fit: cover; object-position: center 24%; box-shadow: 0 12px 30px rgba(61, 53, 40, .12); }
+      .welcome-kicker { display: inline-flex; align-items: center; gap: 7px; padding: 7px 10px; border: 1px solid #efe5d9; border-radius: 999px; color: #916c59; background: #fffaf4; font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+      .welcome h2 { max-width: 620px; margin: 19px 0 9px; font-family: Iowan Old Style, "Palatino Linotype", Georgia, serif; font-size: clamp(34px, 4.6vw, 52px); font-weight: 400; line-height: 1.03; letter-spacing: -.055em; }
+      .welcome h2 em { color: var(--coral); font-weight: 400; }
+      .welcome-copy { max-width: 510px; margin: 0; color: #75766e; font-size: 13px; line-height: 1.7; }
+      .suggestion-heading { margin: 28px 0 10px; color: #8b8b82; font-size: 10px; font-weight: 720; letter-spacing: .1em; text-transform: uppercase; }
+      .suggestions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+      .suggestion { min-height: 72px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 15px; color: var(--ink); background: rgba(255,255,255,.83); text-align: left; cursor: pointer; transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease; }
+      .suggestion:hover { transform: translateY(-2px); border-color: #e8c6b6; box-shadow: 0 8px 22px rgba(81, 64, 48, .07); }
+      .suggestion b { display: block; margin-bottom: 4px; font-size: 11px; font-weight: 700; }
+      .suggestion span { display: block; color: #82837b; font-size: 10px; line-height: 1.45; }
+      .message { display: flex; align-items: flex-start; gap: 11px; max-width: 100%; animation: arrive .24s ease-out; }
+      @keyframes arrive { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
       .message.user { justify-content: flex-end; }
-      .message .bubble { max-width: min(680px, calc(100% - 46px)); padding: 13px 15px; border: 1px solid var(--line); border-radius: 4px 15px 15px; background: #f9fbf8; font-size: 13px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
-      .message.user .bubble { border-color: #c5e1d8; border-radius: 15px 4px 15px 15px; background: var(--mint); }
-      .message .avatar { flex-basis: 30px; width: 30px; height: 30px; }
-      .result { width: min(100%, 690px); }
-      .result h3 { margin: 0 0 6px; font-size: 16px; letter-spacing: -.02em; }
-      .result p { margin: 0; color: #465451; font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
-      .result-section { margin-top: 14px; }
-      .result-section h4 { margin: 0 0 7px; color: var(--teal-dark); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
-      .result-section ul { margin: 0; padding-left: 17px; color: #465451; font-size: 12px; line-height: 1.6; }
-      .result-section li + li { margin-top: 5px; }
-      .risk { display: inline-block; margin: 3px 0 7px; padding: 4px 9px; border-radius: 99px; background: var(--amber); font-size: 11px; font-weight: 750; text-transform: uppercase; }
-      .meta { margin-top: 13px !important; color: #7b8783 !important; font-size: 10px !important; }
-      .pending { color: var(--muted); font-size: 12px; }
-      .composer-wrap { padding: 16px 20px 18px; border-top: 1px solid var(--line); background: #fff; }
-      .composer { display: flex; align-items: flex-end; gap: 10px; padding: 8px; border: 1px solid #cbd8d1; border-radius: 15px; background: white; box-shadow: 0 4px 16px rgba(25, 49, 41, .04); }
-      textarea { flex: 1; min-height: 44px; max-height: 125px; resize: vertical; padding: 11px 10px; border: 0; outline: 0; color: var(--ink); background: transparent; font-size: 13px; line-height: 1.45; }
-      textarea::placeholder { color: #87938e; }
-      #send { display: grid; flex: 0 0 42px; place-items: center; width: 42px; height: 42px; border: 0; border-radius: 12px; color: white; background: var(--teal); cursor: pointer; transition: background .15s, transform .15s; }
-      #send:hover { background: var(--teal-dark); transform: translateY(-1px); }
-      #send:disabled { opacity: .45; cursor: wait; transform: none; }
-      .composer-foot { display: flex; justify-content: space-between; gap: 12px; margin: 9px 3px 0; color: #87938e; font-size: 10px; }
-      .error { color: #a83d34 !important; }
-      @media (max-width: 720px) {
-        .shell { width: min(100% - 20px, 620px); padding-top: 13px; }
-        header { margin-bottom: 13px; }
-        .status { font-size: 11px; }
-        .workspace { display: flex; min-height: calc(100dvh - 78px); flex-direction: column; border-radius: 17px; }
-        aside { padding: 16px 18px; border-right: 0; border-bottom: 1px solid var(--line); }
-        h1 { margin: 7px 0 5px; font-size: 20px; }
-        .intro { font-size: 12px; }
-        .team { display: flex; gap: 7px; margin-top: 12px; }
-        .member { flex: 1; gap: 7px; min-width: 0; padding: 7px; }
-        .avatar { flex-basis: 27px; height: 27px; border-radius: 8px; }
-        .member strong { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-        .member span { display: none; }
-        .side-note { display: none; }
-        main { flex: 1; min-height: 390px; }
-        .chat-head { padding: 13px 16px; }
-        #conversation { padding: 18px 13px; }
-        .composer-wrap { padding: 11px 12px 13px; }
-        .composer-foot { font-size: 9px; }
+      .user-bubble { max-width: min(76%, 650px); padding: 12px 16px; border: 1px solid #e6d5ca; border-radius: 18px 6px 18px 18px; color: #3d3934; background: linear-gradient(135deg, #fff3eb, #fff8ef); font-size: 12px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+      .bot-mark { display: grid; flex: 0 0 29px; place-items: center; width: 29px; height: 29px; border: 1px solid #f0e2d4; border-radius: 10px; background: #fff8f1; }
+      .bot-mark svg { width: 19px; height: 19px; }
+      .response-card { width: min(100%, 760px); padding: clamp(17px, 3vw, 25px); border: 1px solid #e8e5dc; border-radius: 20px; background: #fff; box-shadow: 0 9px 30px rgba(56, 50, 39, .045); }
+      .answer-label { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; color: #8e705f; font-size: 9px; font-weight: 750; letter-spacing: .13em; text-transform: uppercase; }
+      .answer-label i { width: 7px; height: 7px; border-radius: 50%; background: linear-gradient(135deg, var(--coral), #ebbd65); }
+      .answer { margin: 0; font-family: Iowan Old Style, "Palatino Linotype", Georgia, serif; font-size: clamp(19px, 2.5vw, 24px); line-height: 1.35; letter-spacing: -.025em; white-space: pre-wrap; overflow-wrap: anywhere; }
+      .answer-points { margin: 13px 0 0; padding-left: 19px; color: #606159; font-size: 12px; line-height: 1.65; }
+      .answer-points li + li { margin-top: 4px; }
+      .activity-panel { margin-top: 21px; padding: 15px 15px 12px; border: 1px solid #e9e7df; border-radius: 17px; background: linear-gradient(135deg, #fcfbf8, #fff); }
+      .activity-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+      .activity-head strong { display: block; font-size: 11px; }
+      .activity-head p { margin: 4px 0 0; color: #898980; font-size: 9px; line-height: 1.5; }
+      .activity-total { flex: 0 0 auto; padding: 6px 8px; border-radius: 9px; color: #71644f; background: #f8f1e5; font-size: 10px; font-weight: 700; }
+      .activity-list { display: grid; gap: 5px; }
+      .activity-row { display: grid; grid-template-columns: 27px minmax(105px, 1fr) minmax(120px, .9fr) 66px 64px; align-items: center; gap: 9px; min-height: 37px; padding: 5px 7px; border-radius: 10px; background: rgba(255,255,255,.86); }
+      .activity-num { display: grid; place-items: center; width: 23px; height: 23px; border-radius: 8px; color: #817d72; background: #f1f0eb; font-size: 9px; font-weight: 750; }
+      .activity-agent { overflow: hidden; font-size: 10px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+      .activity-model { overflow: hidden; color: #8a8b83; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+      .activity-model code { padding: 3px 5px; border-radius: 6px; color: #6d6d69; background: #f4f3ef; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 9px; }
+      .activity-time { color: #595c54; font-size: 10px; font-variant-numeric: tabular-nums; text-align: right; }
+      .activity-state { display: inline-flex; align-items: center; justify-content: flex-end; gap: 5px; color: #608064; font-size: 9px; font-weight: 700; }
+      .activity-state::before { width: 6px; height: 6px; border-radius: 50%; background: #79a37b; content: ""; }
+      .activity-row.failed .activity-state { color: #a34f45; }
+      .activity-row.failed .activity-state::before { background: #cb7366; }
+      .activity-note { margin: 9px 2px 0; color: #9a9a91; font-size: 9px; line-height: 1.5; }
+      .analysis { margin-top: 12px; border: 1px solid #eeece5; border-radius: 15px; background: #fff; }
+      .analysis summary { padding: 12px 14px; color: #74756d; font-size: 10px; font-weight: 700; cursor: pointer; list-style: none; }
+      .analysis summary::-webkit-details-marker { display: none; }
+      .analysis summary::after { float: right; color: #9b8a75; content: "+"; font-size: 15px; line-height: 10px; }
+      .analysis[open] summary::after { content: "−"; }
+      .analysis-body { padding: 0 14px 14px; }
+      .result-section { margin-top: 13px; }
+      .result-section h4 { margin: 0 0 6px; color: #88725f; font-size: 9px; letter-spacing: .1em; text-transform: uppercase; }
+      .result-section p { margin: 0; color: #62635c; font-size: 11px; line-height: 1.6; white-space: pre-wrap; }
+      .result-section ul { margin: 0; padding-left: 17px; color: #62635c; font-size: 11px; line-height: 1.6; }
+      .result-section li + li { margin-top: 4px; }
+      .risk { display: inline-flex; padding: 5px 8px; border: 1px solid #efe4cc; border-radius: 999px; color: #896b31; background: #fcf6e9; font-size: 9px; font-weight: 750; text-transform: uppercase; }
+      .request-meta { margin: 13px 2px 0; color: #a0a096; font-size: 9px; }
+      .pending-card { display: flex; align-items: center; gap: 12px; padding: 13px 15px; border: 1px solid #ebe7df; border-radius: 15px; color: #72736b; background: #fff; font-size: 11px; }
+      .spinner { width: 17px; height: 17px; border: 2px solid #efe9dd; border-top-color: var(--coral); border-radius: 50%; animation: spin .8s linear infinite; }
+      .pending-content { flex: 1; min-width: 0; }
+      .pending-copy { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+      .pending-copy strong { color: #4f504a; font-size: 11px; font-weight: 700; }
+      .pending-copy span { color: #929188; font-size: 9px; font-variant-numeric: tabular-nums; }
+      .progress-track { position: relative; height: 6px; overflow: hidden; margin-top: 10px; border-radius: 99px; background: #f0eee8; }
+      .progress-track::before { position: absolute; inset: 0; background: repeating-linear-gradient(90deg, transparent 0, transparent calc(16.666% - 1px), rgba(255,255,255,.95) calc(16.666% - 1px), rgba(255,255,255,.95) 16.666%); content: ""; z-index: 1; }
+      .progress-fill { position: absolute; inset: 0 auto 0 0; width: 35%; border-radius: inherit; background: linear-gradient(90deg, #e6785d, #e8b569 48%, #8aa9d2 100%); animation: progress-travel 1.5s ease-in-out infinite alternate; }
+      @keyframes progress-travel { from { transform: translateX(-30%); } to { transform: translateX(205%); } }
+      .pending-note { display: block; margin-top: 7px; color: #9a9a91; font-size: 9px; line-height: 1.45; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      .error-card { color: #984f44; border-color: #f0d9d3; background: #fff9f7; }
+      .composer-wrap { padding: 15px clamp(14px, 3vw, 30px) 17px; border-top: 1px solid #efeee9; background: rgba(255,255,255,.8); }
+      .composer { display: flex; align-items: flex-end; gap: 11px; width: min(760px, 100%); margin: 0 auto; padding: 8px 9px 8px 15px; border: 1px solid #dfddd5; border-radius: 18px; background: #fff; box-shadow: 0 5px 20px rgba(51, 46, 36, .045); transition: border-color .15s, box-shadow .15s; }
+      .composer:focus-within { border-color: #d9b4a1; box-shadow: 0 0 0 4px rgba(230, 120, 93, .08); }
+      textarea { flex: 1; min-height: 43px; max-height: 130px; resize: none; padding: 11px 0; border: 0; outline: 0; color: var(--ink); background: transparent; font-size: 12px; line-height: 1.5; }
+      textarea::placeholder { color: #9a9b92; }
+      #send { display: grid; flex: 0 0 39px; place-items: center; width: 39px; height: 39px; border: 0; border-radius: 13px; color: #fff; background: linear-gradient(135deg, #e77d60, #d96659); cursor: pointer; box-shadow: 0 5px 12px rgba(217, 103, 82, .2); transition: transform .16s, filter .16s; }
+      #send:hover { transform: translateY(-1px); filter: saturate(1.12); }
+      #send:disabled { opacity: .55; cursor: wait; transform: none; }
+      #send svg { width: 17px; height: 17px; }
+      .composer-foot { display: flex; justify-content: space-between; gap: 12px; width: min(760px, 100%); margin: 8px auto 0; color: #999a91; font-size: 9px; }
+      .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+      @media (max-width: 900px) {
+        .shell { width: min(100% - 36px, 800px); }
+        .layout { grid-template-columns: 230px minmax(0, 1fr); }
+        .sidebar { padding: 20px 14px 15px; }
+        .sidebar h1 { font-size: 28px; }
+        .activity-row { grid-template-columns: 25px minmax(90px, 1fr) minmax(100px, .8fr) 58px; }
+        .activity-state { display: none; }
+      }
+      @media (max-width: 680px) {
+        .shell { width: calc(100% - 22px); padding: 12px 0 18px; }
+        .brand-mark { width: 39px; height: 39px; }
+        .brand-name { font-size: 15px; }
+        .brand-note, .privacy-label { display: none; }
+        .team-status { padding: 7px 9px; font-size: 9px; }
+        .layout { display: flex; min-height: calc(100dvh - 72px); flex-direction: column; gap: 10px; margin-top: 13px; }
+        .sidebar { padding: 15px; border-radius: 19px; }
+        .sidebar h1 { max-width: none; margin: 8px 0 5px; font-size: 24px; }
+        .intro { max-width: 520px; font-size: 11px; }
+        .team-heading { margin: 14px 2px 7px; }
+        .agent-list { display: flex; gap: 6px; overflow-x: auto; padding: 1px 1px 3px; scrollbar-width: none; }
+        .agent-list::-webkit-scrollbar { display: none; }
+        .agent { flex: 0 0 auto; gap: 6px; padding: 5px 7px 5px 5px; border-color: #f0eee8; }
+        .agent-icon { flex-basis: 24px; width: 24px; height: 24px; border-radius: 8px; font-size: 9px; }
+        .agent-desc, .sidebar-foot { display: none; }
+        .chat-panel { flex: 1; min-height: 540px; border-radius: 19px; }
+        .chat-top { min-height: 49px; padding: 0 14px; }
+        .chat-title { font-size: 10px; }
+        .route-label { font-size: 8px; }
+        #conversation { min-height: 440px; padding: 19px 12px; }
+        .welcome { padding-top: 8px; }
+        .welcome-art { height: 190px; margin-bottom: 17px; border-radius: 15px; object-position: center 24%; }
+        .welcome h2 { margin-top: 15px; font-size: 37px; }
+        .welcome-copy { font-size: 11px; }
+        .suggestion-heading { margin-top: 22px; }
+        .suggestions { grid-template-columns: 1fr; gap: 7px; }
+        .suggestion { min-height: 56px; padding: 9px 11px; }
+        .user-bubble { max-width: 88%; }
+        .activity-panel { padding: 11px 9px 9px; }
+        .activity-row { grid-template-columns: 22px minmax(78px, 1fr) 58px; gap: 6px; padding: 5px 4px; }
+        .activity-model { grid-column: 2; grid-row: 2; }
+        .activity-time { grid-column: 3; grid-row: 1 / 3; }
+        .activity-state { display: none; }
+        .activity-num { grid-row: 1 / 3; }
+        .composer-wrap { padding: 10px 10px 12px; }
+        .composer { gap: 8px; padding-left: 12px; }
+        .composer-foot { font-size: 8px; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
       }
     </style>
   </head>
   <body>
     <div class="shell">
-      <header>
-        <div class="brand"><div class="mark">V</div><div>ViharBot<small>Research desk</small></div></div>
-        <div class="status">Agent team ready</div>
+      <header class="topbar">
+        <a class="brand" href="#" aria-label="ViharBot home">
+          <svg class="brand-mark" viewBox="0 0 48 48" role="img" aria-label="ViharBot logo">
+            <defs>
+              <linearGradient id="mark-bg" x1="5" y1="4" x2="44" y2="45" gradientUnits="userSpaceOnUse"><stop stop-color="#373834"/><stop offset="1" stop-color="#242522"/></linearGradient>
+              <linearGradient id="mark-v" x1="11" y1="13" x2="36" y2="36" gradientUnits="userSpaceOnUse"><stop stop-color="#fff9ec"/><stop offset="1" stop-color="#f0e8dc"/></linearGradient>
+            <rect x="1" y="1" width="46" height="46" rx="16" fill="url(#mark-bg)"/>
+            <path d="m10.5 14 7.1 20h4.5l3.7-9 3.5 9h4.5l7-20h-5l-4.3 12.5L26.9 16h-2.1l-4.7 10.5L15.7 14h-5.2Z" fill="url(#mark-v)"/>
+            <circle cx="36.3" cy="10.5" r="3" fill="#ef9878"/>
+            <circle cx="40.3" cy="17.2" r="1.6" fill="#e9c36d"/>
+            <circle cx="7.4" cy="31.5" r="1.7" fill="#99b7e8"/>
+          </svg>
+          <span><span class="brand-name">viharbot</span><span class="brand-note">A research studio</span></span>
+        </a>
+        <div class="top-right">
+          <span class="privacy-label">Thoughtful answers, with room for uncertainty</span>
+          <span class="team-status"><i></i>Six agents ready</span>
+        </div>
       </header>
-      <div class="workspace">
-        <aside>
-          <div class="eyebrow">Your agent team</div>
-          <h1>Questions, looked at from two angles.</h1>
-          <p class="intro">Research gathers structured findings. Security reviews the risks, implications, and practical next steps.</p>
-          <div class="team">
-            <div class="member"><div class="avatar">R</div><div><strong>Research</strong><span>Evidence and uncertainty</span></div></div>
-            <div class="member"><div class="avatar">S</div><div><strong>Security</strong><span>Risks and mitigations</span></div></div>
+
+      <div class="layout">
+        <aside class="sidebar">
+          <div class="eyebrow">A thinking companion</div>
+          <h1>A little curiosity can go a long way.</h1>
+          <p class="intro">Bring a question, a hunch, or a half-formed idea. A small team will look closer, then look out for what matters.</p>
+          <div class="team-heading"><strong>Your agent team</strong><span>01—06</span></div>
+          <div class="agent-list" aria-label="Six ViharBot agents">
+            <div class="agent"><span class="agent-icon">R</span><span class="agent-copy"><span class="agent-name">Research</span><span class="agent-desc">Findings &amp; uncertainty</span></span></div>
+            <div class="agent"><span class="agent-icon">F</span><span class="agent-copy"><span class="agent-name">Fact Check</span><span class="agent-desc">Supplied evidence only</span></span></div>
+            <div class="agent"><span class="agent-icon">Q</span><span class="agent-copy"><span class="agent-name">Source Quality</span><span class="agent-desc">Reference strengths</span></span></div>
+            <div class="agent"><span class="agent-icon">S</span><span class="agent-copy"><span class="agent-name">Security</span><span class="agent-desc">Risks &amp; mitigations</span></span></div>
+            <div class="agent"><span class="agent-icon">P</span><span class="agent-copy"><span class="agent-name">Privacy</span><span class="agent-desc">Sensitive data review</span></span></div>
+            <div class="agent"><span class="agent-icon">Σ</span><span class="agent-copy"><span class="agent-name">Synthesis</span><span class="agent-desc">One considered answer</span></span></div>
           </div>
-          <div class="side-note">Each turn is sent through the ViharBot web service to both agents over private JSON REST. The agents use LiteLLM for inference.</div>
+          <div class="sidebar-foot"><strong>One shared LiteLLM server</strong>Agent calls run in sequence. Response times reflect the current single-server setup.</div>
         </aside>
-        <main>
-          <div class="chat-head"><strong>New conversation</strong><span>Research → Security review</span></div>
+
+        <main class="chat-panel">
+          <div class="chat-top"><strong class="chat-title">Your space to think</strong><span class="route-label"><i></i>Research <span aria-hidden="true">↗</span> specialist reviews <span aria-hidden="true">↗</span> synthesis</span></div>
           <div id="conversation" aria-live="polite">
-            <div class="welcome" id="welcome">
-              <div class="welcome-icon">✳</div>
-              <h2>What would you like to explore?</h2>
-              <p>Ask a research question. ViharBot will return the findings and a security assessment, including uncertainties.</p>
-            </div>
+            <section class="welcome" id="welcome">
+              <svg class="welcome-art" viewBox="0 0 760 250" role="img" aria-label="A colorful abstract illustration of ideas connecting">
+                <defs>
+                  <linearGradient id="welcome-bg" x1="0" y1="0" x2="760" y2="250" gradientUnits="userSpaceOnUse"><stop stop-color="#fff3e8"/><stop offset=".52" stop-color="#f8f3ed"/><stop offset="1" stop-color="#edf2ff"/></linearGradient>
+                  <linearGradient id="idea-ribbon" x1="165" y1="193" x2="604" y2="53" gradientUnits="userSpaceOnUse"><stop stop-color="#e77e62"/><stop offset=".52" stop-color="#d3a060"/><stop offset="1" stop-color="#829bc9"/></linearGradient>
+                  <radialGradient id="idea-glow"><stop stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+                </defs>
+                <rect width="760" height="250" rx="20" fill="url(#welcome-bg)"/>
+                <circle cx="158" cy="56" r="90" fill="#f8d9c9" opacity=".48"/>
+                <circle cx="641" cy="196" r="114" fill="#dce5f8" opacity=".65"/>
+                <circle cx="380" cy="124" r="110" fill="url(#idea-glow)"/>
+                <path d="M95 168c87-82 140 69 225-7s132-113 213-46 96 7 140-23" fill="none" stroke="url(#idea-ribbon)" stroke-linecap="round" stroke-width="10" opacity=".82"/>
+                <path d="M117 191c80-49 137 34 204-4s112-65 182-20 111 24 151-10" fill="none" stroke="#fff" stroke-linecap="round" stroke-width="2" opacity=".8"/>
+                <circle cx="155" cy="111" r="19" fill="#fff" opacity=".76"/><circle cx="155" cy="111" r="7" fill="#e6785d"/>
+                <circle cx="359" cy="91" r="14" fill="#fff" opacity=".84"/><circle cx="359" cy="91" r="5" fill="#d0a15d"/>
+                <circle cx="538" cy="128" r="23" fill="#fff" opacity=".8"/><circle cx="538" cy="128" r="8" fill="#829bc9"/>
+                <path d="m270 56 4 10 10 4-10 4-4 10-4-10-10-4 10-4 4-10Zm329 84 3 7 7 3-7 3-3 7-3-7-7-3 7-3 3-7Z" fill="#c99067" opacity=".78"/>
+                <circle cx="94" cy="78" r="3" fill="#829bc9"/><circle cx="665" cy="72" r="4" fill="#df936f"/><circle cx="447" cy="205" r="3" fill="#c99067"/>
+              </svg>
+              <span class="welcome-kicker"><span aria-hidden="true">✳</span> Six perspectives, one conversation</span>
+              <h2>Make room for a <em>better</em> question.</h2>
+              <p class="welcome-copy">ViharBot gathers research, checks the supplied evidence and sources, reviews security and privacy, then brings it together with care.</p>
+              <p class="suggestion-heading">A few places to begin</p>
+              <div class="suggestions">
+                <button class="suggestion" type="button"><b>Make a careful change</b><span>What should a small team consider before adopting passkeys?</span></button>
+                <button class="suggestion" type="button"><b>Look closer at a source</b><span>How can I tell whether a health article is reliable?</span></button>
+                <button class="suggestion" type="button"><b>Think about privacy</b><span>What questions should I ask before using a new AI app?</span></button>
+                <button class="suggestion" type="button"><b>Explore a new idea</b><span>What are the trade-offs of adding solar panels at home?</span></button>
+              </div>
+            </section>
           </div>
           <div class="composer-wrap">
             <form class="composer" id="chat-form">
-              <textarea id="message" maxlength="3000" rows="1" placeholder="Ask a question…" aria-label="Your message" required></textarea>
-              <button id="send" type="submit" aria-label="Send message" title="Send message">↑</button>
+              <label class="sr-only" for="message">Your question</label>
+              <textarea id="message" maxlength="3000" rows="1" placeholder="Ask anything you’re thinking about…" required></textarea>
+              <button id="send" type="submit" aria-label="Send your question" title="Send your question">
+                <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 15.8V4.2M5.4 8.8 10 4.2l4.6 4.6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
             </form>
-            <div class="composer-foot"><span>Prior turns in this tab are included as context.</span><span id="count">0 / 3000</span></div>
+            <div class="composer-foot"><span>Enter to send · Shift + Enter for a new line</span><span id="count">0 / 3000</span></div>
           </div>
         </main>
       </div>
     </div>
+
     <script>
       const form = document.querySelector("#chat-form");
       const input = document.querySelector("#message");
@@ -147,6 +302,11 @@
       const conversation = document.querySelector("#conversation");
       const count = document.querySelector("#count");
       const history = [];
+
+      const agentNames = {
+        research: "Research", "fact-check": "Fact Check", "source-quality": "Source Quality",
+        security: "Security", "privacy-review": "Privacy Review", synthesis: "Synthesis",
+      };
 
       function el(tag, className, text) {
         const node = document.createElement(tag);
@@ -163,48 +323,134 @@
         section.append(list);
         parent.append(section);
       }
+      function formatDuration(ms) {
+        if (ms < 1000) return `${Math.round(ms)} ms`;
+        return `${(ms / 1000).toFixed(1)} s`;
+      }
+      function buildActivity(activity) {
+        const panel = el("section", "activity-panel");
+        const head = el("div", "activity-head");
+        const heading = document.createElement("div");
+        heading.append(el("strong", "", "The team at work"));
+        heading.append(el("p", "", "Calls are made one after another and share one LiteLLM server."));
+        head.append(heading);
+        const elapsed = activity.reduce((total, item) => total + (item.duration_ms || 0), 0);
+        head.append(el("span", "activity-total", `${activity.length} calls · ${formatDuration(elapsed)}`));
+        panel.append(head);
+        const list = el("div", "activity-list");
+        activity.forEach((item, index) => {
+          const row = el("div", `activity-row ${item.status === "failed" ? "failed" : ""}`);
+          row.append(el("span", "activity-num", String(index + 1).padStart(2, "0")));
+          row.append(el("span", "activity-agent", item.display_name || agentNames[item.agent] || item.agent));
+          const model = el("span", "activity-model");
+          model.append(document.createTextNode("Model "));
+          model.append(el("code", "", item.model_alias || "not reported"));
+          row.append(model);
+          row.append(el("time", "activity-time", formatDuration(item.duration_ms || 0)));
+          row.append(el("span", "activity-state", item.status === "failed" ? "Failed" : "Done"));
+          list.append(row);
+        });
+        panel.append(list);
+        panel.append(el("p", "activity-note", "Times show the full request round trip to each agent, including its LiteLLM inference wait. Longer waits are expected while the shared server handles each call."));
+        return panel;
+      }
       function addUserMessage(text) {
         const row = el("div", "message user");
-        row.append(el("div", "bubble", text));
+        row.append(el("div", "user-bubble", text));
         conversation.append(row);
       }
       function addResult(result) {
         const row = el("div", "message");
-        row.append(el("div", "avatar", "V"));
-        const bubble = el("div", "bubble result");
-        bubble.append(el("h3", "", result.findings.summary));
-        listSection(bubble, "Key findings", result.findings.findings.map((f) => `${f.claim} ${f.evidence} (confidence: ${f.confidence})`));
-        listSection(bubble, "Sources", result.findings.sources);
-        listSection(bubble, "Research uncertainties", result.findings.uncertainties);
-        const risk = el("div", "risk", `${result.assessment.overall_risk} risk`);
+        const mark = el("div", "bot-mark");
+        mark.innerHTML = '<svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="m12 15 7 19h4l4-9 3 9h4l7-19h-5l-4 12-4-10h-2l-4 10-4-12h-5Z" fill="#41413d"/><circle cx="37" cy="11" r="3" fill="#e6785d"/><circle cx="42" cy="17" r="1.6" fill="#c99137"/></svg>';
+        row.append(mark);
+        const card = el("article", "response-card");
+        const synthesis = result.synthesis;
+        const label = el("div", "answer-label");
+        label.append(el("i", ""));
+        label.append(document.createTextNode("A considered answer"));
+        card.append(label);
+        card.append(el("p", "answer", synthesis?.answer || result.findings.summary));
+        if (synthesis?.key_points?.length) {
+          const points = document.createElement("ul");
+          points.className = "answer-points";
+          synthesis.key_points.forEach((point) => points.append(el("li", "", point)));
+          card.append(points);
+        }
+        if (synthesis?.caveats?.length) listSection(card, "A few caveats", synthesis.caveats);
+        if (result.agent_activity?.length) card.append(buildActivity(result.agent_activity));
+
+        const details = document.createElement("details");
+        details.className = "analysis";
+        details.append(el("summary", "", "Explore the findings and reviews"));
+        const body = el("div", "analysis-body");
+        listSection(body, "Research findings", result.findings.findings.map((finding) => `${finding.claim} ${finding.evidence} (confidence: ${finding.confidence})`));
+        listSection(body, "Sources provided", result.findings.sources);
+        listSection(body, "Research uncertainties", result.findings.uncertainties);
+        if (result.fact_check) {
+          const section = el("section", "result-section");
+          section.append(el("h4", "", "Fact Check · supplied evidence only"));
+          section.append(el("p", "", result.fact_check.summary));
+          listSection(section, "Claim reviews", result.fact_check.claims.map((claim) => `${claim.status}: ${claim.claim} — ${claim.rationale} Follow-up: ${claim.follow_up}`));
+          listSection(section, "Limitations", result.fact_check.limitations);
+          body.append(section);
+        }
+        if (result.source_quality) {
+          const section = el("section", "result-section");
+          section.append(el("h4", "", "Source Quality"));
+          section.append(el("p", "", result.source_quality.summary));
+          listSection(section, "References reviewed", result.source_quality.sources.map((source) => `${source.apparent_quality}: ${source.source} — ${source.rationale}`));
+          listSection(section, "Checks to perform", result.source_quality.sources.flatMap((source) => source.checks_to_perform));
+          listSection(section, "Limitations", result.source_quality.limitations);
+          body.append(section);
+        }
         const security = el("section", "result-section");
-        security.append(risk);
+        security.append(el("h4", "", "Security review"));
+        security.append(el("span", "risk", `${result.assessment.overall_risk} risk`));
         listSection(security, "Implications", result.assessment.implications);
         listSection(security, "Recommendations", result.assessment.recommendations);
-        listSection(security, "Assessment uncertainties", result.assessment.uncertainties);
-        bubble.append(security);
-        bubble.append(el("p", "meta", `Request ${result.request_id}`));
-        row.append(bubble);
+        listSection(security, "Uncertainties", result.assessment.uncertainties);
+        body.append(security);
+        if (result.privacy_review) {
+          const privacy = el("section", "result-section");
+          privacy.append(el("h4", "", "Privacy review"));
+          privacy.append(el("span", "risk", `${result.privacy_review.overall_risk} privacy risk`));
+          listSection(privacy, "Concerns", result.privacy_review.concerns);
+          listSection(privacy, "Recommendations", result.privacy_review.recommendations);
+          listSection(privacy, "Sensitive data categories", result.privacy_review.sensitive_data_categories);
+          privacy.append(el("p", "", result.privacy_review.processing_note));
+          body.append(privacy);
+        }
+        details.append(body);
+        card.append(details);
+        card.append(el("p", "request-meta", `Request ${result.request_id}`));
+        row.append(card);
         conversation.append(row);
-        const historyText = [
-          `Research summary: ${result.findings.summary}`,
-          `Security risk: ${result.assessment.overall_risk}`,
-          `Recommendations: ${result.assessment.recommendations.join("; ")}`,
-        ].join(" ").slice(0, 500);
+
+        const historyText = [`Answer: ${synthesis?.answer || result.findings.summary}`, `Security risk: ${result.assessment.overall_risk}`, `Recommendations: ${result.assessment.recommendations.join("; ")}`].join(" ").slice(0, 500);
         history.push({ role: "assistant", content: historyText });
       }
-      function showError(message) {
+      function showError(message, activity = []) {
         const row = el("div", "message");
-        row.append(el("div", "avatar", "!"));
-        row.append(el("div", "bubble error", message));
+        const card = el("div", "response-card error-card");
+        card.append(el("p", "", message));
+        if (activity.length) card.append(buildActivity(activity));
+        row.append(card);
         conversation.append(row);
       }
-      input.addEventListener("input", () => { count.textContent = `${input.value.length} / 3000`; });
+      function resizeInput() {
+        input.style.height = "auto";
+        input.style.height = `${Math.min(input.scrollHeight, 130)}px`;
+      }
+      document.querySelectorAll(".suggestion").forEach((button) => button.addEventListener("click", () => {
+        input.value = button.querySelector("span")?.textContent || "";
+        count.textContent = `${input.value.length} / 3000`;
+        resizeInput();
+        input.focus();
+      }));
+      input.addEventListener("input", () => { count.textContent = `${input.value.length} / 3000`; resizeInput(); });
       input.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" && !event.shiftKey) {
-          event.preventDefault();
-          form.requestSubmit();
-        }
+        if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); form.requestSubmit(); }
       });
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
@@ -214,9 +460,35 @@
         addUserMessage(message);
         history.push({ role: "user", content: message.slice(-500) });
         input.value = "";
+        input.style.height = "auto";
         count.textContent = "0 / 3000";
         send.disabled = true;
-        const pending = el("div", "message pending", "Researching and reviewing…");
+        const pending = el("div", "pending-card");
+        pending.setAttribute("role", "status");
+        pending.setAttribute("aria-live", "polite");
+        const spinner = el("span", "spinner");
+        spinner.setAttribute("aria-hidden", "true");
+        pending.append(spinner);
+        const pendingContent = el("div", "pending-content");
+        const pendingCopy = el("div", "pending-copy");
+        pendingCopy.append(el("strong", "", "Six perspectives are coming together"));
+        const elapsedLabel = el("span", "", "0:00");
+        pendingCopy.append(el("span", "", "In progress · "));
+        pendingCopy.lastChild.append(elapsedLabel);
+        pendingContent.append(pendingCopy);
+        const progress = el("div", "progress-track");
+        progress.setAttribute("role", "progressbar");
+        progress.setAttribute("aria-label", "Six agents are working on your question");
+        progress.setAttribute("aria-valuetext", "In progress; the six agent calls run in sequence");
+        progress.append(el("span", "progress-fill"));
+        pendingContent.append(progress);
+        pendingContent.append(el("span", "pending-note", "Calls run one after another through the shared LiteLLM server. The activity report will show each model and its response time."));
+        pending.append(pendingContent);
+        const startedAt = Date.now();
+        const elapsedTimer = window.setInterval(() => {
+          const seconds = Math.floor((Date.now() - startedAt) / 1000);
+          elapsedLabel.textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+        }, 1000);
         conversation.append(pending);
         conversation.scrollTop = conversation.scrollHeight;
         try {
@@ -226,10 +498,19 @@
             body: JSON.stringify({ message, history: history.slice(0, -1).slice(-4) }),
           });
           const data = await response.json();
+          window.clearInterval(elapsedTimer);
           pending.remove();
-          if (!response.ok) throw new Error(data.detail || "The agent team could not complete this request.");
+          if (!response.ok) {
+            if (data.detail && typeof data.detail === "object") {
+              showError(data.detail.message || "The agent team could not complete this request.", data.detail.agent_activity || []);
+            } else {
+              showError(data.detail || "The agent team could not complete this request.");
+            }
+            return;
+          }
           addResult(data);
         } catch (error) {
+          window.clearInterval(elapsedTimer);
           pending.remove();
           showError(error.message || "The request failed. Please try again.");
         } finally {
