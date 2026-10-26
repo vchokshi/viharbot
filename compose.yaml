@@ -1,4 +1,32 @@
 services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    environment:
+      PORT: 8080
+      WEB_STATIC_DIR: /app/static
+      WEB_AUTH_ENABLED: ${WEB_AUTH_ENABLED:-0}
+      WEB_USERNAME: ${WEB_USERNAME:-}
+      WEB_PASSWORD: ${WEB_PASSWORD:-}
+      RESEARCH_URL: http://research:8000/research
+      SECURITY_URL: http://security:8000/assess
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      research:
+        condition: service_healthy
+      security:
+        condition: service_healthy
+    networks:
+      - agent-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8080/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
   research:
     build:
       context: .
@@ -10,8 +38,8 @@ services:
       MEMORY_DIR: /data
     volumes:
       - ./data/research:/data/research
-    ports:
-      - "127.0.0.1:8000:8000"
+    expose:
+      - "8000"
     networks:
       - agent-network
     healthcheck:
@@ -19,6 +47,7 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+    restart: unless-stopped
 
   security:
     build:
@@ -31,6 +60,8 @@ services:
       MEMORY_DIR: /data
     volumes:
       - ./data/security:/data/security
+    expose:
+      - "8000"
     networks:
       - agent-network
     healthcheck:
@@ -38,6 +69,7 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+    restart: unless-stopped
 
   orchestrator:
     profiles: ["demo"]

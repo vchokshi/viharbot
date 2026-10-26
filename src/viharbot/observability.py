@@ -26,9 +26,20 @@ class JsonFormatter(logging.Formatter):
             "event": record.getMessage(),
             "request_id": getattr(record, "request_id", None),
             "destination_agent": getattr(record, "destination_agent", None),
-            "model_alias": getattr(record, "model_alias", None),
-            "inference_latency_ms": getattr(record, "inference_latency_ms", None),
-            "communication_latency_ms": getattr(record, "communication_latency_ms", None),
+            "model_alias": getattr(
+                record,
+                "model_alias",
+                getattr(record, "requested_model_alias", None),
+            ),
+            "duration_ms": getattr(
+                record,
+                "duration_ms",
+                getattr(
+                    record,
+                    "inference_latency_ms",
+                    getattr(record, "communication_latency_ms", None),
+                ),
+            ),
         }
         if hasattr(record, "error"):
             fields["error"] = record.error

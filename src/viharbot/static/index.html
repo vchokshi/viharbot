@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f4f6f3" />
+    <title>ViharBot · Research desk</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #1b2828;
+        --muted: #687775;
+        --line: #dce4df;
+        --paper: #fbfcfa;
+        --surface: #ffffff;
+        --teal: #176d65;
+        --teal-dark: #10564f;
+        --mint: #e8f3ee;
+        --amber: #f4ebd8;
+        --shadow: 0 16px 50px rgba(35, 57, 51, 0.09);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--ink);
+        background:
+          radial-gradient(ellipse at 12% 0%, rgba(201, 226, 211, .52), transparent 34rem),
+          #f4f6f3;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      button, textarea { font: inherit; }
+      .shell { width: min(1050px, calc(100% - 40px)); margin: 0 auto; padding: 28px 0 40px; }
+      header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+      .brand { display: flex; align-items: center; gap: 12px; font-weight: 740; letter-spacing: -.03em; }
+      .mark { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 13px; color: white; background: var(--teal); font-size: 19px; }
+      .brand small { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .11em; text-transform: uppercase; }
+      .status { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+      .status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #61a887; box-shadow: 0 0 0 4px #e4f1e9; }
+      .workspace { display: grid; grid-template-columns: 245px minmax(0, 1fr); overflow: hidden; min-height: 690px; border: 1px solid var(--line); border-radius: 22px; background: var(--surface); box-shadow: var(--shadow); }
+      aside { padding: 26px 20px; border-right: 1px solid var(--line); background: #f9fbf8; }
+      .eyebrow { color: var(--teal); font-size: 11px; font-weight: 750; letter-spacing: .13em; text-transform: uppercase; }
+      h1 { margin: 12px 0 9px; font-size: 25px; line-height: 1.14; letter-spacing: -.045em; }
+      .intro { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+      .team { display: grid; gap: 10px; margin-top: 30px; }
+      .member { display: flex; align-items: center; gap: 10px; padding: 11px; border: 1px solid var(--line); border-radius: 12px; background: white; }
+      .avatar { display: grid; flex: 0 0 32px; place-items: center; height: 32px; border-radius: 10px; color: var(--teal-dark); background: var(--mint); font-size: 13px; font-weight: 800; }
+      .member strong { display: block; font-size: 12px; }
+      .member span { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
+      .side-note { margin-top: 24px; padding: 12px; border-radius: 12px; color: #5f665d; background: #f2f0e8; font-size: 11px; line-height: 1.55; }
+      main { display: flex; min-width: 0; flex-direction: column; }
+      .chat-head { display: flex; justify-content: space-between; align-items: center; padding: 20px 24px; border-bottom: 1px solid var(--line); }
+      .chat-head strong { font-size: 14px; }
+      .chat-head span { color: var(--muted); font-size: 12px; }
+      #conversation { display: flex; flex: 1; flex-direction: column; gap: 18px; overflow: auto; padding: 24px; }
+      .welcome { max-width: 530px; margin: auto; text-align: center; }
+      .welcome-icon { display: grid; place-items: center; width: 52px; height: 52px; margin: 0 auto 14px; border-radius: 17px; color: var(--teal); background: var(--mint); font-size: 23px; }
+      .welcome h2 { margin: 0 0 8px; font-size: 19px; letter-spacing: -.03em; }
+      .welcome p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.65; }
+      .message { display: flex; align-items: flex-start; gap: 11px; max-width: 100%; animation: arrive .2s ease-out; }
+      @keyframes arrive { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+      .message.user { justify-content: flex-end; }
+      .message .bubble { max-width: min(680px, calc(100% - 46px)); padding: 13px 15px; border: 1px solid var(--line); border-radius: 4px 15px 15px; background: #f9fbf8; font-size: 13px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+      .message.user .bubble { border-color: #c5e1d8; border-radius: 15px 4px 15px 15px; background: var(--mint); }
+      .message .avatar { flex-basis: 30px; width: 30px; height: 30px; }
+      .result { width: min(100%, 690px); }
+      .result h3 { margin: 0 0 6px; font-size: 16px; letter-spacing: -.02em; }
+      .result p { margin: 0; color: #465451; font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
+      .result-section { margin-top: 14px; }
+      .result-section h4 { margin: 0 0 7px; color: var(--teal-dark); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+      .result-section ul { margin: 0; padding-left: 17px; color: #465451; font-size: 12px; line-height: 1.6; }
+      .result-section li + li { margin-top: 5px; }
+      .risk { display: inline-block; margin: 3px 0 7px; padding: 4px 9px; border-radius: 99px; background: var(--amber); font-size: 11px; font-weight: 750; text-transform: uppercase; }
+      .meta { margin-top: 13px !important; color: #7b8783 !important; font-size: 10px !important; }
+      .pending { color: var(--muted); font-size: 12px; }
+      .composer-wrap { padding: 16px 20px 18px; border-top: 1px solid var(--line); background: #fff; }
+      .composer { display: flex; align-items: flex-end; gap: 10px; padding: 8px; border: 1px solid #cbd8d1; border-radius: 15px; background: white; box-shadow: 0 4px 16px rgba(25, 49, 41, .04); }
+      textarea { flex: 1; min-height: 44px; max-height: 125px; resize: vertical; padding: 11px 10px; border: 0; outline: 0; color: var(--ink); background: transparent; font-size: 13px; line-height: 1.45; }
+      textarea::placeholder { color: #87938e; }
+      #send { display: grid; flex: 0 0 42px; place-items: center; width: 42px; height: 42px; border: 0; border-radius: 12px; color: white; background: var(--teal); cursor: pointer; transition: background .15s, transform .15s; }
+      #send:hover { background: var(--teal-dark); transform: translateY(-1px); }
+      #send:disabled { opacity: .45; cursor: wait; transform: none; }
+      .composer-foot { display: flex; justify-content: space-between; gap: 12px; margin: 9px 3px 0; color: #87938e; font-size: 10px; }
+      .error { color: #a83d34 !important; }
+      @media (max-width: 720px) {
+        .shell { width: min(100% - 20px, 620px); padding-top: 13px; }
+        header { margin-bottom: 13px; }
+        .status { font-size: 11px; }
+        .workspace { display: flex; min-height: calc(100dvh - 78px); flex-direction: column; border-radius: 17px; }
+        aside { padding: 16px 18px; border-right: 0; border-bottom: 1px solid var(--line); }
+        h1 { margin: 7px 0 5px; font-size: 20px; }
+        .intro { font-size: 12px; }
+        .team { display: flex; gap: 7px; margin-top: 12px; }
+        .member { flex: 1; gap: 7px; min-width: 0; padding: 7px; }
+        .avatar { flex-basis: 27px; height: 27px; border-radius: 8px; }
+        .member strong { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+        .member span { display: none; }
+        .side-note { display: none; }
+        main { flex: 1; min-height: 390px; }
+        .chat-head { padding: 13px 16px; }
+        #conversation { padding: 18px 13px; }
+        .composer-wrap { padding: 11px 12px 13px; }
+        .composer-foot { font-size: 9px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <header>
+        <div class="brand"><div class="mark">V</div><div>ViharBot<small>Research desk</small></div></div>
+        <div class="status">Agent team ready</div>
+      </header>
+      <div class="workspace">
+        <aside>
+          <div class="eyebrow">Your agent team</div>
+          <h1>Questions, looked at from two angles.</h1>
+          <p class="intro">Research gathers structured findings. Security reviews the risks, implications, and practical next steps.</p>
+          <div class="team">
+            <div class="member"><div class="avatar">R</div><div><strong>Research</strong><span>Evidence and uncertainty</span></div></div>
+            <div class="member"><div class="avatar">S</div><div><strong>Security</strong><span>Risks and mitigations</span></div></div>
+          </div>
+          <div class="side-note">Each turn is sent through the ViharBot web service to both agents over private JSON REST. The agents use LiteLLM for inference.</div>
+        </aside>
+        <main>
+          <div class="chat-head"><strong>New conversation</strong><span>Research → Security review</span></div>
+          <div id="conversation" aria-live="polite">
+            <div class="welcome" id="welcome">
+              <div class="welcome-icon">✳</div>
+              <h2>What would you like to explore?</h2>
+              <p>Ask a research question. ViharBot will return the findings and a security assessment, including uncertainties.</p>
+            </div>
+          </div>
+          <div class="composer-wrap">
+            <form class="composer" id="chat-form">
+              <textarea id="message" maxlength="3000" rows="1" placeholder="Ask a question…" aria-label="Your message" required></textarea>
+              <button id="send" type="submit" aria-label="Send message" title="Send message">↑</button>
+            </form>
+            <div class="composer-foot"><span>Prior turns in this tab are included as context.</span><span id="count">0 / 3000</span></div>
+          </div>
+        </main>
+      </div>
+    </div>
+    <script>
+      const form = document.querySelector("#chat-form");
+      const input = document.querySelector("#message");
+      const send = document.querySelector("#send");
+      const conversation = document.querySelector("#conversation");
+      const count = document.querySelector("#count");
+      const history = [];
+
+      function el(tag, className, text) {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text !== undefined) node.textContent = text;
+        return node;
+      }
+      function listSection(parent, title, items) {
+        if (!items || !items.length) return;
+        const section = el("section", "result-section");
+        section.append(el("h4", "", title));
+        const list = document.createElement("ul");
+        items.forEach((item) => list.append(el("li", "", item)));
+        section.append(list);
+        parent.append(section);
+      }
+      function addUserMessage(text) {
+        const row = el("div", "message user");
+        row.append(el("div", "bubble", text));
+        conversation.append(row);
+      }
+      function addResult(result) {
+        const row = el("div", "message");
+        row.append(el("div", "avatar", "V"));
+        const bubble = el("div", "bubble result");
+        bubble.append(el("h3", "", result.findings.summary));
+        listSection(bubble, "Key findings", result.findings.findings.map((f) => `${f.claim} ${f.evidence} (confidence: ${f.confidence})`));
+        listSection(bubble, "Sources", result.findings.sources);
+        listSection(bubble, "Research uncertainties", result.findings.uncertainties);
+        const risk = el("div", "risk", `${result.assessment.overall_risk} risk`);
+        const security = el("section", "result-section");
+        security.append(risk);
+        listSection(security, "Implications", result.assessment.implications);
+        listSection(security, "Recommendations", result.assessment.recommendations);
+        listSection(security, "Assessment uncertainties", result.assessment.uncertainties);
+        bubble.append(security);
+        bubble.append(el("p", "meta", `Request ${result.request_id}`));
+        row.append(bubble);
+        conversation.append(row);
+        const historyText = [
+          `Research summary: ${result.findings.summary}`,
+          `Security risk: ${result.assessment.overall_risk}`,
+          `Recommendations: ${result.assessment.recommendations.join("; ")}`,
+        ].join(" ").slice(0, 500);
+        history.push({ role: "assistant", content: historyText });
+      }
+      function showError(message) {
+        const row = el("div", "message");
+        row.append(el("div", "avatar", "!"));
+        row.append(el("div", "bubble error", message));
+        conversation.append(row);
+      }
+      input.addEventListener("input", () => { count.textContent = `${input.value.length} / 3000`; });
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && !event.shiftKey) {
+          event.preventDefault();
+          form.requestSubmit();
+        }
+      });
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const message = input.value.trim();
+        if (!message || send.disabled) return;
+        document.querySelector("#welcome")?.remove();
+        addUserMessage(message);
+        history.push({ role: "user", content: message.slice(-500) });
+        input.value = "";
+        count.textContent = "0 / 3000";
+        send.disabled = true;
+        const pending = el("div", "message pending", "Researching and reviewing…");
+        conversation.append(pending);
+        conversation.scrollTop = conversation.scrollHeight;
+        try {
+          const response = await fetch("/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message, history: history.slice(0, -1).slice(-4) }),
+          });
+          const data = await response.json();
+          pending.remove();
+          if (!response.ok) throw new Error(data.detail || "The agent team could not complete this request.");
+          addResult(data);
+        } catch (error) {
+          pending.remove();
+          showError(error.message || "The request failed. Please try again.");
+        } finally {
+          send.disabled = false;
+          input.focus();
+          conversation.scrollTop = conversation.scrollHeight;
+        }
+      });
+    </script>
+  </body>
+</html>

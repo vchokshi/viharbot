@@ -33,7 +33,7 @@ def post_json(url: str, payload: dict, request_id: str, destination: str) -> dic
                 "agent": "orchestrator",
                 "request_id": request_id,
                 "destination_agent": destination,
-                "requested_model_alias": None,
+                "model_alias": None,
                 "duration_ms": round((time.perf_counter() - started) * 1000, 2),
                 "error": type(exc).__name__,
             },
@@ -45,7 +45,7 @@ def post_json(url: str, payload: dict, request_id: str, destination: str) -> dic
             "agent": "orchestrator",
             "request_id": request_id,
             "destination_agent": destination,
-            "requested_model_alias": None,
+            "model_alias": None,
             "duration_ms": round((time.perf_counter() - started) * 1000, 2),
         },
     )

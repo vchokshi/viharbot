@@ -1,23 +1,26 @@
 # Agent communication
 
-Phase 1 agents use HTTP REST with JSON over the private Docker Compose bridge network. Agent APIs have no published host ports.
+The web service coordinates agents using plain JSON REST. The same pattern is used inside Docker Compose and DigitalOcean App Platform's private app network.
 
 ## Flow
 
-1. The orchestrator demo container generates a request ID.
-2. It sends POST http://research:8000/research with X-Request-ID and a JSON question.
-3. ResearchAgent returns a ResearchFindings object.
-4. The orchestrator sends POST http://security:8000/assess with the same request ID and findings JSON.
-5. SecurityAgent returns a SecurityAssessment object.
+1. The web service accepts a browser message and generates or validates a request ID.
+2. It sends `POST /research` to ResearchAgent with `X-Request-ID` and a JSON question.
+3. ResearchAgent returns a `ResearchFindings` object.
+4. The web service sends `POST /assess` to SecurityAgent with the same request ID and findings JSON.
+5. SecurityAgent returns a `SecurityAssessment` object.
+6. The web service returns both structures to the browser.
 
-Both agents echo X-Request-ID in the response header and body. If the header is missing or malformed, an agent creates a UUID. The request ID is for correlation, not authentication.
+Research and Security echo the request ID in their response header and body. A missing or malformed ID is replaced with a UUID. The ID correlates logs; it is not authentication.
 
 ## Contracts
 
-Research input is a JSON object with a question string. Security input is the ResearchAgent response's findings object. Pydantic schemas validate both requests and both structured model responses.
+The browser posts `{ "message": "...", "history": [...] }` to `/api/chat`. History contains at most four user/assistant message snippets from the current tab. The web service formats those turns as contextual input for ResearchAgent. It does not save browser history. SecurityAgent receives the current request's validated `ResearchFindings`, not chat history.
 
-The demo runs inside Docker and uses Compose DNS names. Services are independently built and configured. No A2A, broker, or orchestration framework is used.
+ResearchAgent returns `{ request_id, agent, requested_model_alias, findings }`. SecurityAgent returns `{ request_id, agent, requested_model_alias, assessment }`. The browser-facing response is `{ request_id, findings, assessment }`. Pydantic schemas validate the agent payloads.
 
-## Security boundary
+## Network and credentials
 
-The Docker network is private to this Compose project and ports are not published. LiteLLM is accessed separately over HTTPS for inference. No proxy key is passed between agents. This local network is not a replacement for authentication when agents are later deployed on separate hosts.
+Locally, the web container is published only at `127.0.0.1:8080`; agent ports are private to Compose. On DigitalOcean, the web service is the only component with a public HTTP port. Research and Security expose internal port 8000 to components in the same app.
+
+The web-to-agent messages use HTTP within the private app/Compose network. They contain user input and research output, so keep these services private. LiteLLM API keys are sent only from the model-using agent services to the HTTPS LiteLLM endpoint. The web container does not receive those keys.

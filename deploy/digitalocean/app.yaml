@@ -1,0 +1,100 @@
+name: viharbot-stage
+region: nyc
+
+# Configure the empty SECRET values in the DigitalOcean control panel before
+# sending real traffic. Do not put credential values in this repository.
+envs:
+  - key: LITELLM_BASE_URL
+    value: https://litellm.viharchokshi.com
+    scope: RUN_TIME
+    type: GENERAL
+
+services:
+  - name: web
+    github:
+      repo: vchokshi/viharbot
+      branch: main
+      deploy_on_push: true
+    dockerfile_path: Dockerfile.web
+    source_dir: /
+    http_port: 8080
+    health_check:
+      http_path: /health
+      port: 8080
+    envs:
+      - key: WEB_AUTH_ENABLED
+        value: "true"
+        scope: RUN_TIME
+        type: GENERAL
+      - key: WEB_USERNAME
+        value: ""
+        scope: RUN_TIME
+        type: SECRET
+      - key: WEB_PASSWORD
+        value: ""
+        scope: RUN_TIME
+        type: SECRET
+      - key: WEB_STATIC_DIR
+        value: /app/static
+        scope: RUN_TIME
+        type: GENERAL
+      - key: RESEARCH_URL
+        value: http://research:8000/research
+        scope: RUN_TIME
+        type: GENERAL
+      - key: SECURITY_URL
+        value: http://security:8000/assess
+        scope: RUN_TIME
+        type: GENERAL
+
+  - name: research
+    github:
+      repo: vchokshi/viharbot
+      branch: main
+      deploy_on_push: true
+    dockerfile_path: Dockerfile.research
+    source_dir: /
+    internal_ports:
+      - 8000
+    health_check:
+      http_path: /health
+      port: 8000
+    envs:
+      - key: RESEARCH_MODEL
+        value: openai/gpt-5.4-mini
+        scope: RUN_TIME
+        type: GENERAL
+      - key: MEMORY_DIR
+        value: /tmp/viharbot-memory
+        scope: RUN_TIME
+        type: GENERAL
+      - key: LITELLM_API_KEY
+        value: ""
+        scope: RUN_TIME
+        type: SECRET
+
+  - name: security
+    github:
+      repo: vchokshi/viharbot
+      branch: main
+      deploy_on_push: true
+    dockerfile_path: Dockerfile.security
+    source_dir: /
+    internal_ports:
+      - 8000
+    health_check:
+      http_path: /health
+      port: 8000
+    envs:
+      - key: SECURITY_MODEL
+        value: openai/gpt-5.4
+        scope: RUN_TIME
+        type: GENERAL
+      - key: MEMORY_DIR
+        value: /tmp/viharbot-memory
+        scope: RUN_TIME
+        type: GENERAL
+      - key: LITELLM_API_KEY
+        value: ""
+        scope: RUN_TIME
+        type: SECRET

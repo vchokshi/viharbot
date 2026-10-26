@@ -66,7 +66,7 @@ def assess(
             extra={
                 "agent": "security",
                 "request_id": request_id,
-                "requested_model_alias": model_alias or None,
+                "model_alias": model_alias or None,
                 "duration_ms": round((time.perf_counter() - started) * 1000, 2),
             },
         )
@@ -81,7 +81,7 @@ def assess(
             extra={
                 "agent": "security",
                 "request_id": request_id,
-                "requested_model_alias": model_alias or None,
+                "model_alias": model_alias or None,
                 "duration_ms": round((time.perf_counter() - started) * 1000, 2),
                 "error": type(exc).__name__,
             },

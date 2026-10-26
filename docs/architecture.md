@@ -1,44 +1,51 @@
 # ViharBot Phase 1 architecture
 
-Two independently deployed FastAPI agents run as Python 3.12 Docker containers. They communicate over simple JSON HTTP on a private Docker bridge network. No A2A, message broker, service mesh, Kubernetes, external database, or complex orchestration framework is used.
+Phase 1 has one browser-based chat interface in front of two independently deployed FastAPI agents. The web service coordinates ResearchAgent and SecurityAgent with plain JSON HTTP. Both model-backed agents use Strands through the external LiteLLM OpenAI-compatible API. No provider-native inference, broker, A2A protocol, service mesh, database, or orchestration framework is used.
 
-## First milestone
+## Request flow
 
 ```mermaid
 flowchart LR
-  O[Orchestrator demo container] -->|POST /research + X-Request-ID| R[ResearchAgent]
+  U[Browser] -->|HTTPS on DigitalOcean; loopback locally| W[Web chat container]
+  W -->|POST /research + X-Request-ID| R[ResearchAgent]
+  W -->|POST /assess + X-Request-ID + findings| S[SecurityAgent]
   R -->|Strands LiteLLMModel / RESEARCH_MODEL| L[External LiteLLM]
-  R -->|ResearchFindings JSON| S[SecurityAgent]
   S -->|Strands LiteLLMModel / SECURITY_MODEL| L
-  S -->|SecurityAssessment JSON| O
+  R --> F[ResearchFindings]
+  S --> A[SecurityAssessment]
+  F --> W
+  A --> W
 ```
 
-ResearchAgent uses the reported working alias openai/gpt-5.4-mini. It accepts a question, calls LiteLLM, and returns typed findings with summary, claims, evidence, confidence, sources, and uncertainties. SecurityAgent is configured for openai/gpt-5.4 and accepts that JSON structure, evaluates it, and returns risk level, implications, recommendations, and uncertainties. Its alias is not considered verified until a real HTTPS chat completion returns a valid structured assessment; catalog presence alone is insufficient. A generated request ID is forwarded over both REST calls and returned by both agents.
+The web service is a presentation layer and REST coordinator; it is not a separate foundation-model agent. It sends each current message to ResearchAgent, then sends the returned findings to SecurityAgent. It returns both typed outputs to the browser. A request ID is forwarded to both services and included in the response.
+
+The browser holds the last four user/assistant chat turns in page memory and sends them as context on the next request. The web service does not persist those turns. The context is included in the ResearchAgent question and treated as untrusted input. SecurityAgent receives only the current structured ResearchFindings.
 
 ## Runtime layout
 
-| Service | Runtime | State |
-|---|---|---|
-| ResearchAgent | Docker / Python 3.12 | Implemented |
-| SecurityAgent | Docker / Python 3.12 | Implemented; AgentCore is a future target |
-| Orchestrator demo | Short-lived Docker container | Coordinates the two calls |
+| Service | Runtime | Exposure | State |
+|---|---|---|---|
+| Web chat | Docker / FastAPI | Loopback `127.0.0.1:8080` locally; public web component on DigitalOcean | Implemented; browser history is page-memory only |
+| ResearchAgent | Docker / Python 3.12 | Private service port 8000 | Implemented; isolated JSONL result memory |
+| SecurityAgent | Docker / Python 3.12 | Private service port 8000 | Implemented; isolated JSONL result memory |
+| Orchestrator demo | Short-lived Docker container | Private Compose network | Optional CLI-style demonstration |
 
-Compose does not publish service ports. The demo and both agents join viharbot-agent-network. The bridge allows outbound HTTPS to LiteLLM while keeping agent endpoints unpublished to the host.
+Local `compose.yaml` publishes only the web port on loopback. Research and Security ports are reachable only on the Compose network. `deploy/digitalocean/app.yaml` configures the web component as public and declares internal port 8000 for each agent. App Platform internal routing uses the component names `research` and `security`.
 
-## Inference
+## Inference and permissions
 
-Both agents construct Strands LiteLLMModel instances with use_litellm_proxy=True, LITELLM_BASE_URL, and LITELLM_API_KEY. RESEARCH_MODEL and SECURITY_MODEL are aliases configured in LiteLLM, not provider model IDs. Provider credentials and routing remain external. There is no direct Bedrock or other provider client.
+Both agents construct Strands `LiteLLMModel` instances with `use_litellm_proxy=True`. `RESEARCH_MODEL` and `SECURITY_MODEL` are independently configured aliases. The web service does not receive the LiteLLM API key. The DigitalOcean template assigns a secret key to each model-using service; whether those values are identical or distinct depends on LiteLLM key policy.
 
-## Memory and logs
+The application has no per-agent AWS identity or independent cloud permission model. Each service is a separate container with independent environment and memory paths, but agent-to-agent REST is not authenticated inside the private network. The web UI uses HTTP Basic Auth in the DigitalOcean template; this is a single shared login, not per-user identity or authorization. Do not expose a deployment without configuring its credentials.
 
-Research and Security write only to separate JSONL files mounted at data/research and data/security. Structured logs include agent name, request ID, requested model alias, duration, and error type. Prompts and keys are excluded.
+## Memory and observability
 
-## AWS and AgentCore
+Research and Security write separate JSONL files. Compose mounts these independently at `data/research` and `data/security`. The DigitalOcean template uses `/tmp/viharbot-memory`, so its records are ephemeral. No chat transcript is stored by the web service.
 
-No AWS resources are provisioned. SecurityAgent starts in Docker. Before moving it to AgentCore, verify the selected runtime entrypoint, network access to LiteLLM, identity/authentication setup, and how the FastAPI JSON interface is exposed. This design does not presume AgentCore will run the container unchanged.
+Structured JSON logs contain agent, request ID, destination agent where relevant, model alias, duration, and error type. Prompts, findings, passwords, and API keys are not logged. The same request ID ties the web, research, and security calls together.
 
-## References
+## DigitalOcean and future direction
 
-- [Strands LiteLLM model provider](https://strandsagents.com/docs/user-guide/sdk/model-providers/)
-- [Strands structured output](https://strandsagents.com/docs/user-guide/sdk/agents/structured-output/)
-- [LiteLLM](https://docs.litellm.ai/docs/)
+DigitalOcean App Platform is the current cloud target. The App Spec builds each component from its Dockerfile in this repository. Only the web service has a public HTTP port; the two agents use App Platform internal ports. The service must listen on `0.0.0.0` at the configured port. No AWS resources are provisioned, and AgentCore is not part of the current deployment path.
+
+The long-term design has six planned agents. Only ResearchAgent and SecurityAgent are implemented. The current client is a web app; a native or phone-specific client is deferred. See [DigitalOcean App Spec documentation](https://docs.digitalocean.com/products/app-platform/reference/app-spec/) and [internal routing documentation](https://docs.digitalocean.com/products/app-platform/how-to/manage-internal-routing/).

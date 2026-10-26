@@ -1,72 +1,79 @@
 # ViharBot Phase 1
 
-A Python 3.12 project with two independently containerized FastAPI agents. ResearchAgent returns structured findings; SecurityAgent evaluates them and returns a structured assessment. Both use Strands Agents SDK through the separately managed LiteLLM proxy. No direct provider calls are made.
+ViharBot is a web-first research and security chat app. A browser talks to a small FastAPI web container, which coordinates two independently deployed FastAPI agents using JSON REST. ResearchAgent returns structured findings; SecurityAgent reviews those findings and returns a structured assessment. Both use Strands Agents through the separately managed LiteLLM proxy. No direct provider calls are made.
 
-## Flow
+## Architecture
 
 ```mermaid
 flowchart LR
-  O[Orchestrator demo container] -->|private JSON REST, request ID| R[ResearchAgent]
-  R -->|Strands / LiteLLM alias| L[https://litellm.viharchokshi.com]
-  R -->|structured findings| S[SecurityAgent]
-  S -->|Strands / LiteLLM alias| L
-  S --> A[Structured security assessment]
+  B[Browser chat] -->|HTTPS / Basic Auth on DigitalOcean| W[Web container]
+  W -->|private JSON REST + request ID| R[ResearchAgent]
+  W -->|private JSON REST + request ID| S[SecurityAgent]
+  R -->|Strands / RESEARCH_MODEL| L[External LiteLLM]
+  S -->|Strands / SECURITY_MODEL| L
+  R --> F[Research findings]
+  S --> A[Security assessment]
+  F --> W
+  A --> W
 ```
 
-The orchestrator runs as a short-lived container on the private Compose network. No agent API ports are published to the host. LiteLLM is external and is neither deployed nor modified.
+The web service is the only public component in the DigitalOcean App Platform template. Research and Security are private internal services. Locally, Compose binds only the web UI to `127.0.0.1:8080`; agent ports stay on the private Compose network. The web app is a coordinator and UI, not a third model-backed agent.
 
-## Configure
+The web page presents findings and the security assessment in a chat layout. It sends the last four user/assistant turns from the current browser tab as context with each message. The history is held in browser memory only, is not stored server-side, and disappears on reload. SecurityAgent receives the structured findings for the current request, not the browser conversation.
 
-Copy .env.example to .env and set the proxy key and two aliases that exist in LiteLLM:
+## Run locally
+
+Copy `.env.example` to `.env`, then set `LITELLM_API_KEY` and LiteLLM aliases available to your account:
 
 ```bash
 cp .env.example .env
+docker compose up --build -d web
 ```
 
-The provided aliases are RESEARCH_MODEL=openai/gpt-5.4-mini (reported tested) and SECURITY_MODEL=openai/gpt-5.4 (must pass an actual inference check before the SecurityAgent is considered ready). Set LITELLM_API_KEY in .env. LITELLM_BASE_URL defaults to https://litellm.viharchokshi.com. Do not commit .env; API keys are never logged.
+Open [http://127.0.0.1:8080](http://127.0.0.1:8080). Local Basic Auth is disabled by default because the listener is bound to loopback. To exercise local auth, set `WEB_AUTH_ENABLED=1`, `WEB_USERNAME`, and `WEB_PASSWORD` in `.env`, then recreate the web service.
 
-## Verify the Security model first
-
-The /v1/models catalog is not proof that inference works. After placing the proxy key in local .env, run this single test to send a non-sensitive structured inference request using exactly openai/gpt-5.4:
-
-~~~bash
-docker compose --profile tests run --build --rm -e RUN_LITELLM_INFERENCE=1 tests python -m pytest -q tests/test_phase1.py::test_live_security_inference
-~~~
-
-It must return HTTP 200 with a valid SecurityAssessment before using SecurityAgent in the end-to-end demo. This makes a real LiteLLM model call. The API key stays in .env and is passed to the test container as an environment variable.
-
-## Run the flow
-
-All agents run in containers; no agent process needs to run directly on your Mac.
+To run the CLI-style pipeline without the web app:
 
 ```bash
-docker compose up --build -d research security
-docker compose --profile demo run --rm orchestrator
+docker compose --profile demo run --build --rm orchestrator
+```
+
+To stop the local containers:
+
+```bash
 docker compose down
 ```
 
-The orchestrator creates a request ID, calls ResearchAgent, then sends its JSON findings and the same ID to SecurityAgent. SecurityAgent makes a second model request through LiteLLM and returns its assessment.
+## DigitalOcean App Platform
+
+[`deploy/digitalocean/app.yaml`](deploy/digitalocean/app.yaml) defines the `viharbot-stage` app with three containers from this GitHub repository: a public web service and private Research and Security services. App Platform supports Dockerfile-backed components and internal service ports; see the [App Spec reference](https://docs.digitalocean.com/products/app-platform/reference/app-spec/) and [internal routing guide](https://docs.digitalocean.com/products/app-platform/how-to/manage-internal-routing/).
+
+Before creating the app, connect DigitalOcean to GitHub and replace the empty secret values in the template through the DigitalOcean control panel with encrypted runtime secrets:
+
+- Set `LITELLM_API_KEY` separately on Research and Security. The web component does not receive this key.
+- Set `WEB_USERNAME` and `WEB_PASSWORD` on the web component. The template enables HTTP Basic Auth for `/` and `/api/chat`; `/health` remains open for platform health checks.
+- Keep the two model aliases configured separately on their agent services.
+
+Then review the spec and create the app using DigitalOcean's [App Platform CLI flow](https://docs.digitalocean.com/products/app-platform/how-to/create-apps/), for example `doctl apps propose --spec deploy/digitalocean/app.yaml` followed by `doctl apps create --spec deploy/digitalocean/app.yaml`. Creating the app provisions billable DigitalOcean resources; no resources have been created by this project setup.
+
+The App Platform template writes agent memory under `/tmp`, which is ephemeral and can be lost when an instance is replaced. Local Compose instead bind-mounts separate `data/research` and `data/security` directories. This is an initial deployment layout, not production-grade persistent memory, multi-user identity, or authorization between users.
+
+## Models and credentials
+
+The provided aliases are `RESEARCH_MODEL=openai/gpt-5.4-mini` (reported tested) and `SECURITY_MODEL=openai/gpt-5.4` (must pass an actual inference check before the SecurityAgent is considered ready). `LITELLM_BASE_URL` defaults to `https://litellm.viharchokshi.com`. ViharBot does not deploy or modify LiteLLM.
+
+Do not commit `.env` or put credentials in source. The API key is sent to LiteLLM over HTTPS and is not logged or passed to the web container. Agent-to-agent and web-to-agent calls use JSON over the private Compose/App Platform network.
 
 ## Tests
 
-Default tests mock LiteLLM and do not require credentials or inference. Run them in Docker:
+The default suite mocks model and LiteLLM calls. Run it in Docker with:
 
 ```bash
 docker compose --profile tests run --build --rm tests
 ```
 
-For a real, non-inference connectivity check, run the optional test after setting the HTTPS URL and key in .env:
+Optional live connectivity and inference checks are described in the [LiteLLM integration notes](docs/litellm-integration.md). They are disabled by default; inference checks can consume model quota.
 
-```bash
-docker compose --profile tests run --build --rm -e RUN_LITELLM_INTEGRATION=1 tests
-```
+## Project scope
 
-This check calls only GET /v1/models; it does not generate a completion. After the Security alias has been verified, run the full end-to-end demo. To explicitly run both live inference tests, set RUN_LITELLM_INFERENCE=1 in .env and rerun the test container. Those calls use the configured LiteLLM aliases and may consume model quota; inference tests are mocked by default.
-
-## Logs and memory
-
-Each service writes JSON logs with agent, request ID, requested model alias, duration, and error type. Prompts and API keys are not logged. Each agent writes to its own JSONL file under data/research or data/security.
-
-## Scope
-
-SecurityAgent starts in Docker, with Amazon Bedrock AgentCore as a future target. No AWS resources are provisioned. AgentCore deployment and authentication compatibility are not assumed or configured. Agent APIs have no published host ports.
+Phase 1 implements ResearchAgent and SecurityAgent. The long-term design has six planned agents, but the other four are proposals, not implemented services. The current product target is a browser-based web app; a native or phone-specific client may be considered later. Independent agent permissions, per-user accounts, rate limiting, durable web sessions, and production-grade memory remain future work. No AWS resources or DigitalOcean resources are provisioned automatically.
