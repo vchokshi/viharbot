@@ -108,6 +108,12 @@ def home(_: None = Depends(require_web_access)) -> FileResponse:
     return FileResponse(static_dir / "index.html", media_type="text/html")
 
 
+@app.get("/images/charlie-chatwin.png", include_in_schema=False)
+def welcome_image(_: None = Depends(require_web_access)) -> FileResponse:
+    images_dir = Path(os.getenv("WEB_IMAGES_DIR", "/app/images"))
+    return FileResponse(images_dir / "charlie-chatwin.png", media_type="image/png")
+
+
 def make_contextual_question(body: ChatRequest) -> str:
     if not body.history:
         return body.message.strip()

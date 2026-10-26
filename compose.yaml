@@ -3,6 +3,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.web
+    volumes:
+      - ./images:/app/images:ro
     environment:
       PORT: 8080
       WEB_STATIC_DIR: /app/static
