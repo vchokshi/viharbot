@@ -31,6 +31,8 @@ flowchart LR
 
 The web service is the only public component in the DigitalOcean App Platform template. All six agents are private internal services. Locally, Compose binds only the web UI to `127.0.0.1:8080`; agent ports stay on the private Compose network. The web app is a coordinator and UI, not a seventh model-backed agent.
 
+Pushing to `main` updates source only. DigitalOcean and AWS are separate, manually selected deployment targets. The DigitalOcean template disables deploy-on-push for all seven components.
+
 The web page presents the synthesized answer plus the findings and reviews in a chat layout. It sends the last four user/assistant turns from the current browser tab as context with each message. The history is held in browser memory only, is not stored server-side, and disappears on reload. Privacy Review receives the current question and structured team results. The privacy analysis itself is a model call through the configured LiteLLM service. Each response also shows the six calls in order, the model alias used by each agent, and its round-trip duration. Calls are sequential and share one LiteLLM server, so longer waits are expected.
 
 Fact Check and Source Quality review only supplied findings and references. They do not browse the web or independently verify claims. Their outputs call out that limitation and identify follow-up checks.
@@ -58,9 +60,13 @@ To stop the local containers:
 docker compose down
 ```
 
+## Deployment choices
+
+The repository provides a DigitalOcean App Platform template and an Amazon Bedrock AgentCore compatibility path. Neither deploys automatically from a push to `main`. Review [deployment strategy](docs/deployment-strategy.md) for the provider gates and [AgentCore deployment notes](deploy/agentcore/README.md) for current runtime requirements and the required web hosting bridge.
+
 ## DigitalOcean App Platform
 
-[`deploy/digitalocean/app.yaml`](deploy/digitalocean/app.yaml) defines the `viharbot-stage` app with seven containers from this public GitHub repository: a public web service and six private agents. The spec uses public Git clone sources so it does not require linking a GitHub account. App Platform supports Dockerfile-backed components and internal service ports; see the [App Spec reference](https://docs.digitalocean.com/products/app-platform/reference/app-spec/) and [internal routing guide](https://docs.digitalocean.com/products/app-platform/how-to/manage-internal-routing/).
+[`deploy/digitalocean/app.yaml`](deploy/digitalocean/app.yaml) defines the `viharbot-stage` app with seven containers from this GitHub repository: a public web service and six private agents. It uses the linked GitHub source with `deploy_on_push: false`, so a push to `main` does not deploy the app. App Platform supports Dockerfile-backed components and internal service ports; see the [App Spec reference](https://docs.digitalocean.com/products/app-platform/reference/app-spec/) and [internal routing guide](https://docs.digitalocean.com/products/app-platform/how-to/manage-internal-routing/).
 
 Before creating the app, connect DigitalOcean to GitHub and replace the empty secret values in the template through the DigitalOcean control panel with encrypted runtime secrets:
 
@@ -68,11 +74,11 @@ Before creating the app, connect DigitalOcean to GitHub and replace the empty se
 - Set `WEB_USERNAME` and `WEB_PASSWORD` on the web component. The template enables HTTP Basic Auth for `/` and `/api/chat`; `/health` remains open for platform health checks.
 - Configure the six model aliases on their matching agent services.
 
-Then review the spec and create the app using DigitalOcean's [App Platform CLI flow](https://docs.digitalocean.com/products/app-platform/how-to/create-apps/), for example `doctl apps propose --spec deploy/digitalocean/app.yaml` followed by `doctl apps create --spec deploy/digitalocean/app.yaml`. Creating the app provisions billable DigitalOcean resources; no resources are created automatically by this repository.
+Then review the spec and create the app using DigitalOcean's [App Platform CLI flow](https://docs.digitalocean.com/products/app-platform/how-to/create-apps/), for example `doctl apps propose --spec deploy/digitalocean/app.yaml` followed by `doctl apps create --spec deploy/digitalocean/app.yaml`. Its GitHub source sets `deploy_on_push: false`; updates require a separately chosen deployment action. Creating the app provisions billable DigitalOcean resources; no resources are created automatically by this repository.
 
 ### Promote dev to Stage
 
-Local Docker Compose is the dev environment. Complete the local build and health checks first, then review the exact change and any monthly cost change. Ask explicitly: **“Do you want to promote this dev build to Stage?”** Wait for an affirmative answer before updating the Stage app or pushing to a branch that can trigger Stage deployment. Approval applies only to the reviewed build. After approval, deploy and verify the DigitalOcean deployment status and public health endpoint. Do not count approval alone as successful deployment.
+Local Docker Compose is the dev environment. Complete the local build and health checks first, then review the exact change and any monthly cost change. Ask explicitly: **“Do you want to promote this dev build to Stage?”** Wait for an affirmative answer before updating or deploying the Stage app. Approval applies only to the reviewed build. After approval, deploy and verify the DigitalOcean deployment status and public health endpoint. Do not count approval alone as successful deployment.
 
 The App Platform template writes each agent's memory under `/tmp`, which is ephemeral and can be lost when an instance is replaced. Local Compose gives every agent its own memory volume or bind mount. This is an initial deployment layout, not production-grade persistent memory, multi-user identity, or authorization between users.
 

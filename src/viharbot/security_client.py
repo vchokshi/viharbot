@@ -28,6 +28,28 @@ def send_findings_to_security(
     *, findings: ResearchFindings, request_id: str
 ) -> SecurityResponseModel:
     """Send findings to SecurityAgent and validate its JSON assessment."""
+    runtime_arn = os.getenv("SECURITY_AGENTCORE_ARN", "").strip()
+    if runtime_arn:
+        started = time.perf_counter()
+        try:
+            from .agentcore_client import invoke_agentcore
+
+            result = invoke_agentcore(
+                runtime_arn,
+                {"findings": findings.model_dump()},
+                request_id,
+            )
+            returned_request_id = result["request_id"]
+            assessment = SecurityAssessment.model_validate(result["assessment"])
+            if returned_request_id != request_id:
+                raise ValueError("SecurityAgent returned a different request ID")
+        except Exception as exc:
+            raise SecurityClientError(
+                type(exc).__name__,
+                round((time.perf_counter() - started) * 1000, 2),
+            ) from None
+        return SecurityResponseModel(request_id=returned_request_id, assessment=assessment)
+
     url = os.getenv("SECURITY_AGENT_URL", "http://security:8000/assess")
     request = Request(
         url,

@@ -33,6 +33,36 @@ class AgentPipelineError(RuntimeError):
 
 def post_json(url: str, payload: dict, request_id: str, destination: str) -> dict:
     started = time.perf_counter()
+    if url.startswith("agentcore://"):
+        from .agentcore_client import invoke_agentcore
+
+        try:
+            result = invoke_agentcore(url.removeprefix("agentcore://"), payload, request_id)
+        except Exception as exc:
+            logger.error(
+                "agent call failed",
+                extra={
+                    "agent": "orchestrator",
+                    "request_id": request_id,
+                    "destination_agent": destination,
+                    "model_alias": None,
+                    "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+                    "error": type(exc).__name__,
+                },
+            )
+            raise
+        logger.info(
+            "agent call completed",
+            extra={
+                "agent": "orchestrator",
+                "request_id": request_id,
+                "destination_agent": destination,
+                "model_alias": None,
+                "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+            },
+        )
+        return result
+
     request = Request(
         url,
         data=json.dumps(payload).encode("utf-8"),

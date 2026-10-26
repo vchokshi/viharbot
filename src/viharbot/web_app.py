@@ -17,6 +17,7 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel, Field
 
 from .demo import AgentPipelineError, run_pipeline
+from .agentcore_runtime import add_agentcore_routes
 from .observability import configure_logging, get_request_id
 from .schemas import (
     FactCheckReview,
@@ -60,6 +61,13 @@ class ChatResponse(BaseModel):
     privacy_review: PrivacyAssessment | None = None
     synthesis: FinalSynthesis | None = None
     agent_activity: list[AgentActivity]
+
+
+def configured_agent_url(name: str, default: str) -> str:
+    runtime_arn = os.getenv(f"{name}_AGENTCORE_ARN", "").strip()
+    if runtime_arn:
+        return f"agentcore://{runtime_arn}"
+    return os.getenv(f"{name}_URL", default)
 
 
 def require_web_access(
@@ -140,19 +148,25 @@ def chat(
         pipeline_result = run_pipeline(
             make_contextual_question(body),
             request_id,
-            research_url=os.getenv("RESEARCH_URL", "http://research:8000/research"),
-            security_url=os.getenv("SECURITY_URL", "http://security:8000/assess"),
+            research_url=configured_agent_url(
+                "RESEARCH", "http://research:8000/research"
+            ),
+            security_url=configured_agent_url(
+                "SECURITY", "http://security:8000/assess"
+            ),
             specialist_urls={
-                "fact_check": os.getenv(
-                    "FACT_CHECK_URL", "http://fact-check:8000/process"
+                "fact_check": configured_agent_url(
+                    "FACT_CHECK", "http://fact-check:8000/process"
                 ),
-                "source_quality": os.getenv(
-                    "SOURCE_QUALITY_URL", "http://source-quality:8000/process"
+                "source_quality": configured_agent_url(
+                    "SOURCE_QUALITY", "http://source-quality:8000/process"
                 ),
-                "privacy_review": os.getenv(
-                    "PRIVACY_REVIEW_URL", "http://privacy-review:8000/process"
+                "privacy_review": configured_agent_url(
+                    "PRIVACY_REVIEW", "http://privacy-review:8000/process"
                 ),
-                "synthesis": os.getenv("SYNTHESIS_URL", "http://synthesis:8000/process"),
+                "synthesis": configured_agent_url(
+                    "SYNTHESIS", "http://synthesis:8000/process"
+                ),
             },
         )
         fact_check_payload = pipeline_result.get("fact_check", {}).get("result")
@@ -219,6 +233,14 @@ def chat(
             detail="The agent team could not complete this request",
             headers={"X-Request-ID": request_id},
         ) from None
+
+
+add_agentcore_routes(
+    app,
+    ChatRequest,
+    chat,
+    dependencies=[Depends(require_web_access)],
+)
 
 
 if __name__ == "__main__":

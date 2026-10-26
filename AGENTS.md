@@ -14,13 +14,13 @@ ViharBot implements a browser-based chat app and six independently deployed Fast
 - Begin with structured JSON logs, including agent, request ID, destination agent, model alias, duration, and errors. Avoid full prompts, secrets, and private memory in logs.
 - Do not provision AWS resources unless explicitly requested. AgentCore capabilities must be verified before depending on them.
 
-## Dev-to-Stage promotion gate
+## Deployment choices
 
-- Treat local Docker Compose as dev and DigitalOcean App Platform as Stage.
-- Before any action that deploys or could trigger deployment from dev to Stage, finish the local implementation and verification, then ask the user explicitly: **“Do you want to promote this dev build to Stage?”** Include the commit or change summary, verification status, and any material cost change.
-- Wait for an affirmative answer for that specific build. Do not infer approval from earlier deployments, general access to `doctl`, or prior authorization for other changes.
-- Do not run `doctl apps update`, create a Stage deployment, or push to a branch that can trigger Stage deployment before the user approves. When in doubt, leave the completed work in dev and ask.
-- After approval, report whether the deployment ran, what happened, and whether it succeeded. Verify DigitalOcean deployment status and the public health endpoint; approval alone does not establish success.
+- A push to `main` updates source only. It must not deploy to DigitalOcean, AWS, or another provider.
+- Keep DigitalOcean App Platform `deploy_on_push` disabled. A user may choose a DigitalOcean deployment explicitly after reviewing the change.
+- Treat local Docker Compose as dev and DigitalOcean App Platform as Stage. Before deploying to Stage, finish local implementation and verification, summarize the commit, verification status, and any material cost change, then ask: **“Do you want to promote this dev build to Stage?”** Wait for an affirmative answer for that specific build.
+- AWS deployments are a separate, explicit provider choice. Do not create AWS resources unless the user explicitly asks. Verify current AgentCore capabilities before depending on them.
+- After an approved deployment, report whether it ran, what happened, whether it succeeded, and verify the provider's deployment status and health endpoint where available. Approval alone does not establish success.
 
 ## Implementation style
 

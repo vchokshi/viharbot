@@ -11,6 +11,7 @@ from fastapi import FastAPI, Header, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from .memory import remember
+from .agentcore_runtime import add_agentcore_routes
 from .model_agent import build_agent
 from .observability import configure_logging, get_request_id
 from .schemas import ResearchFindings, SecurityAssessment
@@ -137,3 +138,6 @@ def research_and_assess(
         findings=findings_response.findings,
         security_assessment=assessment_response.assessment,
     )
+
+
+add_agentcore_routes(app, ResearchRequest, research)

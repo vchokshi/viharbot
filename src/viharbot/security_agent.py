@@ -11,6 +11,7 @@ from fastapi import FastAPI, Header, HTTPException, Response
 from pydantic import BaseModel
 
 from .memory import remember
+from .agentcore_runtime import add_agentcore_routes
 from .model_agent import build_agent
 from .observability import configure_logging, get_request_id
 from .schemas import ResearchFindings, SecurityAssessment
@@ -91,3 +92,6 @@ def assess(
             detail="Security inference failed",
             headers={"X-Request-ID": request_id},
         ) from None
+
+
+add_agentcore_routes(app, SecurityRequest, assess)
