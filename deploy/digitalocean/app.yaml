@@ -1,5 +1,9 @@
 name: viharbot-stage
 region: nyc
+domains:
+  - domain: viharbot-stage.viharchokshi.com
+    type: PRIMARY
+    zone: viharchokshi.com
 
 # Configure the empty SECRET values in the DigitalOcean control panel before
 # sending real traffic. Do not put credential values in this repository.
