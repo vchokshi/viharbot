@@ -1,0 +1,28 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+.aws/
+.bedrock_agentcore.yaml
+
+# Local runtime data, memory, and logs
+data/
+*.log
+
+# OS/editor files
+.DS_Store
+.idea/
+.vscode/

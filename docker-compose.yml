@@ -1,0 +1,78 @@
+services:
+  research:
+    build:
+      context: .
+      dockerfile: Dockerfile.research
+    environment:
+      LITELLM_BASE_URL: ${LITELLM_BASE_URL:-https://litellm.viharchokshi.com}
+      LITELLM_API_KEY: ${LITELLM_API_KEY:-}
+      RESEARCH_MODEL: ${RESEARCH_MODEL:-openai/gpt-5.4-mini}
+      MEMORY_DIR: /data
+    volumes:
+      - ./data/research:/data/research
+    ports:
+      - "127.0.0.1:8000:8000"
+    networks:
+      - agent-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  security:
+    build:
+      context: .
+      dockerfile: Dockerfile.security
+    environment:
+      LITELLM_BASE_URL: ${LITELLM_BASE_URL:-https://litellm.viharchokshi.com}
+      LITELLM_API_KEY: ${LITELLM_API_KEY:-}
+      SECURITY_MODEL: ${SECURITY_MODEL:-openai/gpt-5.4}
+      MEMORY_DIR: /data
+    volumes:
+      - ./data/security:/data/security
+    networks:
+      - agent-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  orchestrator:
+    profiles: ["demo"]
+    build:
+      context: .
+      dockerfile: Dockerfile.orchestrator
+    environment:
+      RESEARCH_URL: http://research:8000/research
+      SECURITY_URL: http://security:8000/assess
+      RESEARCH_QUESTION: ${RESEARCH_QUESTION:-Summarize general safety practices for bicycle maintenance.}
+    depends_on:
+      research:
+        condition: service_healthy
+      security:
+        condition: service_healthy
+    networks:
+      - agent-network
+
+  tests:
+    profiles: ["tests"]
+    build:
+      context: .
+      dockerfile: Dockerfile.tests
+    environment:
+      MEMORY_DIR: /tmp/viharbot-test-memory
+      LITELLM_BASE_URL: ${LITELLM_BASE_URL:-https://litellm.viharchokshi.com}
+      LITELLM_API_KEY: ${LITELLM_API_KEY:-}
+      RESEARCH_MODEL: ${RESEARCH_MODEL:-}
+      SECURITY_MODEL: ${SECURITY_MODEL:-}
+      RUN_LITELLM_INTEGRATION: ${RUN_LITELLM_INTEGRATION:-0}
+      RUN_LITELLM_INFERENCE: ${RUN_LITELLM_INFERENCE:-0}
+    networks:
+      - agent-network
+
+networks:
+  agent-network:
+    name: viharbot-agent-network
+    driver: bridge

@@ -1,0 +1,44 @@
+"""Small JSON logging setup shared by the sample agents."""
+
+from __future__ import annotations
+
+import json
+import logging
+import re
+from datetime import datetime, timezone
+from uuid import uuid4
+
+REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
+
+
+def get_request_id(value: str | None) -> str:
+    if value and REQUEST_ID_PATTERN.fullmatch(value):
+        return value
+    return str(uuid4())
+
+
+class JsonFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        fields = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "level": record.levelname.lower(),
+            "agent": getattr(record, "agent", record.name),
+            "event": record.getMessage(),
+            "request_id": getattr(record, "request_id", None),
+            "destination_agent": getattr(record, "destination_agent", None),
+            "model_alias": getattr(record, "model_alias", None),
+            "inference_latency_ms": getattr(record, "inference_latency_ms", None),
+            "communication_latency_ms": getattr(record, "communication_latency_ms", None),
+        }
+        if hasattr(record, "error"):
+            fields["error"] = record.error
+        return json.dumps(fields, separators=(",", ":"))
+
+
+def configure_logging() -> None:
+    handler = logging.StreamHandler()
+    handler.setFormatter(JsonFormatter())
+    root = logging.getLogger()
+    root.handlers.clear()
+    root.addHandler(handler)
+    root.setLevel(logging.INFO)
