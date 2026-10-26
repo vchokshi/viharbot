@@ -49,6 +49,22 @@ services:
         value: http://security:8000/assess
         scope: RUN_TIME
         type: GENERAL
+      - key: FACT_CHECK_URL
+        value: http://fact-check:8000/process
+        scope: RUN_TIME
+        type: GENERAL
+      - key: SOURCE_QUALITY_URL
+        value: http://source-quality:8000/process
+        scope: RUN_TIME
+        type: GENERAL
+      - key: PRIVACY_REVIEW_URL
+        value: http://privacy-review:8000/process
+        scope: RUN_TIME
+        type: GENERAL
+      - key: SYNTHESIS_URL
+        value: http://synthesis:8000/process
+        scope: RUN_TIME
+        type: GENERAL
 
   - name: research
     git:
@@ -89,6 +105,122 @@ services:
     envs:
       - key: SECURITY_MODEL
         value: openai/gpt-5.4
+        scope: RUN_TIME
+        type: GENERAL
+      - key: MEMORY_DIR
+        value: /tmp/viharbot-memory
+        scope: RUN_TIME
+        type: GENERAL
+      - key: LITELLM_API_KEY
+        value: ""
+        scope: RUN_TIME
+        type: SECRET
+
+  - name: fact-check
+    git:
+      repo_clone_url: https://github.com/vchokshi/viharbot.git
+      branch: main
+    dockerfile_path: Dockerfile.specialist
+    source_dir: /
+    internal_ports:
+      - 8000
+    health_check:
+      http_path: /health
+      port: 8000
+    envs:
+      - key: AGENT_KIND
+        value: fact-check
+        scope: RUN_TIME
+        type: GENERAL
+      - key: FACT_CHECK_MODEL
+        value: openai/gpt-5.4-mini
+        scope: RUN_TIME
+        type: GENERAL
+      - key: MEMORY_DIR
+        value: /tmp/viharbot-memory
+        scope: RUN_TIME
+        type: GENERAL
+      - key: LITELLM_API_KEY
+        value: ""
+        scope: RUN_TIME
+        type: SECRET
+
+  - name: source-quality
+    git:
+      repo_clone_url: https://github.com/vchokshi/viharbot.git
+      branch: main
+    dockerfile_path: Dockerfile.specialist
+    source_dir: /
+    internal_ports:
+      - 8000
+    health_check:
+      http_path: /health
+      port: 8000
+    envs:
+      - key: AGENT_KIND
+        value: source-quality
+        scope: RUN_TIME
+        type: GENERAL
+      - key: SOURCE_QUALITY_MODEL
+        value: openai/gpt-5.4-mini
+        scope: RUN_TIME
+        type: GENERAL
+      - key: MEMORY_DIR
+        value: /tmp/viharbot-memory
+        scope: RUN_TIME
+        type: GENERAL
+      - key: LITELLM_API_KEY
+        value: ""
+        scope: RUN_TIME
+        type: SECRET
+
+  - name: privacy-review
+    git:
+      repo_clone_url: https://github.com/vchokshi/viharbot.git
+      branch: main
+    dockerfile_path: Dockerfile.specialist
+    source_dir: /
+    internal_ports:
+      - 8000
+    health_check:
+      http_path: /health
+      port: 8000
+    envs:
+      - key: AGENT_KIND
+        value: privacy-review
+        scope: RUN_TIME
+        type: GENERAL
+      - key: PRIVACY_MODEL
+        value: openai/gpt-5.4-mini
+        scope: RUN_TIME
+        type: GENERAL
+      - key: MEMORY_DIR
+        value: /tmp/viharbot-memory
+        scope: RUN_TIME
+        type: GENERAL
+      - key: LITELLM_API_KEY
+        value: ""
+        scope: RUN_TIME
+        type: SECRET
+
+  - name: synthesis
+    git:
+      repo_clone_url: https://github.com/vchokshi/viharbot.git
+      branch: main
+    dockerfile_path: Dockerfile.specialist
+    source_dir: /
+    internal_ports:
+      - 8000
+    health_check:
+      http_path: /health
+      port: 8000
+    envs:
+      - key: AGENT_KIND
+        value: synthesis
+        scope: RUN_TIME
+        type: GENERAL
+      - key: SYNTHESIS_MODEL
+        value: openai/gpt-5.4-mini
         scope: RUN_TIME
         type: GENERAL
       - key: MEMORY_DIR

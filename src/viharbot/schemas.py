@@ -1,4 +1,4 @@
-"""JSON contracts exchanged by the Phase 1 agents."""
+"""Typed JSON contracts exchanged by ViharBot agents."""
 
 from typing import Literal
 
@@ -23,3 +23,49 @@ class SecurityAssessment(BaseModel):
     implications: list[str]
     recommendations: list[str]
     uncertainties: list[str]
+
+
+class ClaimReview(BaseModel):
+    claim: str
+    status: Literal[
+        "supported_by_supplied_evidence",
+        "contradicted_by_supplied_evidence",
+        "mixed_evidence",
+        "insufficient_evidence",
+    ]
+    rationale: str
+    follow_up: str
+
+
+class FactCheckReview(BaseModel):
+    summary: str
+    claims: list[ClaimReview]
+    limitations: list[str]
+
+
+class SourceReview(BaseModel):
+    source: str
+    apparent_quality: Literal["strong", "moderate", "weak", "unknown"]
+    rationale: str
+    checks_to_perform: list[str]
+
+
+class SourceQualityReview(BaseModel):
+    summary: str
+    sources: list[SourceReview]
+    limitations: list[str]
+
+
+class PrivacyAssessment(BaseModel):
+    overall_risk: Literal["low", "medium", "high"]
+    sensitive_data_categories: list[str]
+    concerns: list[str]
+    recommendations: list[str]
+    processing_note: str
+
+
+class FinalSynthesis(BaseModel):
+    answer: str
+    key_points: list[str]
+    confidence: Literal["low", "medium", "high"]
+    caveats: list[str]

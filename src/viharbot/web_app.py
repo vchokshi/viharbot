@@ -1,4 +1,4 @@
-"""Browser chat and REST coordinator for the Research and Security agents."""
+"""Browser chat and REST coordinator for the ViharBot agent team."""
 
 from __future__ import annotations
 
@@ -18,7 +18,14 @@ from pydantic import BaseModel, Field
 
 from .demo import run_pipeline
 from .observability import configure_logging, get_request_id
-from .schemas import ResearchFindings, SecurityAssessment
+from .schemas import (
+    FactCheckReview,
+    FinalSynthesis,
+    PrivacyAssessment,
+    ResearchFindings,
+    SecurityAssessment,
+    SourceQualityReview,
+)
 
 configure_logging()
 logger = logging.getLogger("web")
@@ -40,6 +47,10 @@ class ChatResponse(BaseModel):
     request_id: str
     findings: ResearchFindings
     assessment: SecurityAssessment
+    fact_check: FactCheckReview | None = None
+    source_quality: SourceQualityReview | None = None
+    privacy_review: PrivacyAssessment | None = None
+    synthesis: FinalSynthesis | None = None
 
 
 def require_web_access(
@@ -116,13 +127,39 @@ def chat(
             request_id,
             research_url=os.getenv("RESEARCH_URL", "http://research:8000/research"),
             security_url=os.getenv("SECURITY_URL", "http://security:8000/assess"),
+            specialist_urls={
+                "fact_check": os.getenv(
+                    "FACT_CHECK_URL", "http://fact-check:8000/process"
+                ),
+                "source_quality": os.getenv(
+                    "SOURCE_QUALITY_URL", "http://source-quality:8000/process"
+                ),
+                "privacy_review": os.getenv(
+                    "PRIVACY_REVIEW_URL", "http://privacy-review:8000/process"
+                ),
+                "synthesis": os.getenv("SYNTHESIS_URL", "http://synthesis:8000/process"),
+            },
         )
+        fact_check_payload = pipeline_result.get("fact_check", {}).get("result")
+        source_payload = pipeline_result.get("source_quality", {}).get("result")
+        privacy_payload = pipeline_result.get("privacy_review", {}).get("result")
+        synthesis_payload = pipeline_result.get("synthesis", {}).get("result")
         result = ChatResponse(
             request_id=request_id,
             findings=ResearchFindings.model_validate(pipeline_result["research"]["findings"]),
             assessment=SecurityAssessment.model_validate(
                 pipeline_result["security"]["assessment"]
             ),
+            fact_check=(
+                FactCheckReview.model_validate(fact_check_payload) if fact_check_payload else None
+            ),
+            source_quality=(
+                SourceQualityReview.model_validate(source_payload) if source_payload else None
+            ),
+            privacy_review=(
+                PrivacyAssessment.model_validate(privacy_payload) if privacy_payload else None
+            ),
+            synthesis=FinalSynthesis.model_validate(synthesis_payload) if synthesis_payload else None,
         )
         logger.info(
             "chat request completed",

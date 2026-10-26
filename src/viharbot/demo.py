@@ -58,16 +58,62 @@ def run_pipeline(
     *,
     research_url: str,
     security_url: str,
+    specialist_urls: dict[str, str] | None = None,
     send: Callable[[str, dict, str, str], dict] = post_json,
 ) -> dict:
     research = send(research_url, {"question": question}, request_id, "research")
+    results: dict[str, dict] = {"research": research}
+
+    specialist_inputs = {
+        "fact_check": {"findings": research["findings"]},
+        "source_quality": {"findings": research["findings"]},
+    }
+    for name in ("fact_check", "source_quality"):
+        url = (specialist_urls or {}).get(name)
+        if url:
+            results[name] = send(url, specialist_inputs[name], request_id, name)
+
     security = send(
         security_url,
         {"findings": research["findings"]},
         request_id,
         "security",
     )
-    return {"request_id": request_id, "research": research, "security": security}
+    results["security"] = security
+
+    context = {"research": research["findings"]}
+    context.update(
+        {
+            name: result.get("result", result)
+            for name, result in results.items()
+            if name != "research"
+        }
+    )
+    privacy_url = (specialist_urls or {}).get("privacy_review")
+    if privacy_url:
+        results["privacy_review"] = send(
+            privacy_url,
+            {"question": question, "context": context},
+            request_id,
+            "privacy-review",
+        )
+
+    synthesis_url = (specialist_urls or {}).get("synthesis")
+    if synthesis_url:
+        results["synthesis"] = send(
+            synthesis_url,
+            {
+                "question": question,
+                "context": {
+                    **context,
+                    "privacy_review": results.get("privacy_review", {}).get("result"),
+                },
+            },
+            request_id,
+            "synthesis",
+        )
+
+    return {"request_id": request_id, **results}
 
 
 def main() -> None:
@@ -79,6 +125,18 @@ def main() -> None:
         str(uuid4()),
         research_url=os.getenv("RESEARCH_URL", "http://research:8000/research"),
         security_url=os.getenv("SECURITY_URL", "http://security:8000/assess"),
+        specialist_urls={
+            "fact_check": os.getenv(
+                "FACT_CHECK_URL", "http://fact-check:8000/process"
+            ),
+            "source_quality": os.getenv(
+                "SOURCE_QUALITY_URL", "http://source-quality:8000/process"
+            ),
+            "privacy_review": os.getenv(
+                "PRIVACY_REVIEW_URL", "http://privacy-review:8000/process"
+            ),
+            "synthesis": os.getenv("SYNTHESIS_URL", "http://synthesis:8000/process"),
+        },
     )
     print(json.dumps(result, indent=2))
 

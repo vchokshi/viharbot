@@ -2,18 +2,18 @@
 
 ## Local development
 
-`compose.yaml` runs a web chat container and the two agent containers on a private bridge network. The browser reaches the web container at `http://127.0.0.1:8080`; ResearchAgent and SecurityAgent have no host-published ports. The optional orchestrator profile remains for a CLI-style REST demonstration. Local agent memories persist in separate bind-mounted directories.
+`compose.yaml` runs the web chat and six model-backed agents on a private bridge network. The browser reaches the web container at `http://127.0.0.1:8080`; agent ports are not published to the host. Research and Security use independent bind-mounted memory directories. Fact Check, Source Quality, Privacy Review, and Synthesis use individual named volumes. The optional orchestrator profile remains a CLI-style REST demonstration.
 
 ## DigitalOcean App Platform
 
-`deploy/digitalocean/app.yaml` describes three Dockerfile-backed components from the GitHub repository. The web component serves the public browser interface on port 8080. Research and Security are private services on internal port 8000. The web service uses their component names as REST destinations.
+`deploy/digitalocean/app.yaml` describes seven Dockerfile-backed components from the GitHub repository. Web serves the public browser interface on port 8080. All six agents are private services on internal port 8000. The four specialist agents share `Dockerfile.specialist` but each has a distinct component name, `AGENT_KIND`, model alias, and private memory path.
 
-Before creating the app, configure encrypted runtime values for `LITELLM_API_KEY` separately on Research and Security, plus `WEB_USERNAME` and `WEB_PASSWORD` on Web. The app spec enables Basic Auth on the web UI and chat endpoint. It leaves each secret value empty as a placeholder. The `/health` endpoint does not require login.
+Configure encrypted runtime values for `LITELLM_API_KEY` on every model-using agent, plus `WEB_USERNAME` and `WEB_PASSWORD` on Web. Keep the web component free of model credentials. The app spec enables Basic Auth on the web UI and chat endpoint; `/health` does not require login.
 
-The App Platform web process listens on `0.0.0.0` and uses `PORT` (default 8080). Private agent services listen on 8000. DigitalOcean App Platform supports Dockerfile source components and private internal ports; see the [App Spec reference](https://docs.digitalocean.com/products/app-platform/reference/app-spec/) and [internal routing guide](https://docs.digitalocean.com/products/app-platform/how-to/manage-internal-routing/).
+The App Platform web process listens on `0.0.0.0` and uses `PORT` (default 8080). Agent services listen on 8000. The agent memories use `/tmp` and are ephemeral. Review the number of billable components and model usage before operating the full six-agent pipeline.
 
-No cloud resources are provisioned automatically. Review region, instance sizes, secrets, and repository access before running `doctl apps create --spec deploy/digitalocean/app.yaml`. The services do not use persistent storage in the current App Platform spec; their `/tmp` memory files can be lost on replacement.
+No cloud resources are provisioned automatically. Amazon Bedrock AgentCore is not configured or assumed compatible with this FastAPI deployment.
 
 ## Other targets
 
-The containers remain independently buildable and can run on a DigitalOcean Droplet with Docker Compose, but that requires separate host firewall and TLS setup. Amazon Bedrock AgentCore is not configured or assumed compatible with this FastAPI deployment.
+The containers can run on a DigitalOcean Droplet with Docker Compose, with separate host firewall and TLS setup. AgentCore or other targets require their own deployment and identity compatibility work.

@@ -11,12 +11,24 @@ services:
       WEB_PASSWORD: ${WEB_PASSWORD:-}
       RESEARCH_URL: http://research:8000/research
       SECURITY_URL: http://security:8000/assess
+      FACT_CHECK_URL: http://fact-check:8000/process
+      SOURCE_QUALITY_URL: http://source-quality:8000/process
+      PRIVACY_REVIEW_URL: http://privacy-review:8000/process
+      SYNTHESIS_URL: http://synthesis:8000/process
     ports:
       - "127.0.0.1:8080:8080"
     depends_on:
       research:
         condition: service_healthy
       security:
+        condition: service_healthy
+      fact-check:
+        condition: service_healthy
+      source-quality:
+        condition: service_healthy
+      privacy-review:
+        condition: service_healthy
+      synthesis:
         condition: service_healthy
     networks:
       - agent-network
@@ -71,6 +83,98 @@ services:
       retries: 5
     restart: unless-stopped
 
+  fact-check:
+    build:
+      context: .
+      dockerfile: Dockerfile.specialist
+    environment:
+      AGENT_KIND: fact-check
+      LITELLM_BASE_URL: ${LITELLM_BASE_URL:-https://litellm.viharchokshi.com}
+      LITELLM_API_KEY: ${LITELLM_API_KEY:-}
+      FACT_CHECK_MODEL: ${FACT_CHECK_MODEL:-openai/gpt-5.4-mini}
+      MEMORY_DIR: /data
+    volumes:
+      - fact_check_data:/data
+    expose:
+      - "8000"
+    networks:
+      - agent-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  source-quality:
+    build:
+      context: .
+      dockerfile: Dockerfile.specialist
+    environment:
+      AGENT_KIND: source-quality
+      LITELLM_BASE_URL: ${LITELLM_BASE_URL:-https://litellm.viharchokshi.com}
+      LITELLM_API_KEY: ${LITELLM_API_KEY:-}
+      SOURCE_QUALITY_MODEL: ${SOURCE_QUALITY_MODEL:-openai/gpt-5.4-mini}
+      MEMORY_DIR: /data
+    volumes:
+      - source_quality_data:/data
+    expose:
+      - "8000"
+    networks:
+      - agent-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  privacy-review:
+    build:
+      context: .
+      dockerfile: Dockerfile.specialist
+    environment:
+      AGENT_KIND: privacy-review
+      LITELLM_BASE_URL: ${LITELLM_BASE_URL:-https://litellm.viharchokshi.com}
+      LITELLM_API_KEY: ${LITELLM_API_KEY:-}
+      PRIVACY_MODEL: ${PRIVACY_MODEL:-openai/gpt-5.4-mini}
+      MEMORY_DIR: /data
+    volumes:
+      - privacy_review_data:/data
+    expose:
+      - "8000"
+    networks:
+      - agent-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  synthesis:
+    build:
+      context: .
+      dockerfile: Dockerfile.specialist
+    environment:
+      AGENT_KIND: synthesis
+      LITELLM_BASE_URL: ${LITELLM_BASE_URL:-https://litellm.viharchokshi.com}
+      LITELLM_API_KEY: ${LITELLM_API_KEY:-}
+      SYNTHESIS_MODEL: ${SYNTHESIS_MODEL:-openai/gpt-5.4-mini}
+      MEMORY_DIR: /data
+    volumes:
+      - synthesis_data:/data
+    expose:
+      - "8000"
+    networks:
+      - agent-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
   orchestrator:
     profiles: ["demo"]
     build:
@@ -79,11 +183,23 @@ services:
     environment:
       RESEARCH_URL: http://research:8000/research
       SECURITY_URL: http://security:8000/assess
+      FACT_CHECK_URL: http://fact-check:8000/process
+      SOURCE_QUALITY_URL: http://source-quality:8000/process
+      PRIVACY_REVIEW_URL: http://privacy-review:8000/process
+      SYNTHESIS_URL: http://synthesis:8000/process
       RESEARCH_QUESTION: ${RESEARCH_QUESTION:-Summarize general safety practices for bicycle maintenance.}
     depends_on:
       research:
         condition: service_healthy
       security:
+        condition: service_healthy
+      fact-check:
+        condition: service_healthy
+      source-quality:
+        condition: service_healthy
+      privacy-review:
+        condition: service_healthy
+      synthesis:
         condition: service_healthy
     networks:
       - agent-network
@@ -108,3 +224,9 @@ networks:
   agent-network:
     name: viharbot-agent-network
     driver: bridge
+
+volumes:
+  fact_check_data:
+  source_quality_data:
+  privacy_review_data:
+  synthesis_data:
