@@ -11,10 +11,9 @@ envs:
 
 services:
   - name: web
-    github:
-      repo: vchokshi/viharbot
+    git:
+      repo_clone_url: https://github.com/vchokshi/viharbot.git
       branch: main
-      deploy_on_push: true
     dockerfile_path: Dockerfile.web
     source_dir: /
     http_port: 8080
@@ -48,10 +47,9 @@ services:
         type: GENERAL
 
   - name: research
-    github:
-      repo: vchokshi/viharbot
+    git:
+      repo_clone_url: https://github.com/vchokshi/viharbot.git
       branch: main
-      deploy_on_push: true
     dockerfile_path: Dockerfile.research
     source_dir: /
     internal_ports:
@@ -74,10 +72,9 @@ services:
         type: SECRET
 
   - name: security
-    github:
-      repo: vchokshi/viharbot
+    git:
+      repo_clone_url: https://github.com/vchokshi/viharbot.git
       branch: main
-      deploy_on_push: true
     dockerfile_path: Dockerfile.security
     source_dir: /
     internal_ports:
