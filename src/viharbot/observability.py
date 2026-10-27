@@ -41,6 +41,9 @@ class JsonFormatter(logging.Formatter):
                 ),
             ),
         }
+        for key in ("identity_id", "capability", "personality_mode"):
+            if hasattr(record, key):
+                fields[key] = getattr(record, key)
         if hasattr(record, "error"):
             fields["error"] = record.error
         return json.dumps(fields, separators=(",", ":"))

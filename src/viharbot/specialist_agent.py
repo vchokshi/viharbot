@@ -12,6 +12,7 @@ from fastapi import FastAPI, Header, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from .contracts import SpecialistResponse
+from .inference_config import effective_inference, legacy_inference
 from .memory import remember
 from .agentcore_runtime import add_agentcore_routes
 from .model_agent import build_agent
@@ -150,8 +151,14 @@ def process(
     response.headers["X-Request-ID"] = request_id
     model_alias = os.getenv(definition.model_env, "").strip()
     started = time.perf_counter()
+    inference = legacy_inference(model_alias, definition.prompt)
     try:
-        agent = build_agent(model_alias=model_alias, system_prompt=definition.prompt)
+        inference = effective_inference(
+            AGENT_KIND, legacy_alias=model_alias, legacy_prompt=definition.prompt
+        )
+        agent = build_agent(
+            model_alias=inference.model_alias, system_prompt=inference.system_prompt
+        )
         result = agent(
             _make_prompt(body),
             structured_output_model=definition.output_model,
@@ -165,14 +172,14 @@ def process(
             extra={
                 "agent": AGENT_KIND,
                 "request_id": request_id,
-                "model_alias": model_alias or None,
+                **inference.log_extra(),
                 "duration_ms": round((time.perf_counter() - started) * 1000, 2),
             },
         )
         return SpecialistResponse(
             request_id=request_id,
             agent=AGENT_KIND,
-            requested_model_alias=model_alias,
+            requested_model_alias=inference.model_alias,
             result=serialized,
         )
     except HTTPException:
@@ -183,7 +190,7 @@ def process(
             extra={
                 "agent": AGENT_KIND,
                 "request_id": request_id,
-                "model_alias": model_alias or None,
+                **inference.log_extra(),
                 "duration_ms": round((time.perf_counter() - started) * 1000, 2),
                 "error": type(exc).__name__,
             },
