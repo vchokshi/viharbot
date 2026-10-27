@@ -8,6 +8,9 @@ class TextNode {
   get textContent() { return this.text; }
 }
 
+let active = null;
+export const getActive = () => active;
+
 export class Element {
   constructor(tag, namespace = null) {
     this.nodeType = 1;
@@ -21,6 +24,7 @@ export class Element {
     this.listeners = {};
     this.value = "";
     this.disabled = false;
+    this.hidden = false;
     this.scrollTop = 0;
     this.scrollHeight = 0;
   }
@@ -36,8 +40,9 @@ export class Element {
   get lastChild() { return this.children[this.children.length - 1] ?? null; }
   setAttribute(name, value) { this.attrs[name] = String(value); }
   getAttribute(name) { return this.attrs[name] ?? null; }
+  removeAttribute(name) { delete this.attrs[name]; }
   addEventListener(type, handler) { this.listeners[type] = handler; }
-  focus() {}
+  focus() { active = this; }
   requestSubmit() {}
   querySelector(selector) { return findAll(this, selector)[0] ?? null; }
   querySelectorAll(selector) { return findAll(this, selector); }
@@ -93,6 +98,13 @@ export function createPage() {
   };
   const welcome = new Element("div"); welcome.attrs.id = "welcome";
   elements.conversation.append(welcome);
+  // The two pages and the link between them (the team page starts hidden, as in the markup).
+  elements.chatPage = make("div", "chat-page");
+  elements.teamPage = make("main", "team-page");
+  elements.teamPage.hidden = true;
+  elements.teamHeading = new Element("h1");
+  elements.teamPage.append(elements.teamHeading);
+  elements.teamLink = make("a", "team-link");
   const created = [];
   const document = {
     querySelector: (selector) => root.querySelector(selector),
@@ -100,6 +112,8 @@ export function createPage() {
     createElement: (tag) => { const el = new Element(tag); created.push(el); return el; },
     createElementNS: (ns, tag) => { const el = new Element(tag, ns); created.push(el); return el; },
     createTextNode: (text) => new TextNode(text),
+    title: "ViharBot \u2014 A brighter way to think",
+    get activeElement() { return active; },
   };
   return { root, document, elements, created };
 }
