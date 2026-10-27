@@ -50,6 +50,8 @@ All six agents construct Strands `LiteLLMModel` instances with `use_litellm_prox
 
 Container separation and private memory provide basic isolation, but agent-to-agent REST has no authentication within Compose or the App Platform private network. Separate container identities do not yet provide per-agent cloud permissions. The web UI's Stage Basic Auth is a shared login, not per-user identity or authorization.
 
+Eight declarative agent identities (Charlie, Nova, Atlas, Pixel, Sage, Cipher, Scout, Orbit) are defined as configuration only and are not connected to these services. See [Agent identity architecture](agent-identity-architecture.md).
+
 ## Memory and observability
 
 Each agent stores only its own structured result in an append-only JSONL file under its configured memory directory. It does not intentionally store the incoming question, full transcript, another agent's private memory, or credentials. Agent outputs may still contain sensitive information, so protect the memory files and LiteLLM boundary.
