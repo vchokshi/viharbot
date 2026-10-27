@@ -829,6 +829,10 @@
         if (ev.event_type === "final_response" && model.sawFinal) return "two final responses";
         return null;
       }
+      function settle(model, key, state) {
+        const row = model.rows.find((candidate) => candidate.key === key);
+        if (row) row.state = state;
+      }
       function setRow(model, row) {
         const existing = model.rows.find((candidate) => candidate.key === row.key);
         if (existing) { Object.assign(existing, row); return existing; }
@@ -870,7 +874,8 @@
               text: "Let's get " + lower(cap) + " going. " + nameOf(data.target_identity) + ", can you please take it?", detail: [], durationMs: null, sequence: ev.sequence });
             break;
           case "delegation_authorized":
-            setRow(model, { key: "deleg-" + decision, kind: "delegation", state: "done", identity: "charlie",
+            settle(model, "deleg-" + decision, "done");
+            setRow(model, { key: "auth-" + decision, kind: "note", state: "done", identity: "application",
               text: "Approved. " + nameOf(data.target_identity) + " may take on " + lower(cap) + ".",
               detail: ["Authorized by the application", cap + " result version " + data.result_version, "Execution " + execution],
               durationMs: null, sequence: ev.sequence });
@@ -878,7 +883,8 @@
           case "delegation_rejected": {
             const why = labelFor(rejectionText, data.rejection_code);
             model.rejections.push({ decision, capability: data.capability, code: data.rejection_code, sequence: ev.sequence });
-            setRow(model, { key: "deleg-" + decision, kind: "rejection", state: "rejected", identity: "application",
+            settle(model, "deleg-" + decision, "done");
+            setRow(model, { key: "rej-" + decision, kind: "rejection", state: "rejected", identity: "application",
               text: data.capability ? "The application declined " + lower(cap) + " for now." : "The application declined to finish yet.",
               detail: ["Why: " + why], durationMs: null, sequence: ev.sequence });
             break; }
@@ -888,16 +894,17 @@
               durationMs: null, sequence: ev.sequence });
             break;
           case "agent_completed": {
-            const row = model.rows.find((candidate) => candidate.key === "exec-" + execution);
-            setRow(model, { key: "exec-" + execution, kind: "agent", state: "done", identity: ev.source.identity_id,
+            settle(model, "exec-" + execution, "done");
+            setRow(model, { key: "done-" + execution, kind: "agent", state: "done", identity: ev.source.identity_id,
               text: "Done: " + lower(cap) + " is finished (v" + data.result_version + ").",
-              detail: [].concat(row ? row.detail : [], data.model_alias ? ["Model reported by the service: " + data.model_alias] : []),
+              detail: [cap + " result version " + data.result_version].concat(data.model_alias ? ["Model reported by the service: " + data.model_alias] : []),
               durationMs: data.duration_ms, sequence: ev.sequence });
             model.executions.push({ execution, decision, identity: ev.source.identity_id, capability: data.capability,
               version: data.result_version, durationMs: data.duration_ms, failed: false, modelAlias: data.model_alias || null, sequence: ev.sequence });
             break; }
           case "agent_failed":
-            setRow(model, { key: "exec-" + execution, kind: "agent", state: "failed", identity: ev.source.identity_id,
+            settle(model, "exec-" + execution, "done");
+            setRow(model, { key: "fail-" + execution, kind: "agent", state: "failed", identity: ev.source.identity_id,
               text: "I couldn't complete " + lower(cap) + ".", detail: ["Reason: " + String(data.error_code).replace(/_/g, " ")],
               durationMs: data.duration_ms, sequence: ev.sequence });
             model.executions.push({ execution, decision, identity: ev.source.identity_id, capability: data.capability,
@@ -905,7 +912,7 @@
             break;
           case "dependency_recorded": {
             const used = data.dependencies.map((dep) => capLabel(dep.capability) + " v" + dep.result_version + " (" + dep.dependency_type + ")");
-            const row = model.rows.find((candidate) => candidate.key === "exec-" + execution);
+            const row = model.rows.find((candidate) => candidate.key === "done-" + execution);
             if (row) row.detail = row.detail.concat(["Used: " + used.join(", ")]);
             model.dependencies.push({ execution, consumer: data.consumer, dependencies: data.dependencies });
             break; }
