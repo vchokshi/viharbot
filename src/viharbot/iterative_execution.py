@@ -18,7 +18,13 @@ from pydantic import BaseModel, ConfigDict
 from . import demo, orchestration_planner
 from .deadline import DeadlineExceeded, RequestDeadline
 from .delegated_execution import delegation_enabled
-from .delegation import DelegationError, PlannerInferenceError
+from .delegation import (
+    DelegationError,
+    PlannerInferenceError,
+    PlannerOutputError,
+    PlannerUnavailableError,
+)
+from .delegation_planner import planner_alias
 from .demo import AgentPipelineError, invoke_agent
 from .execution_bindings import (
     ExecutionBindingSet,
@@ -27,9 +33,11 @@ from .execution_bindings import (
 )
 from .identity import Capability
 from .identity_registry import AgentRegistry, default_registry
+from .live_hooks import NO_REPORTER, CancelToken, LiveReporter, OrchestrationCancelled
 from .orchestration_planner import DecisionContext
 from .orchestration_policy import (
     ActionRejected,
+    HARD_DEPENDENCIES,
     OrchestrationAction,
     allowed_capabilities,
     authorize_action,
@@ -98,6 +106,26 @@ def _log(level: int, message: str, state: OrchestrationState, clock, deadline: R
     )
 
 
+def planner_error_code(exc: BaseException) -> str:
+    """A sanitized, documented code for a planner failure. Never uses the message."""
+    if isinstance(exc, DeadlineExceeded):
+        return "deadline_exceeded"
+    if isinstance(exc, PlannerUnavailableError):
+        return "planner_unavailable"
+    if isinstance(exc, PlannerOutputError):
+        return "planner_output_invalid"
+    return "planner_inference_failed"
+
+
+def agent_error_code(exc: BaseException) -> str:
+    """A sanitized, documented code for an agent failure, from the recorded error type."""
+    if isinstance(exc, DeadlineExceeded):
+        return "deadline_exceeded"
+    activity = getattr(exc, "activity", None) or []
+    last = (activity[-1].get("error") if activity else None) or ""
+    return "agent_response_invalid" if last in {"ValidationError", "ResponseContractError"} else "agent_execution_failed"
+
+
 def _final_state(state: OrchestrationState, activity: list[AgentActivity]) -> tuple[PipelineState, int]:
     """Project the fresh results onto the existing PipelineState.
 
@@ -146,6 +174,8 @@ def run_iterative_pipeline(
     bindings: ExecutionBindingSet | None = None,
     budget: ExecutionBudget | None = None,
     clock: Callable[[], float] = time.monotonic,
+    emit: LiveReporter | None = None,
+    cancel: CancelToken | None = None,
 ) -> IterativePipelineResult:
     registry = registry or default_registry()
     if bindings is None:
@@ -153,6 +183,7 @@ def run_iterative_pipeline(
     decide = decide or orchestration_planner.decide_next_action
     send = send or demo.post_json
     budget = budget or ExecutionBudget.from_env()
+    reporter = emit or NO_REPORTER  # no reporter means exactly the behavior this loop always had
 
     # One absolute deadline for the whole request. It is never reset or extended.
     started = clock()
@@ -208,8 +239,12 @@ def run_iterative_pipeline(
             status="rejected", reason_code=code))
         log(logging.WARNING, "action rejected", action_status="rejected",
             requested_action=action.action, capability=action.capability, error=code)
+        reporter.delegation_rejected(
+            decision_number=state.decision_number, capability=action.capability, rejection_code=code)
 
     while True:
+        if cancel is not None:
+            cancel.raise_if_set()  # the client is gone: start nothing new
         if deadline.expired():
             return by_policy("time_budget")
         if state.decision_number >= budget.max_decisions:
@@ -230,26 +265,51 @@ def run_iterative_pipeline(
             deadline=deadline,
             final_evaluation=final_evaluation,
         )
+        reporter.planner_started(
+            decision_number=state.decision_number,
+            remaining_ms=int(max(deadline.remaining(), 0) * 1000))
+        planning_started = time.perf_counter()
         try:
             action = decide(state, context)  # exactly one planning call per decision
-        except DeadlineExceeded:
+        except OrchestrationCancelled:
+            raise
+        except DeadlineExceeded as exc:
+            reporter.planner_failed(
+                decision_number=state.decision_number, error_code=planner_error_code(exc),
+                duration_ms=(time.perf_counter() - planning_started) * 1000)
             log(logging.ERROR, "orchestration planner timed out", action_status="planner_failed",
                 error="DeadlineExceeded")
             return by_policy("time_budget")
         except DelegationError as exc:
             state.status = "failed"
+            reporter.planner_failed(
+                decision_number=state.decision_number, error_code=planner_error_code(exc),
+                duration_ms=(time.perf_counter() - planning_started) * 1000)
             log(logging.ERROR, "orchestration planner failed", action_status="planner_failed",
                 error=exc.cause_type or type(exc).__name__)
             raise
         except Exception as exc:
             state.status = "failed"
+            reporter.planner_failed(
+                decision_number=state.decision_number, error_code="planner_inference_failed",
+                duration_ms=(time.perf_counter() - planning_started) * 1000)
             log(logging.ERROR, "orchestration planner failed", action_status="planner_failed",
                 error=type(exc).__name__)
             raise PlannerInferenceError("planning inference failed", type(exc).__name__) from None
         notice = None
+        reporter.planner_completed(
+            decision_number=state.decision_number,
+            duration_ms=(time.perf_counter() - planning_started) * 1000,
+            action=action.action, capability=action.capability, rationale=action.rationale,
+            model_alias=planner_alias() or None)
+        if cancel is not None:
+            cancel.raise_if_set()
         if deadline.expired():
             # Charlie answered after the deadline. Nothing he said is acted on, and a late
             # `finish` is not recorded as his approval.
+            reporter.delegation_rejected(
+                decision_number=state.decision_number, capability=action.capability,
+                rejection_code="deadline_exceeded")
             state.record(DecisionRecord(
                 decision_number=state.decision_number, requested_action=action.action,
                 capability=Capability(action.capability) if action.capability else None,
@@ -259,6 +319,13 @@ def run_iterative_pipeline(
             return by_policy("time_budget")
         log(logging.INFO, "action recommended", action_status="recommended",
             requested_action=action.action, capability=action.capability)
+
+        if action.action == "delegate":
+            requested = bindings.lookup(Capability(action.capability))
+            if requested is not None and requested.identity_id in registry:
+                reporter.delegation_requested(
+                    decision_number=state.decision_number, capability=action.capability,
+                    target_identity=requested.identity_id)
 
         rejection: str | None = None
         authorized = None
@@ -294,16 +361,33 @@ def run_iterative_pipeline(
         log(logging.INFO, "action authorized", action_status="authorized",
             requested_action="delegate", capability=authorized.capability.value,
             identity_id=authorized.identity_id, service_name=authorized.service_name)
+        execution_id = f"exec-{state.iteration + 1}"
+        result_version = state.run_count(authorized.capability) + 1
+        reporter.delegation_authorized(
+            decision_number=state.decision_number, execution_id=execution_id,
+            capability=authorized.capability.value, target_identity=authorized.identity_id,
+            service=authorized.service_name, result_version=result_version)
         state.iteration += 1
         state.add_gap(action.unresolved_question)
         payload = build_payload(authorized.capability, state)
         based_on = input_versions(authorized.capability, state)
+        if cancel is not None:
+            cancel.raise_if_set()
+        reporter.agent_started(
+            decision_number=state.decision_number, execution_id=execution_id,
+            identity_id=authorized.identity_id, capability=authorized.capability.value,
+            service=authorized.service_name, result_version=result_version)
         call_started = time.perf_counter()
         try:
             envelope, domain = invoke_agent(
                 send, urls[authorized.service_name], payload, request_id,
                 authorized.service_name, activity, deadline=deadline)
         except DeadlineExceeded:
+            reporter.agent_failed(
+                decision_number=state.decision_number, execution_id=execution_id,
+                identity_id=authorized.identity_id, capability=authorized.capability.value,
+                error_code="deadline_exceeded",
+                duration_ms=(time.perf_counter() - call_started) * 1000)
             state.record(DecisionRecord(
                 decision_number=state.decision_number, requested_action="delegate",
                 capability=authorized.capability, status="failed",
@@ -312,8 +396,13 @@ def run_iterative_pipeline(
                 capability=authorized.capability.value, identity_id=authorized.identity_id,
                 service_name=authorized.service_name, error="DeadlineExceeded")
             return by_policy("time_budget")
-        except AgentPipelineError:
+        except AgentPipelineError as exc:
             state.status = "failed"
+            reporter.agent_failed(
+                decision_number=state.decision_number, execution_id=execution_id,
+                identity_id=authorized.identity_id, capability=authorized.capability.value,
+                error_code=agent_error_code(exc),
+                duration_ms=(time.perf_counter() - call_started) * 1000)
             state.record(DecisionRecord(
                 decision_number=state.decision_number, requested_action="delegate",
                 capability=authorized.capability, status="failed", reason_code="agent_failed"))
@@ -333,10 +422,43 @@ def run_iterative_pipeline(
             domain=domain,
             based_on=based_on,
         )
+        fresh_before = fresh_results(state)
         state.completed_steps.append(step)
         state.record(DecisionRecord(
             decision_number=state.decision_number, requested_action="delegate",
             capability=authorized.capability, status="executed", duration_ms=duration_ms))
+        # Reported only now: the response was validated and the state recorded.
+        consumer = {"identity_id": authorized.identity_id, "capability": authorized.capability.value,
+                    "result_version": step.version}
+        reporter.agent_completed(
+            decision_number=state.decision_number, execution_id=execution_id,
+            identity_id=authorized.identity_id, capability=authorized.capability.value,
+            result_version=step.version, duration_ms=duration_ms,
+            model_alias=envelope.requested_model_alias or None)
+        used = sorted(((Capability(name), version) for name, version in based_on.items()),
+                      key=lambda item: CANONICAL_ORDER.index(item[0]))
+        if used:
+            reporter.dependency_recorded(
+                decision_number=state.decision_number, execution_id=execution_id, consumer=consumer,
+                dependencies=[
+                    {"identity_id": bindings.lookup(capability).identity_id,
+                     "capability": capability.value, "result_version": version,
+                     "dependency_type": ("required" if capability in HARD_DEPENDENCIES[authorized.capability]
+                                         else "optional")}
+                    for capability, version in used])
+        if step.version > 1:
+            fresh_after = fresh_results(state)
+            affected = [
+                {"identity_id": older.identity_id, "capability": older.capability.value,
+                 "result_version": older.version}
+                for older in fresh_before.values()
+                if older.capability is not authorized.capability
+                and fresh_after.get(older.capability) is not older]
+            if affected:  # only what the existing freshness rules actually invalidated
+                reporter.evidence_superseded(
+                    decision_number=state.decision_number, execution_id=execution_id,
+                    capability=authorized.capability.value, superseded_version=step.version - 1,
+                    replacement_version=step.version, affected_results=affected)
         # "executed" is only claimed here, after a validated, on-time response arrived.
         log(logging.INFO, "delegated execution completed", action_status="executed",
             capability=authorized.capability.value, identity_id=authorized.identity_id,

@@ -295,8 +295,9 @@ def test_the_page_adds_no_frameworks_streaming_or_persistent_storage():
     html = INDEX.read_text()
     assert "<script src" not in html and "<link rel=\"stylesheet\"" not in html
     script = re.search(r"<script>\n(.*?)</script>", html, re.S).group(1)
+    # Phase 6.4 deliberately streams with fetch + ReadableStream; the rest stay banned.
     for banned in ("WebSocket", "EventSource", "localStorage", "sessionStorage", "indexedDB",
-                   "getReader", "ReadableStream", "import(", "require("):
+                   "import(", "require("):
         assert banned not in script, banned
     assert script.count("setInterval") == 1  # only the existing elapsed-time label
 

@@ -85,6 +85,7 @@ export function serialize(node) {
     tag: node.tagName,
     class: node.className,
     attrs: node.attrs,
+    hidden: node.hidden,
     children: node.children.map(serialize),
   };
 }
