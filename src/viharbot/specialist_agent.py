@@ -11,6 +11,7 @@ from uuid import uuid4
 from fastapi import FastAPI, Header, HTTPException, Response
 from pydantic import BaseModel, Field
 
+from .contracts import SpecialistResponse
 from .memory import remember
 from .agentcore_runtime import add_agentcore_routes
 from .model_agent import build_agent
@@ -31,13 +32,6 @@ class SpecialistRequest(BaseModel):
     question: str | None = Field(default=None, max_length=6000)
     findings: ResearchFindings | None = None
     context: dict[str, Any] = Field(default_factory=dict)
-
-
-class SpecialistResponse(BaseModel):
-    request_id: str
-    agent: str
-    requested_model_alias: str
-    result: dict[str, Any]
 
 
 class SpecialistDefinition:

@@ -10,7 +10,17 @@ from typing import Callable
 from urllib.request import Request, urlopen
 from uuid import uuid4
 
+from pydantic import BaseModel
+
+from .contracts import AgentResponse, validate_agent_response
 from .observability import configure_logging
+from .pipeline_state import (
+    AgentActivity,
+    PipelineContext,
+    PipelineState,
+    legacy_context_payload,
+    legacy_findings_payload,
+)
 
 configure_logging()
 logger = logging.getLogger("orchestrator")
@@ -106,86 +116,105 @@ def run_pipeline(
     specialist_urls: dict[str, str] | None = None,
     send: Callable[[str, dict, str, str], dict] = post_json,
 ) -> dict:
-    activity: list[dict] = []
+    return run_typed_pipeline(
+        question,
+        request_id,
+        research_url=research_url,
+        security_url=security_url,
+        specialist_urls=specialist_urls,
+        send=send,
+    ).to_legacy_dict()
 
-    def invoke(url: str, payload: dict, destination: str) -> dict:
+
+def run_typed_pipeline(
+    question: str,
+    request_id: str,
+    *,
+    research_url: str,
+    security_url: str,
+    specialist_urls: dict[str, str] | None = None,
+    send: Callable[[str, dict, str, str], dict] = post_json,
+) -> PipelineState:
+    activity: list[AgentActivity] = []
+
+    def invoke(
+        url: str, payload: dict, destination: str
+    ) -> tuple[AgentResponse, BaseModel]:
         started = time.perf_counter()
         try:
-            result = send(url, payload, request_id, destination)
+            envelope, domain = validate_agent_response(
+                destination, send(url, payload, request_id, destination), request_id
+            )
         except Exception as exc:
             activity.append(
-                {
-                    "agent": destination,
-                    "display_name": AGENT_LABELS.get(destination, destination),
-                    "model_alias": None,
-                    "duration_ms": round((time.perf_counter() - started) * 1000, 2),
-                    "status": "failed",
-                    "error": type(exc).__name__,
-                }
+                AgentActivity(
+                    agent=destination,
+                    display_name=AGENT_LABELS.get(destination, destination),
+                    duration_ms=round((time.perf_counter() - started) * 1000, 2),
+                    status="failed",
+                    error=type(exc).__name__,
+                )
             )
-            raise AgentPipelineError(activity) from None
+            raise AgentPipelineError([item.to_legacy() for item in activity]) from None
         activity.append(
-            {
-                "agent": destination,
-                "display_name": AGENT_LABELS.get(destination, destination),
-                "model_alias": result.get("requested_model_alias"),
-                "duration_ms": round((time.perf_counter() - started) * 1000, 2),
-                "status": "complete",
-            }
+            AgentActivity(
+                agent=destination,
+                display_name=AGENT_LABELS.get(destination, destination),
+                model_alias=envelope.requested_model_alias,
+                duration_ms=round((time.perf_counter() - started) * 1000, 2),
+                status="complete",
+            )
         )
-        return result
+        return envelope, domain
 
-    research = invoke(research_url, {"question": question}, "research")
-    results: dict[str, dict] = {"research": research}
+    research, findings = invoke(research_url, {"question": question}, "research")
+    responses: dict[str, AgentResponse] = {"research": research}
+    context = PipelineContext(research=findings)
 
-    specialist_inputs = {
-        "fact_check": {"findings": research["findings"]},
-        "source_quality": {"findings": research["findings"]},
-    }
     for name in ("fact_check", "source_quality"):
         url = (specialist_urls or {}).get(name)
         if url:
-            destination = name.replace("_", "-")
-            results[name] = invoke(url, specialist_inputs[name], destination)
+            responses[name], domain = invoke(
+                url, legacy_findings_payload(findings), name.replace("_", "-")
+            )
+            setattr(context, name, domain)
 
-    security = invoke(
-        security_url,
-        {"findings": research["findings"]},
-        "security",
+    responses["security"], context.security = invoke(
+        security_url, legacy_findings_payload(findings), "security"
     )
-    results["security"] = security
 
-    context = {"research": research["findings"]}
-    context.update(
-        {
-            name: result.get("result", result)
-            for name, result in results.items()
-            if name != "research"
-        }
-    )
+    legacy_context = legacy_context_payload(responses)
     privacy_url = (specialist_urls or {}).get("privacy_review")
     if privacy_url:
-        results["privacy_review"] = invoke(
+        responses["privacy_review"], context.privacy_review = invoke(
             privacy_url,
-            {"question": question, "context": context},
+            {"question": question, "context": legacy_context},
             "privacy-review",
         )
 
+    synthesis = None
     synthesis_url = (specialist_urls or {}).get("synthesis")
     if synthesis_url:
-        results["synthesis"] = invoke(
+        privacy_response = responses.get("privacy_review")
+        responses["synthesis"], synthesis = invoke(
             synthesis_url,
             {
                 "question": question,
                 "context": {
-                    **context,
-                    "privacy_review": results.get("privacy_review", {}).get("result"),
+                    **legacy_context,
+                    "privacy_review": privacy_response.result if privacy_response else None,
                 },
             },
             "synthesis",
         )
 
-    return {"request_id": request_id, "agent_activity": activity, **results}
+    return PipelineState(
+        request_id=request_id,
+        context=context,
+        synthesis=synthesis,
+        responses=responses,
+        agent_activity=activity,
+    )
 
 
 def main() -> None:
