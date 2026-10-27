@@ -17,6 +17,16 @@ services:
       SOURCE_QUALITY_URL: http://source-quality:8000/process
       PRIVACY_REVIEW_URL: http://privacy-review:8000/process
       SYNTHESIS_URL: http://synthesis:8000/process
+      # Optional coordination modes. All off by default; iterative mode needs all three.
+      VIHARBOT_IDENTITY_ROUTING_ENABLED: ${VIHARBOT_IDENTITY_ROUTING_ENABLED:-false}
+      VIHARBOT_DELEGATION_ENABLED: ${VIHARBOT_DELEGATION_ENABLED:-false}
+      VIHARBOT_ITERATIVE_ORCHESTRATION_ENABLED: ${VIHARBOT_ITERATIVE_ORCHESTRATION_ENABLED:-false}
+      # Charlie's planner is the only inference the web service makes. It stays unavailable
+      # until an alias is set on purpose, and the key is passed only through the opt-in
+      # WEB_LITELLM_API_KEY so the browser-facing container holds no key by default.
+      CHARLIE_PLANNER_MODEL: ${CHARLIE_PLANNER_MODEL:-}
+      LITELLM_BASE_URL: ${LITELLM_BASE_URL:-https://litellm.viharchokshi.com}
+      LITELLM_API_KEY: ${WEB_LITELLM_API_KEY:-}
     ports:
       - "127.0.0.1:8080:8080"
     depends_on:

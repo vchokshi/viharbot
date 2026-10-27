@@ -203,13 +203,9 @@ def test_feature_flag_parsing_defaults_to_disabled(monkeypatch, value, expected)
 
 
 def test_flag_is_not_enabled_in_shipped_configuration():
-    from pathlib import Path
+    from shipped_config_helpers import assert_flag_shipped_off
 
-    root = Path(__file__).resolve().parent.parent
-    for name in (".env.example", "compose.yaml", "deploy/digitalocean/app.yaml"):
-        path = root / name
-        if path.exists():
-            assert IDENTITY_ROUTING_FLAG not in path.read_text(), name
+    assert_flag_shipped_off(IDENTITY_ROUTING_FLAG)
 
 
 # 17, 24. web API with the flag off and on

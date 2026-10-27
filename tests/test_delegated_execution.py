@@ -272,14 +272,9 @@ def test_delegation_defaults_off_and_requires_identity_routing(monkeypatch, dele
 
 
 def test_flag_is_not_enabled_in_shipped_configuration():
-    from pathlib import Path
+    from shipped_config_helpers import assert_flag_shipped_off
 
-    root = Path(__file__).resolve().parent.parent
-    for name in (".env.example", "compose.yaml", "deploy/digitalocean/app.yaml"):
-        path = root / name
-        if path.exists():
-            text = path.read_text()
-            assert DELEGATION_FLAG not in text and "CHARLIE_PLANNER_MODEL" not in text, name
+    assert_flag_shipped_off(DELEGATION_FLAG)  # a `false` default is allowed; the cloud spec has none
 
 
 # web API: 16, 18, 19, 21, 28, 29
