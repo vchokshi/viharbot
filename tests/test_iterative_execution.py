@@ -11,6 +11,7 @@ from orchestration_helpers import (
     C, Clock, Forever, Script, URLS_BY_SERVICE, delegate, finish, make_step, new_state, with_steps)
 from pipeline_fixtures import FINDINGS, ORDER, RID, URLS, FakeSend, response
 from viharbot import delegation_planner, demo, model_agent, orchestration_planner, web_app
+from viharbot.deadline import DeadlineExceeded
 from viharbot.delegated_execution import DELEGATION_FLAG
 from viharbot.delegation import (
     DelegationDecision, PlannerInferenceError, PlannerOutputError, PlannerUnavailableError)
@@ -83,10 +84,12 @@ def test_approved_capabilities_execute_through_their_bindings():
         ("source_quality", "scout", "source-quality"),
         ("security_assessment", "cipher", "security"),
         ("privacy_review", "cipher", "privacy-review"), ("synthesis", "charlie", "synthesis")]
-    assert [r.status for r in result.orchestration.decision_history] == ["executed"] * 6
-    # Six executions use the whole default budget, so the loop completes by policy without
-    # asking Charlie for a seventh decision.
-    assert result.orchestration.status == "budget_exhausted"
+    assert [r.status for r in result.orchestration.decision_history] == ["executed"] * 6 + ["completed"]
+    # Six executions use the whole default budget, but Charlie still evaluates the last
+    # result once and finishes it himself.
+    assert result.orchestration.status == "completed"
+    assert result.orchestration.completion_reason == "charlie_finished"
+    assert result.orchestration.completion_kind == "charlie_approved"
 
 
 # 14, 15, payload compatibility
@@ -252,41 +255,68 @@ def test_decision_budget_fails_when_required_results_are_missing():
     assert caught.value.code == "decision_budget"
 
 
-def test_execution_budget_stops_planning_and_completes_when_possible():
-    script = Script(delegate(C.RESEARCH), delegate(C.SECURITY_ASSESSMENT))
+def test_execution_budget_gives_charlie_one_final_evaluation_then_stops_delegating():
+    script = Script(delegate(C.RESEARCH), delegate(C.SECURITY_ASSESSMENT), finish())
     result, send = run(script, budget=ExecutionBudget(max_executions=2))
+    assert result.orchestration.status == "completed"
+    assert result.orchestration.completion_reason == "charlie_finished"
+    assert len(script.calls) == 3 and send.order == ["research", "security"]
+    final = script.calls[2]
+    assert final["allowed"] == [] and final["finish_allowed"] is True  # finish is the only move
+
+
+def test_a_delegation_during_the_final_evaluation_is_refused_and_policy_completes():
+    script = Script(delegate(C.RESEARCH), delegate(C.SECURITY_ASSESSMENT), delegate(C.FACT_CHECK))
+    result, send = run(script, budget=ExecutionBudget(max_executions=2))
+    assert send.order == ["research", "security"]  # no execution beyond the budget
     assert result.orchestration.status == "budget_exhausted"
-    assert len(script.calls) == 2  # no inference after the last allowed execution
+    assert result.orchestration.completion_kind == "policy_budget"
+    assert result.orchestration.completion_reason == "execution_budget"
+    assert result.orchestration.decision_history[-1].reason_code == "execution_budget"
+
+
+def test_execution_budget_without_required_results_fails():
     with pytest.raises(OrchestrationFailed, match="did not complete") as caught:
         run(Script(delegate(C.RESEARCH)), budget=ExecutionBudget(max_executions=1))
     assert caught.value.code == "execution_budget"
+
+
+def test_no_final_evaluation_when_the_decision_budget_is_also_used_up():
+    script = Script(delegate(C.RESEARCH), delegate(C.SECURITY_ASSESSMENT))
+    result, _ = run(script, budget=ExecutionBudget(max_executions=2, max_decisions=2))
+    assert len(script.calls) == 2
+    assert result.orchestration.completion_reason == "decision_budget"
+    assert result.orchestration.completion_kind == "policy_budget"
 
 
 def test_time_budget_is_checked_between_calls():
     clock = Clock()
 
     def slow(url, payload, request_id, destination):
-        clock.now += 70
+        clock.now += 40
         return response(destination)
 
-    script = Script(delegate(C.RESEARCH), delegate(C.SECURITY_ASSESSMENT), delegate(C.FACT_CHECK))
+    script = Script(delegate(C.RESEARCH), delegate(C.SECURITY_ASSESSMENT), delegate(C.FACT_CHECK),
+                    delegate(C.SOURCE_QUALITY))
     result, _ = run(script, send=slow, clock=clock)
     assert result.orchestration.status == "budget_exhausted"
+    assert result.orchestration.completion_reason == "time_budget"
+    assert result.orchestration.completion_kind == "policy_budget"
+    # fact_check returned exactly at the 120 s deadline, so its result was discarded
     assert [s.capability for s in result.orchestration.completed_steps] == [
         C.RESEARCH, C.SECURITY_ASSESSMENT]
-    assert len(script.calls) == 2  # nothing was planned once the 120 seconds were gone
+    assert len(script.calls) == 3  # nothing was planned once the 120 seconds were gone
 
 
-def test_time_budget_fails_when_nothing_usable_was_produced():
+def test_time_budget_raises_a_distinct_error_when_nothing_usable_was_produced():
     clock = Clock()
 
     def slow(url, payload, request_id, destination):
         clock.now += 130
         return response(destination)
 
-    with pytest.raises(OrchestrationFailed) as caught:
+    with pytest.raises(DeadlineExceeded):
         run(Script(delegate(C.RESEARCH)), send=slow, clock=clock)
-    assert caught.value.code == "time_budget"
 
 
 @pytest.mark.parametrize("action", [
@@ -590,8 +620,9 @@ class Recorder:
         self.output = delegate(C.RESEARCH) if output is _UNSET else output
         self.error, self.built, self.invoked = error, [], []
 
-    def build_agent(self, *, model_alias, system_prompt, timeout=None):
-        self.built.append({"alias": model_alias, "prompt": system_prompt, "timeout": timeout})
+    def build_agent(self, *, model_alias, system_prompt, timeout=None, max_retries=None):
+        self.built.append({"alias": model_alias, "prompt": system_prompt, "timeout": timeout,
+                           "max_retries": max_retries})
 
         def agent(message, *, structured_output_model):
             self.invoked.append({"message": message, "schema": structured_output_model})
@@ -629,6 +660,7 @@ def test_each_decision_is_one_litellm_call_with_the_planner_alias(planner):
     assert recorder.built[0]["alias"] == "planner/alias"
     assert recorder.invoked[0]["schema"] is OrchestrationAction
     assert recorder.built[0]["timeout"] == 10.0  # min(30s configured, 10s left)
+    assert recorder.built[0]["max_retries"] == 0  # no hidden client retries
     assert recorder.built[0]["prompt"] == build_orchestration_prompt()
     assert QUESTION in recorder.invoked[0]["message"] and QUESTION not in recorder.built[0]["prompt"]
 
@@ -680,6 +712,7 @@ def test_logs_distinguish_recommended_authorized_executed_and_completed(caplog):
     statuses = [l["action_status"] for l in lines]
     assert statuses == ["recommended", "authorized", "executed", "recommended", "rejected",
                         "recommended", "authorized", "executed", "recommended", "completed"]
+    assert all({"elapsed_ms", "remaining_ms"} <= set(l) for l in lines)
     executed = next(l for l in lines if l["action_status"] == "executed")
     assert executed["capability"] == "research" and executed["identity_id"] == "nova"
     assert executed["service_name"] == "research" and executed["execution_duration_ms"] >= 0
@@ -689,7 +722,8 @@ def test_logs_distinguish_recommended_authorized_executed_and_completed(caplog):
     assert "execution_duration_ms" not in recommended and "identity_id" not in recommended
     rejected = next(l for l in lines if l["action_status"] == "rejected")
     assert rejected["error"] == "mandatory_missing"
-    assert lines[-1]["completion_status"] == "finished"
+    assert lines[-1]["completion_status"] == "charlie_approved"
+    assert lines[-1]["completion_reason"] == "charlie_finished"
     text = json.dumps(lines)
     for secret in ("SENSITIVE", "Reason text.", "Enough evidence."):
         assert secret not in text
@@ -697,10 +731,11 @@ def test_logs_distinguish_recommended_authorized_executed_and_completed(caplog):
 
 def test_budget_completion_is_logged_distinctly(caplog):
     with caplog.at_level(logging.INFO):
-        run(Script(delegate(C.RESEARCH), delegate(C.SECURITY_ASSESSMENT)),
+        run(Script(delegate(C.RESEARCH), delegate(C.SECURITY_ASSESSMENT), delegate(C.FACT_CHECK)),
             budget=ExecutionBudget(max_executions=2))
     last = [json.loads(JsonFormatter().format(r)) for r in caplog.records if r.name == "orchestrator"][-1]
-    assert last["action_status"] == "completed" and last["completion_status"] == "execution_budget"
+    assert last["action_status"] == "completed" and last["completion_status"] == "policy_budget"
+    assert last["completion_reason"] == "execution_budget"
 
 
 # 23, 24, 26. nothing real; no deployment change

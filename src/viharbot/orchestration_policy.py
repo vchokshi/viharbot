@@ -18,6 +18,7 @@ from .orchestration_state import (
     CANONICAL_ORDER,
     LEGACY_KEYS,
     OrchestrationState,
+    StepResult,
 )
 from .pipeline_state import legacy_context_payload, legacy_findings_payload
 from .schemas import ResearchFindings
@@ -51,6 +52,41 @@ SOFT_INPUTS: dict[Capability, tuple[Capability, ...]] = {
 }
 # The /api/chat contract cannot be answered without these.
 MANDATORY: tuple[Capability, ...] = (Capability.RESEARCH, Capability.SECURITY_ASSESSMENT)
+
+
+def step_is_fresh(state: OrchestrationState, step: StepResult) -> bool:
+    """True if every input this result consumed is still current.
+
+    Required inputs must be present and equal to the latest version. Optional inputs count
+    only while they are themselves fresh: if a fresh optional input now exists at a different
+    version than the one consumed (newer, or never consumed), the result is stale. The
+    recorded input versions are the source of truth, not the result's own version number.
+    """
+    capability = step.capability
+    for dependency in HARD_DEPENDENCIES[capability]:
+        latest = state.latest(dependency)
+        if latest is None or step.based_on.get(dependency.value) != latest.version:
+            return False
+    for optional in SOFT_INPUTS.get(capability, ()):
+        current = fresh_latest(state, optional)
+        if current is not None and step.based_on.get(optional.value) != current.version:
+            return False
+    return True
+
+
+def fresh_latest(state: OrchestrationState, capability: Capability) -> StepResult | None:
+    """The latest result for a capability, only if it is still fresh."""
+    step = state.latest(capability)
+    return step if step is not None and step_is_fresh(state, step) else None
+
+
+def fresh_results(state: OrchestrationState) -> dict[Capability, StepResult]:
+    """The results that may appear in a final response, in the fixed pipeline order."""
+    return {
+        capability: step
+        for capability in CANONICAL_ORDER
+        if (step := fresh_latest(state, capability)) is not None
+    }
 
 
 class OrchestrationAction(BaseModel):
@@ -130,8 +166,11 @@ def authorize_action(
         raise ActionRejected("service_unavailable")
 
     for dependency in HARD_DEPENDENCIES[capability]:
-        if state.latest(dependency) is None:
+        latest = state.latest(dependency)
+        if latest is None:
             raise ActionRejected("dependency_unmet")
+        if not step_is_fresh(state, latest):
+            raise ActionRejected("dependency_stale")
 
     budget = state.execution_budget
     if state.run_count(capability) >= 1 + budget.max_repeats_per_capability:
@@ -154,8 +193,7 @@ def check_completion(state: OrchestrationState) -> str | None:
     for capability in MANDATORY:
         if state.latest(capability) is None:
             return "mandatory_missing"
-    security = state.latest(Capability.SECURITY_ASSESSMENT)
-    if state.is_stale(security, HARD_DEPENDENCIES[Capability.SECURITY_ASSESSMENT]):
+    if not step_is_fresh(state, state.latest(Capability.SECURITY_ASSESSMENT)):
         return "security_stale"
     return None
 
@@ -182,18 +220,34 @@ def allowed_capabilities(
 
 
 def input_versions(capability: Capability, state: OrchestrationState) -> dict[str, int]:
-    """Versions of the inputs a run would use now: its provenance."""
-    inputs = HARD_DEPENDENCIES[capability] + SOFT_INPUTS.get(capability, ())
-    return {c.value: state.latest(c).version for c in inputs if state.latest(c) is not None}
+    """Versions of the inputs a run would use now: its provenance.
 
-
-def _latest_responses(state: OrchestrationState, capabilities: tuple[Capability, ...]) -> dict[str, Any]:
-    """Latest envelopes keyed like the legacy result dict, always in the fixed pipeline order."""
-    return {
-        LEGACY_KEYS[c]: state.latest(c).envelope
-        for c in CANONICAL_ORDER
-        if c in capabilities and state.latest(c) is not None
+    Required inputs are always the latest. Optional inputs are used only while fresh.
+    """
+    versions = {
+        c.value: state.latest(c).version
+        for c in HARD_DEPENDENCIES[capability]
+        if state.latest(c) is not None
     }
+    for optional in SOFT_INPUTS.get(capability, ()):
+        current = fresh_latest(state, optional)
+        if current is not None:
+            versions[optional.value] = current.version
+    return versions
+
+
+def _context_responses(state: OrchestrationState, capabilities: tuple[Capability, ...]) -> dict[str, Any]:
+    """Envelopes for the outbound context, keyed like the legacy result dict and always in the
+    fixed pipeline order. Required inputs are the latest; optional ones only if still fresh."""
+    required = {Capability.RESEARCH, Capability.SECURITY_ASSESSMENT}
+    responses: dict[str, Any] = {}
+    for capability in CANONICAL_ORDER:
+        if capability not in capabilities:
+            continue
+        step = state.latest(capability) if capability in required else fresh_latest(state, capability)
+        if step is not None:
+            responses[LEGACY_KEYS[capability]] = step.envelope
+    return responses
 
 
 def build_payload(capability: Capability, state: OrchestrationState) -> dict[str, Any]:
@@ -215,10 +269,10 @@ def build_payload(capability: Capability, state: OrchestrationState) -> dict[str
         Capability.SOURCE_QUALITY,
         Capability.SECURITY_ASSESSMENT,
     )
-    context = legacy_context_payload(_latest_responses(state, context_inputs))
+    context = legacy_context_payload(_context_responses(state, context_inputs))
     if capability is Capability.PRIVACY_REVIEW:
         return {"question": question, "context": context}
-    privacy = state.latest(Capability.PRIVACY_REVIEW)
+    privacy = fresh_latest(state, Capability.PRIVACY_REVIEW)
     return {
         "question": question,
         "context": {**context, "privacy_review": privacy.envelope.result if privacy else None},
