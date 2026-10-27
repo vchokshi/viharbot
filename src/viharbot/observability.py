@@ -41,7 +41,17 @@ class JsonFormatter(logging.Formatter):
                 ),
             ),
         }
-        for key in ("identity_id", "capability", "personality_mode"):
+        for key in (
+            "identity_id",
+            "capability",
+            "personality_mode",
+            "planner_identity",
+            "recommended_workflow",
+            "approved_workflow",
+            "planning_duration_ms",
+            "execution_duration_ms",
+            "delegation_status",
+        ):
             if hasattr(record, key):
                 fields[key] = getattr(record, key)
         if hasattr(record, "error"):
