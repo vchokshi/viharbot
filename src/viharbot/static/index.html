@@ -330,10 +330,10 @@
               <p class="welcome-copy">ViharBot gathers research, checks the supplied evidence and sources, reviews security and privacy, then brings it together with care.</p>
               <p class="suggestion-heading">A few places to begin</p>
               <div class="suggestions">
-                <button class="suggestion" type="button"><b>Make a careful change</b><span>Our 12-person nonprofit wants to replace passwords with passkeys on staff laptops and phones. What security, recovery, accessibility, and rollout trade-offs should we plan for?</span></button>
-                <button class="suggestion" type="button"><b>Look closer at a source</b><span>A health blog claims vitamin D prevents every respiratory infection but links no study. What can you assess from that claim, and what evidence or source details would you need before calling it reliable?</span></button>
-                <button class="suggestion" type="button"><b>Think about privacy</b><span>An AI meeting-notes app records voices, stores transcripts with attendee names, and uses them for model training by default. What privacy and security questions should a small team ask before enabling it?</span></button>
-                <button class="suggestion" type="button"><b>Explore a new idea</b><span>A homeowner in a sunny area may move in five years and is considering rooftop solar. What costs, maintenance, and location-dependent details should they compare, and where should the answer stay uncertain?</span></button>
+                <button class="suggestion" type="button"><b>Full team review</b><span>Our clinic wants to text appointment reminders through a third-party SMS vendor. Its brochure claims it is HIPAA-compliant, has 99.99% delivery, and has never had a breach, but cites no audit report. Please research the options, fact-check those claims, assess how reliable the brochure is as a source, review the security and privacy risks of sending patient names and appointment times, and finish with one synthesized recommendation.</span></button>
+                <button class="suggestion" type="button"><b>Check a claim and its source</b><span>A health blog claims vitamin D prevents every respiratory infection but links no study. Please research what is known, fact-check the claim against the evidence you have, assess the quality of the source, review any security or privacy concerns, and give me a synthesized answer on whether it is reliable.</span></button>
+                <button class="suggestion" type="button"><b>Review privacy</b><span>An AI meeting-notes app records voices, stores transcripts with attendee names, and uses them for model training by default. Please research how these tools work, review the security and privacy risks for a small team, and synthesize what the team should ask before enabling it.</span></button>
+                <button class="suggestion" type="button"><b>Plan a security change</b><span>Our 12-person nonprofit wants to replace passwords with passkeys on staff laptops and phones. Please research the options, assess the security risks and recovery gaps, check whether any privacy or accessibility issues apply, and synthesize a rollout recommendation.</span></button>
               </div>
             </section>
           </div>
@@ -418,13 +418,21 @@
       .live-status.interrupted { color: #8a5a00; }
       .live-panel.frozen .live-glyph { animation: none; }
       .live-list, .interaction-chain { list-style: none; margin: 10px 0 0; padding: 0; }
-      .live-row { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; border-top: 1px solid #eef0f4; }
-      .live-row:first-child { border-top: 0; }
+      .live-row { display: flex; gap: 10px; align-items: flex-end; padding: 6px 0; }
+      .live-row.side-right { flex-direction: row-reverse; }
+      .live-row.side-center { justify-content: center; }
+      .live-name { flex-basis: 100%; font-size: 11px; font-weight: 600; color: #667085; }
+      .side-right .live-name { text-align: right; }
+      .side-center .live-name { text-align: center; }
       .live-portrait { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex: none; }
       .live-system { display: inline-flex; align-items: center; justify-content: center; background: #e6e9ef; font-size: 10px; font-weight: 700; }
-      .live-body { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; min-width: 0; flex: 1; }
+      .live-body { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; min-width: 0; max-width: 78%; padding: 8px 12px; border-radius: 14px; background: #f1f3f7; }
+      .side-left .live-body { border-bottom-left-radius: 4px; }
+      .side-right .live-body { border-bottom-right-radius: 4px; background: #e8f3ec; }
+      .side-center .live-body { background: #fff7e6; max-width: 90%; font-size: 13px; }
+      .state-failed .live-body, .state-rejected .live-body { background: #fdecec; }
       .live-text { overflow-wrap: anywhere; }
-      .live-meta { color: #667085; font-size: 12px; margin-left: auto; }
+      .live-meta { color: #667085; font-size: 12px; }
       .live-detail { flex-basis: 100%; font-size: 12px; color: #475467; }
       .live-detail summary { cursor: pointer; }
       .live-detail p { margin: 2px 0; overflow-wrap: anywhere; }
@@ -458,7 +466,7 @@
       .answer.markdown blockquote { margin: 0 0 .7em; padding-left: 12px; border-left: 3px solid #d9dee7; color: #475467; }
       @media (max-width: 640px) {
         .live-panel { padding: 12px; }
-        .live-meta { margin-left: 0; }
+        .live-body { max-width: 86%; }
         .metric-list { grid-template-columns: 1fr; }
         .tab-button { flex: 1 1 auto; }
       }
@@ -821,6 +829,10 @@
         if (ev.event_type === "final_response" && model.sawFinal) return "two final responses";
         return null;
       }
+      function settle(model, key, state) {
+        const row = model.rows.find((candidate) => candidate.key === key);
+        if (row) row.state = state;
+      }
       function setRow(model, row) {
         const existing = model.rows.find((candidate) => candidate.key === row.key);
         if (existing) { Object.assign(existing, row); return existing; }
@@ -840,7 +852,7 @@
           case "planner_started":
             model.planner.push({ decision, remainingMs: data.remaining_budget_ms, durationMs: null, action: null, capability: null });
             setRow(model, { key: "planner-" + decision, kind: "planner", state: "active", identity: "charlie",
-              text: model.executions.length === 0 ? "Charlie is evaluating your request" : "Charlie is reviewing the results so far",
+              text: model.executions.length === 0 ? "Let me think about what this needs first…" : "Let me look at what we have so far…",
               detail: ["Decision " + decision, "Time remaining " + seconds(data.remaining_budget_ms)], durationMs: null, sequence: ev.sequence });
             break;
           case "planner_completed": {
@@ -848,56 +860,59 @@
             if (entry) Object.assign(entry, { durationMs: data.duration_ms, action: data.action, capability: data.capability });
             const row = model.rows.find((candidate) => candidate.key === "planner-" + decision);
             setRow(model, { key: "planner-" + decision, kind: "planner", state: "done", identity: "charlie",
-              text: data.action === "delegate" ? "Charlie chose " + cap : "Charlie recommended finishing",
+              text: data.action === "delegate" ? "Next up: " + lower(cap) + "." : "I think we have enough to finish.",
               detail: [].concat(row ? row.detail : [], data.rationale ? ["Planner rationale: " + data.rationale] : [],
                 data.model_alias ? ["Planner model: " + data.model_alias] : []), durationMs: data.duration_ms, sequence: ev.sequence });
             break; }
           case "planner_failed":
             setRow(model, { key: "planner-" + decision, kind: "planner", state: "failed", identity: "charlie",
-              text: "Charlie's planning did not complete", detail: ["Reason: " + String(data.error_code).replace(/_/g, " ")],
+              text: "Sorry, I couldn't decide on the next step.", detail: ["Reason: " + String(data.error_code).replace(/_/g, " ")],
               durationMs: data.duration_ms, sequence: ev.sequence });
             break;
           case "delegation_requested":
             setRow(model, { key: "deleg-" + decision, kind: "delegation", state: "active", identity: "charlie",
-              text: "Charlie asked " + nameOf(data.target_identity) + " to take on " + cap, detail: [], durationMs: null, sequence: ev.sequence });
+              text: "Let's get " + lower(cap) + " going. " + nameOf(data.target_identity) + ", can you please take it?", detail: [], durationMs: null, sequence: ev.sequence });
             break;
           case "delegation_authorized":
-            setRow(model, { key: "deleg-" + decision, kind: "delegation", state: "done", identity: "charlie",
-              text: "Charlie delegated " + cap + " to " + nameOf(data.target_identity),
+            settle(model, "deleg-" + decision, "done");
+            setRow(model, { key: "auth-" + decision, kind: "note", state: "done", identity: "application",
+              text: "Approved. " + nameOf(data.target_identity) + " may take on " + lower(cap) + ".",
               detail: ["Authorized by the application", cap + " result version " + data.result_version, "Execution " + execution],
               durationMs: null, sequence: ev.sequence });
             break;
           case "delegation_rejected": {
             const why = labelFor(rejectionText, data.rejection_code);
             model.rejections.push({ decision, capability: data.capability, code: data.rejection_code, sequence: ev.sequence });
-            setRow(model, { key: "deleg-" + decision, kind: "rejection", state: "rejected", identity: "application",
-              text: data.capability ? "The application declined " + cap : "The application declined to finish yet",
+            settle(model, "deleg-" + decision, "done");
+            setRow(model, { key: "rej-" + decision, kind: "rejection", state: "rejected", identity: "application",
+              text: data.capability ? "The application declined " + lower(cap) + " for now." : "The application declined to finish yet.",
               detail: ["Why: " + why], durationMs: null, sequence: ev.sequence });
             break; }
           case "agent_started":
             setRow(model, { key: "exec-" + execution, kind: "agent", state: "active", identity: ev.source.identity_id,
-              text: who + " is working on " + cap, detail: [cap + " result version " + data.result_version, "Service " + data.service],
+              text: "Yes, I'm on it. Working on " + lower(cap) + " now.", detail: [cap + " result version " + data.result_version, "Service " + data.service],
               durationMs: null, sequence: ev.sequence });
             break;
           case "agent_completed": {
-            const row = model.rows.find((candidate) => candidate.key === "exec-" + execution);
-            setRow(model, { key: "exec-" + execution, kind: "agent", state: "done", identity: ev.source.identity_id,
-              text: who + " completed " + cap + " (v" + data.result_version + ")",
-              detail: [].concat(row ? row.detail : [], data.model_alias ? ["Model reported by the service: " + data.model_alias] : []),
+            settle(model, "exec-" + execution, "done");
+            setRow(model, { key: "done-" + execution, kind: "agent", state: "done", identity: ev.source.identity_id,
+              text: "Done: " + lower(cap) + " is finished (v" + data.result_version + ").",
+              detail: [cap + " result version " + data.result_version].concat(data.model_alias ? ["Model reported by the service: " + data.model_alias] : []),
               durationMs: data.duration_ms, sequence: ev.sequence });
             model.executions.push({ execution, decision, identity: ev.source.identity_id, capability: data.capability,
               version: data.result_version, durationMs: data.duration_ms, failed: false, modelAlias: data.model_alias || null, sequence: ev.sequence });
             break; }
           case "agent_failed":
-            setRow(model, { key: "exec-" + execution, kind: "agent", state: "failed", identity: ev.source.identity_id,
-              text: who + " could not complete " + cap, detail: ["Reason: " + String(data.error_code).replace(/_/g, " ")],
+            settle(model, "exec-" + execution, "done");
+            setRow(model, { key: "fail-" + execution, kind: "agent", state: "failed", identity: ev.source.identity_id,
+              text: "I couldn't complete " + lower(cap) + ".", detail: ["Reason: " + String(data.error_code).replace(/_/g, " ")],
               durationMs: data.duration_ms, sequence: ev.sequence });
             model.executions.push({ execution, decision, identity: ev.source.identity_id, capability: data.capability,
               version: null, durationMs: data.duration_ms, failed: true, modelAlias: null, sequence: ev.sequence });
             break;
           case "dependency_recorded": {
             const used = data.dependencies.map((dep) => capLabel(dep.capability) + " v" + dep.result_version + " (" + dep.dependency_type + ")");
-            const row = model.rows.find((candidate) => candidate.key === "exec-" + execution);
+            const row = model.rows.find((candidate) => candidate.key === "done-" + execution);
             if (row) row.detail = row.detail.concat(["Used: " + used.join(", ")]);
             model.dependencies.push({ execution, consumer: data.consumer, dependencies: data.dependencies });
             break; }
@@ -939,6 +954,15 @@
         }
         return el("span", "live-portrait live-system", "VB");
       }
+      // Charlie speaks from the left, the specialist he addressed answers from the right, and
+      // the application's own decisions sit in the middle.
+      function sideOf(identityId) {
+        return identityId === "charlie" ? "left" : identityId === "application" ? "center" : "right";
+      }
+      function speakerName(identityId) {
+        return identityId === "application" ? "ViharBot" : nameOf(identityId);
+      }
+      function lower(text) { return String(text).toLowerCase(); }
       function stateGlyph(state) {
         return state === "active" ? "●" : state === "done" ? "✓" : state === "note" ? "↻" : "✗";
       }
@@ -946,6 +970,7 @@
         const item = el("li", "live-row");
         item.append(portraitNode(row.identity));
         const body = el("div", "live-body");
+        body.append(el("span", "live-name"));
         body.append(el("span", "live-glyph"));
         body.append(el("span", "live-text"));
         body.append(el("span", "live-meta"));
@@ -956,11 +981,13 @@
       function updateRow(item, row) {
         item.className = "live-row state-" + row.state + " kind-" + row.kind;
         const body = item.children[1];
-        body.children[0].textContent = stateGlyph(row.state);
-        body.children[0].setAttribute("aria-hidden", "true");
-        body.children[1].textContent = row.text;
-        body.children[2].textContent = row.durationMs === null || row.durationMs === undefined ? "" : seconds(row.durationMs);
-        while (body.children.length > 3) body.children[3].remove();
+        item.className += " side-" + sideOf(row.identity);
+        body.children[0].textContent = speakerName(row.identity);
+        body.children[1].textContent = stateGlyph(row.state);
+        body.children[1].setAttribute("aria-hidden", "true");
+        body.children[2].textContent = row.text;
+        body.children[3].textContent = row.durationMs === null || row.durationMs === undefined ? "" : seconds(row.durationMs);
+        while (body.children.length > 4) body.children[4].remove();
         if (row.detail && row.detail.length) {
           const details = document.createElement("details");
           details.className = "live-detail";
@@ -999,7 +1026,7 @@
         panel.append(head);
         const rows = createRowList("What the team is doing");
         panel.append(rows.node);
-        panel.append(el("p", "live-note", "Each line appears when the application records it. Agents never talk to each other directly; every handoff goes through the application."));
+        panel.append(el("p", "live-note", "Each line is written by the app the moment it records a real event, so the wording is templated, not generated by the agents' models. Agents never talk to each other directly; every handoff goes through the application."));
         return {
           node: panel,
           update(model) { rows.sync(model.rows); conversation.scrollTop = conversation.scrollHeight; },
