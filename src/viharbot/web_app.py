@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 
 from .demo import AgentPipelineError, run_pipeline
 from .agentcore_runtime import add_agentcore_routes
+from .delegated_execution import delegation_enabled, run_delegated_pipeline
 from .identity_execution import identity_routing_enabled, run_identity_pipeline
 from .observability import configure_logging, get_request_id
 from .schemas import (
@@ -169,7 +170,12 @@ def chat(
                 ),
             },
         )
-        if identity_routing_enabled():
+        if delegation_enabled():
+            # Charlie recommends one of two predefined workflows; application policy authorizes it.
+            pipeline_result = run_delegated_pipeline(
+                *pipeline_args, **pipeline_urls
+            ).to_legacy_dict()
+        elif identity_routing_enabled():
             # The workflow is fixed server-side; it is never chosen by the request.
             pipeline_result = run_identity_pipeline(
                 *pipeline_args, workflow="full_review", **pipeline_urls

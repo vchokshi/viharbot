@@ -104,8 +104,30 @@ def run_identity_pipeline(
     urls = {key: url for key, url in (specialist_urls or {}).items() if url}
     available = {"research", "security", *(key.replace("_", "-") for key in urls)}
     plan = plan_workflow(workflow, bindings, registry, available)
-    validate_dispatchable(plan)
+    return execute_plan(
+        plan,
+        question,
+        request_id,
+        research_url=research_url,
+        security_url=security_url,
+        specialist_urls=urls,
+        send=send,
+    )
 
+
+def execute_plan(
+    plan: ExecutionPlan,
+    question: str,
+    request_id: str,
+    *,
+    research_url: str,
+    security_url: str,
+    specialist_urls: dict[str, str] | None = None,
+    send: Callable[[str, dict, str, str], dict] | None = None,
+) -> IdentityPipelineResult:
+    """Run an already validated plan on the existing typed pipeline."""
+    validate_dispatchable(plan)
+    urls = {key: url for key, url in (specialist_urls or {}).items() if url}
     planned = set(plan.services)
     planned_urls = {key: url for key, url in urls.items() if key.replace("_", "-") in planned}
     try:
