@@ -195,7 +195,7 @@ def test_prompts_do_not_overclaim():
     registry = load_registry()
     assert "cannot execute commands or modify anything" in registry.get("orbit").system_prompt
     assert "cannot currently see, generate or edit images" in registry.get("pixel").system_prompt
-    assert "do not currently coordinate other agents" in registry.get("charlie").system_prompt
+    assert "do not execute anything yourself" in registry.get("charlie").system_prompt.lower()
     assert "do not scan, probe, exploit or access any system" in registry.get("cipher").system_prompt.lower()
     for identity in registry.list():
         assert "no tools beyond the text you are given" in identity.system_prompt

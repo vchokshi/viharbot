@@ -126,6 +126,46 @@ def run_pipeline(
     ).to_legacy_dict()
 
 
+def invoke_agent(
+    send: Callable[[str, dict, str, str], dict],
+    url: str,
+    payload: dict,
+    request_id: str,
+    destination: str,
+    activity: list[AgentActivity],
+) -> tuple[AgentResponse, BaseModel]:
+    """Call one service, validate its response and record the activity.
+
+    This is the smallest unit of pipeline execution: one capability, one validated response.
+    """
+    started = time.perf_counter()
+    try:
+        envelope, domain = validate_agent_response(
+            destination, send(url, payload, request_id, destination), request_id
+        )
+    except Exception as exc:
+        activity.append(
+            AgentActivity(
+                agent=destination,
+                display_name=AGENT_LABELS.get(destination, destination),
+                duration_ms=round((time.perf_counter() - started) * 1000, 2),
+                status="failed",
+                error=type(exc).__name__,
+            )
+        )
+        raise AgentPipelineError([item.to_legacy() for item in activity]) from None
+    activity.append(
+        AgentActivity(
+            agent=destination,
+            display_name=AGENT_LABELS.get(destination, destination),
+            model_alias=envelope.requested_model_alias,
+            duration_ms=round((time.perf_counter() - started) * 1000, 2),
+            status="complete",
+        )
+    )
+    return envelope, domain
+
+
 def run_typed_pipeline(
     question: str,
     request_id: str,
@@ -140,32 +180,7 @@ def run_typed_pipeline(
     def invoke(
         url: str, payload: dict, destination: str
     ) -> tuple[AgentResponse, BaseModel]:
-        started = time.perf_counter()
-        try:
-            envelope, domain = validate_agent_response(
-                destination, send(url, payload, request_id, destination), request_id
-            )
-        except Exception as exc:
-            activity.append(
-                AgentActivity(
-                    agent=destination,
-                    display_name=AGENT_LABELS.get(destination, destination),
-                    duration_ms=round((time.perf_counter() - started) * 1000, 2),
-                    status="failed",
-                    error=type(exc).__name__,
-                )
-            )
-            raise AgentPipelineError([item.to_legacy() for item in activity]) from None
-        activity.append(
-            AgentActivity(
-                agent=destination,
-                display_name=AGENT_LABELS.get(destination, destination),
-                model_alias=envelope.requested_model_alias,
-                duration_ms=round((time.perf_counter() - started) * 1000, 2),
-                status="complete",
-            )
-        )
-        return envelope, domain
+        return invoke_agent(send, url, payload, request_id, destination, activity)
 
     research, findings = invoke(research_url, {"question": question}, "research")
     responses: dict[str, AgentResponse] = {"research": research}

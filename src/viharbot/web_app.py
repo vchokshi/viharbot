@@ -20,6 +20,7 @@ from .demo import AgentPipelineError, run_pipeline
 from .agentcore_runtime import add_agentcore_routes
 from .delegated_execution import delegation_enabled, run_delegated_pipeline
 from .identity_execution import identity_routing_enabled, run_identity_pipeline
+from .iterative_execution import iterative_orchestration_enabled, run_iterative_pipeline
 from .observability import configure_logging, get_request_id
 from .schemas import (
     FactCheckReview,
@@ -170,7 +171,12 @@ def chat(
                 ),
             },
         )
-        if delegation_enabled():
+        if iterative_orchestration_enabled():
+            # Charlie recommends one step at a time; application policy authorizes each one.
+            pipeline_result = run_iterative_pipeline(
+                *pipeline_args, **pipeline_urls
+            ).to_legacy_dict()
+        elif delegation_enabled():
             # Charlie recommends one of two predefined workflows; application policy authorizes it.
             pipeline_result = run_delegated_pipeline(
                 *pipeline_args, **pipeline_urls
