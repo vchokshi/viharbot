@@ -122,10 +122,29 @@ def home(_: None = Depends(require_web_access)) -> FileResponse:
     return FileResponse(static_dir / "index.html", media_type="text/html")
 
 
-@app.get("/images/charlie-chatwin.png", include_in_schema=False)
-def welcome_image(_: None = Depends(require_web_access)) -> FileResponse:
+TEAM_IMAGES = {
+    "charlie-chatwin.png",
+    "Charlie_Chatwin_headshot.png",
+    "Nova_headshot.png",
+    "Atlas_headshot.png",
+    "Pixel_headshot.png",
+    "Sage_headshot.png",
+    "Cipher_headshot.png",
+    "Scout_headshot.png",
+    "Orbit_headshot.png",
+    "AI Robot Team Portrait Grid.png",
+}
+
+
+@app.get("/images/{image_name}", include_in_schema=False)
+def team_image(
+    image_name: str,
+    _: None = Depends(require_web_access),
+) -> FileResponse:
+    if image_name not in TEAM_IMAGES:
+        raise HTTPException(status_code=404, detail="Image not found")
     images_dir = Path(os.getenv("WEB_IMAGES_DIR", "/app/images"))
-    return FileResponse(images_dir / "charlie-chatwin.png", media_type="image/png")
+    return FileResponse(images_dir / image_name, media_type="image/png")
 
 
 def make_contextual_question(body: ChatRequest) -> str:
