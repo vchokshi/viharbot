@@ -436,13 +436,12 @@ def test_iterative_mode_defaults_off_and_requires_delegation_and_routing(
 
 
 def test_flags_are_not_enabled_in_shipped_configuration():
-    from pathlib import Path
+    from shipped_config_helpers import ROOT, assert_flag_shipped_off
 
-    root = Path(__file__).resolve().parent.parent
+    assert_flag_shipped_off(ITERATIVE_FLAG)
     for name in (".env.example", "compose.yaml", "deploy/digitalocean/app.yaml"):
-        path = root / name
+        path = ROOT / name
         if path.exists():
-            assert ITERATIVE_FLAG not in path.read_text(), name
             assert "VIHARBOT_ORCH_" not in path.read_text(), name
 
 

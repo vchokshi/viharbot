@@ -11,11 +11,15 @@ WORKDIR /app
 COPY --from=build /install /usr/local
 COPY --from=build /build/src/viharbot/static /app/static
 COPY images /app/images
+# The coordinator's planner calls the HTTPS LiteLLM gateway, like the agent images do.
+COPY certs/cloudflare-gateway-ca.crt /usr/local/share/ca-certificates/cloudflare-gateway-ca.crt
+RUN update-ca-certificates
 
 RUN addgroup --system --gid 1001 appgroup \
     && adduser --system --uid 1001 --ingroup appgroup appuser
 
 ENV PYTHONUNBUFFERED=1
+ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 ENV WEB_STATIC_DIR=/app/static
 ENV WEB_IMAGES_DIR=/app/images
 EXPOSE 8080

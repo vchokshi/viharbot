@@ -192,7 +192,7 @@ The final evaluation never exceeds the decision budget or the deadline, and no c
 
 ## Feature flags
 
-`VIHARBOT_ITERATIVE_ORCHESTRATION_ENABLED` (default false) also requires `VIHARBOT_DELEGATION_ENABLED` and `VIHARBOT_IDENTITY_ROUTING_ENABLED`. If either is off, iterative mode stays inactive and the Phase 5, Phase 3 or legacy path runs. `CHARLIE_PLANNER_MODEL` and `VIHARBOT_PLANNER_TIMEOUT_SECONDS` are reused. Personality-aware inference stays on its own flags. None of these is set in `compose.yaml`, `.env.example` or the DigitalOcean spec. As in Phase 5, the **web service needs LiteLLM credentials** for planning, and Phase 6 changes no deployment configuration.
+`VIHARBOT_ITERATIVE_ORCHESTRATION_ENABLED` (default false) also requires `VIHARBOT_DELEGATION_ENABLED` and `VIHARBOT_IDENTITY_ROUTING_ENABLED`. If either is off, iterative mode stays inactive and the Phase 5, Phase 3 or legacy path runs. `CHARLIE_PLANNER_MODEL` and `VIHARBOT_PLANNER_TIMEOUT_SECONDS` are reused. Personality-aware inference stays on its own flags. Local Compose passes the three flags to the web service (default `false`) and `CHARLIE_PLANNER_MODEL` (default empty, so planning stays unavailable until you set an alias on purpose). None of these is set in the DigitalOcean spec. As in Phase 5, the **web service needs LiteLLM credentials** for planning; Compose gives it a key only when you opt in with `WEB_LITELLM_API_KEY` (see Local Dev testing).
 
 ## Public API and the `orchestration` object
 
@@ -237,9 +237,22 @@ The existing page renders the response with DOM nodes and `textContent` only; it
 
 ## Local Dev testing
 
-This phase deploys nothing. To see iterative mode locally you need what Phase 5 and 6 already require: identity routing, delegation and iterative orchestration enabled (`VIHARBOT_IDENTITY_ROUTING_ENABLED`, `VIHARBOT_DELEGATION_ENABLED`, `VIHARBOT_ITERATIVE_ORCHESTRATION_ENABLED` set to `true`), plus `LITELLM_BASE_URL`, `LITELLM_API_KEY` and `CHARLIE_PLANNER_MODEL` on the **web** service. `compose.yaml` does not pass these to web, so for a local run add them to the web service in your own uncommitted compose override, then open the page, ask a question and compare the panel with the server logs (`action_status` lines carry the same decisions and steps). With the flags off the page behaves as before and shows no coordination panel.
+Nothing here deploys anything. With Docker Compose the web container gets the three flags (all `false` by default), `CHARLIE_PLANNER_MODEL` (empty by default), `LITELLM_BASE_URL` (the same default as the agents) and, **only if you opt in**, a LiteLLM key through `WEB_LITELLM_API_KEY`. By default the browser-facing container holds no key, even if `LITELLM_API_KEY` is set in your shell for the agents. The web image also installs the Cloudflare gateway CA, as the agent images do, so its HTTPS calls to LiteLLM verify.
 
-Automated checks need no network or credentials: `pytest -q` runs the API tests, and the UI tests run the page's real script against a small fake DOM in Node (`tests/js/`). They are skipped when Node is not installed, for example in `Dockerfile.tests`.
+1. Pick a planner alias that exists in your LiteLLM (check `GET /v1/models`). It is never inferred from another alias.
+2. Start the stack with iterative mode on. The key is passed for this run only and is never written to a file:
+
+   ```
+   VIHARBOT_IDENTITY_ROUTING_ENABLED=true VIHARBOT_DELEGATION_ENABLED=true \
+   VIHARBOT_ITERATIVE_ORCHESTRATION_ENABLED=true CHARLIE_PLANNER_MODEL=<your alias> \
+   WEB_LITELLM_API_KEY="$LITELLM_API_KEY" docker compose up -d --build
+   ```
+3. Open `http://127.0.0.1:8080/`, ask a question, and compare the coordination panel with the server logs (`docker compose logs web`): the `action_status` lines carry the same decisions, steps, timings and completion reason, and the request ID appears in the web log and in each service that ran.
+4. Without the flags the page behaves as before and shows no coordination panel. With the flags on and no alias, a request returns the generic 502 before any model call.
+
+A live iterative request makes one planner call per decision (up to 8) plus one call per delegated run (up to 6), and uses your LiteLLM quota.
+
+Automated checks need no network or credentials: `pytest -q` runs the API tests, and the UI tests run the page's real script against a small fake DOM in Node (`tests/js/`). They are skipped when Node is not installed, for example in `Dockerfile.tests` (`docker compose --profile tests run --build --rm tests`). The fake DOM is not a real browser, so check layout in one yourself.
 
 ## Observability
 
