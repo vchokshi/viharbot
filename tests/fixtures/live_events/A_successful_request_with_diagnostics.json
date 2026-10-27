@@ -1,0 +1,505 @@
+{
+ "scenario": "A_successful_request_with_diagnostics",
+ "description": "The same run with VIHARBOT_DEV_DIAGNOSTICS_ENABLED=true: adds the bounded planner rationale and the model aliases the services reported.",
+ "events": [
+  {
+   "schema_version": "1.0",
+   "event_id": "evt-000001",
+   "request_id": "req-123",
+   "sequence": 1,
+   "timestamp": "2026-10-27T19:00:00.000Z",
+   "source": {
+    "identity_id": "charlie",
+    "display_name": "Charlie Chatwin",
+    "role": "orchestrator"
+   },
+   "correlation": {
+    "decision_number": 1,
+    "execution_id": null,
+    "parent_event_id": null
+   },
+   "event_type": "planner_started",
+   "data": {
+    "status": "running",
+    "remaining_budget_ms": 119999
+   }
+  },
+  {
+   "schema_version": "1.0",
+   "event_id": "evt-000002",
+   "request_id": "req-123",
+   "sequence": 2,
+   "timestamp": "2026-10-27T19:00:00.250Z",
+   "source": {
+    "identity_id": "charlie",
+    "display_name": "Charlie Chatwin",
+    "role": "orchestrator"
+   },
+   "correlation": {
+    "decision_number": 1,
+    "execution_id": null,
+    "parent_event_id": "evt-000001"
+   },
+   "event_type": "planner_completed",
+   "data": {
+    "status": "completed",
+    "duration_ms": 1322.0,
+    "action": "delegate",
+    "capability": "research",
+    "rationale": "Research is required before security analysis."
+   }
+  },
+  {
+   "schema_version": "1.0",
+   "event_id": "evt-000003",
+   "request_id": "req-123",
+   "sequence": 3,
+   "timestamp": "2026-10-27T19:00:00.500Z",
+   "source": {
+    "identity_id": "charlie",
+    "display_name": "Charlie Chatwin",
+    "role": "orchestrator"
+   },
+   "correlation": {
+    "decision_number": 1,
+    "execution_id": null,
+    "parent_event_id": "evt-000002"
+   },
+   "event_type": "delegation_requested",
+   "data": {
+    "status": "requested",
+    "capability": "research",
+    "target_identity": "nova"
+   }
+  },
+  {
+   "schema_version": "1.0",
+   "event_id": "evt-000004",
+   "request_id": "req-123",
+   "sequence": 4,
+   "timestamp": "2026-10-27T19:00:00.750Z",
+   "source": {
+    "identity_id": "application",
+    "display_name": "ViharBot",
+    "role": "application"
+   },
+   "correlation": {
+    "decision_number": 1,
+    "execution_id": "exec-1",
+    "parent_event_id": "evt-000003"
+   },
+   "event_type": "delegation_authorized",
+   "data": {
+    "status": "authorized",
+    "capability": "research",
+    "target_identity": "nova",
+    "service": "research",
+    "result_version": 1
+   }
+  },
+  {
+   "schema_version": "1.0",
+   "event_id": "evt-000005",
+   "request_id": "req-123",
+   "sequence": 5,
+   "timestamp": "2026-10-27T19:00:01.000Z",
+   "source": {
+    "identity_id": "nova",
+    "display_name": "Nova",
+    "role": "specialist"
+   },
+   "correlation": {
+    "decision_number": 1,
+    "execution_id": "exec-1",
+    "parent_event_id": "evt-000004"
+   },
+   "event_type": "agent_started",
+   "data": {
+    "status": "running",
+    "capability": "research",
+    "service": "research",
+    "result_version": 1
+   }
+  },
+  {
+   "schema_version": "1.0",
+   "event_id": "evt-000006",
+   "request_id": "req-123",
+   "sequence": 6,
+   "timestamp": "2026-10-27T19:00:01.250Z",
+   "source": {
+    "identity_id": "nova",
+    "display_name": "Nova",
+    "role": "specialist"
+   },
+   "correlation": {
+    "decision_number": 1,
+    "execution_id": "exec-1",
+    "parent_event_id": "evt-000005"
+   },
+   "event_type": "agent_completed",
+   "data": {
+    "status": "completed",
+    "capability": "research",
+    "result_version": 1,
+    "duration_ms": 2166.0,
+    "validated": true,
+    "model_alias": "m-r"
+   }
+  },
+  {
+   "schema_version": "1.0",
+   "event_id": "evt-000007",
+   "request_id": "req-123",
+   "sequence": 7,
+   "timestamp": "2026-10-27T19:00:01.500Z",
+   "source": {
+    "identity_id": "charlie",
+    "display_name": "Charlie Chatwin",
+    "role": "orchestrator"
+   },
+   "correlation": {
+    "decision_number": 2,
+    "execution_id": null,
+    "parent_event_id": null
+   },
+   "event_type": "planner_started",
+   "data": {
+    "status": "running",
+    "remaining_budget_ms": 119999
+   }
+  },
+  {
+   "schema_version": "1.0",
+   "event_id": "evt-000008",
+   "request_id": "req-123",
+   "sequence": 8,
+   "timestamp": "2026-10-27T19:00:01.750Z",
+   "source": {
+    "identity_id": "charlie",
+    "display_name": "Charlie Chatwin",
+    "role": "orchestrator"
+   },
+   "correlation": {
+    "decision_number": 2,
+    "execution_id": null,
+    "parent_event_id": "evt-000007"
+   },
+   "event_type": "planner_completed",
+   "data": {
+    "status": "completed",
+    "duration_ms": 2588.0,
+    "action": "delegate",
+    "capability": "security_assessment",
+    "rationale": "Assess the risks in the research."
+   }
+  },
+  {
+   "schema_version": "1.0",
+   "event_id": "evt-000009",
+   "request_id": "req-123",
+   "sequence": 9,
+   "timestamp": "2026-10-27T19:00:02.000Z",
+   "source": {
+    "identity_id": "charlie",
+    "display_name": "Charlie Chatwin",
+    "role": "orchestrator"
+   },
+   "correlation": {
+    "decision_number": 2,
+    "execution_id": null,
+    "parent_event_id": "evt-000008"
+   },
+   "event_type": "delegation_requested",
+   "data": {
+    "status": "requested",
+    "capability": "security_assessment",
+    "target_identity": "cipher"
+   }
+  },
+  {
+   "schema_version": "1.0",
+   "event_id": "evt-000010",
+   "request_id": "req-123",
+   "sequence": 10,
+   "timestamp": "2026-10-27T19:00:02.250Z",
+   "source": {
+    "identity_id": "application",
+    "display_name": "ViharBot",
+    "role": "application"
+   },
+   "correlation": {
+    "decision_number": 2,
+    "execution_id": "exec-2",
+    "parent_event_id": "evt-000009"
+   },
+   "event_type": "delegation_authorized",
+   "data": {
+    "status": "authorized",
+    "capability": "security_assessment",
+    "target_identity": "cipher",
+    "service": "security",
+    "result_version": 1
+   }
+  },
+  {
+   "schema_version": "1.0",
+   "event_id": "evt-000011",
+   "request_id": "req-123",
+   "sequence": 11,
+   "timestamp": "2026-10-27T19:00:02.500Z",
+   "source": {
+    "identity_id": "cipher",
+    "display_name": "Cipher",
+    "role": "specialist"
+   },
+   "correlation": {
+    "decision_number": 2,
+    "execution_id": "exec-2",
+    "parent_event_id": "evt-000010"
+   },
+   "event_type": "agent_started",
+   "data": {
+    "status": "running",
+    "capability": "security_assessment",
+    "service": "security",
+    "result_version": 1
+   }
+  },
+  {
+   "schema_version": "1.0",
+   "event_id": "evt-000012",
+   "request_id": "req-123",
+   "sequence": 12,
+   "timestamp": "2026-10-27T19:00:02.750Z",
+   "source": {
+    "identity_id": "cipher",
+    "display_name": "Cipher",
+    "role": "specialist"
+   },
+   "correlation": {
+    "decision_number": 2,
+    "execution_id": "exec-2",
+    "parent_event_id": "evt-000011"
+   },
+   "event_type": "agent_completed",
+   "data": {
+    "status": "completed",
+    "capability": "security_assessment",
+    "result_version": 1,
+    "duration_ms": 3432.0,
+    "validated": true,
+    "model_alias": "m-sec"
+   }
+  },
+  {
+   "schema_version": "1.0",
+   "event_id": "evt-000013",
+   "request_id": "req-123",
+   "sequence": 13,
+   "timestamp": "2026-10-27T19:00:03.000Z",
+   "source": {
+    "identity_id": "cipher",
+    "display_name": "Cipher",
+    "role": "specialist"
+   },
+   "correlation": {
+    "decision_number": 2,
+    "execution_id": "exec-2",
+    "parent_event_id": "evt-000012"
+   },
+   "event_type": "dependency_recorded",
+   "data": {
+    "consumer": {
+     "identity_id": "cipher",
+     "capability": "security_assessment",
+     "result_version": 1
+    },
+    "dependencies": [
+     {
+      "identity_id": "nova",
+      "capability": "research",
+      "result_version": 1,
+      "dependency_type": "required"
+     }
+    ]
+   }
+  },
+  {
+   "schema_version": "1.0",
+   "event_id": "evt-000014",
+   "request_id": "req-123",
+   "sequence": 14,
+   "timestamp": "2026-10-27T19:00:03.250Z",
+   "source": {
+    "identity_id": "charlie",
+    "display_name": "Charlie Chatwin",
+    "role": "orchestrator"
+   },
+   "correlation": {
+    "decision_number": 3,
+    "execution_id": null,
+    "parent_event_id": null
+   },
+   "event_type": "planner_started",
+   "data": {
+    "status": "running",
+    "remaining_budget_ms": 119999
+   }
+  },
+  {
+   "schema_version": "1.0",
+   "event_id": "evt-000015",
+   "request_id": "req-123",
+   "sequence": 15,
+   "timestamp": "2026-10-27T19:00:03.500Z",
+   "source": {
+    "identity_id": "charlie",
+    "display_name": "Charlie Chatwin",
+    "role": "orchestrator"
+   },
+   "correlation": {
+    "decision_number": 3,
+    "execution_id": null,
+    "parent_event_id": "evt-000014"
+   },
+   "event_type": "planner_completed",
+   "data": {
+    "status": "completed",
+    "duration_ms": 4065.0,
+    "action": "finish",
+    "capability": null,
+    "rationale": "The evidence is sufficient."
+   }
+  },
+  {
+   "schema_version": "1.0",
+   "event_id": "evt-000016",
+   "request_id": "req-123",
+   "sequence": 16,
+   "timestamp": "2026-10-27T19:00:03.750Z",
+   "source": {
+    "identity_id": "application",
+    "display_name": "ViharBot",
+    "role": "application"
+   },
+   "correlation": {
+    "decision_number": null,
+    "execution_id": null,
+    "parent_event_id": "evt-000015"
+   },
+   "event_type": "final_response",
+   "data": {
+    "response": {
+     "request_id": "req-123",
+     "findings": {
+      "summary": "research-v1",
+      "findings": [
+       {
+        "claim": "c",
+        "evidence": "e",
+        "confidence": "high"
+       }
+      ],
+      "sources": [
+       "src"
+      ],
+      "uncertainties": [
+       "u"
+      ]
+     },
+     "assessment": {
+      "overall_risk": "low",
+      "implications": [
+       "i"
+      ],
+      "recommendations": [
+       "r"
+      ],
+      "uncertainties": [
+       "u"
+      ]
+     },
+     "fact_check": null,
+     "source_quality": null,
+     "privacy_review": null,
+     "synthesis": null,
+     "agent_activity": [
+      {
+       "agent": "research",
+       "display_name": "Research",
+       "model_alias": "m-r",
+       "duration_ms": 4276.0,
+       "status": "complete"
+      },
+      {
+       "agent": "security",
+       "display_name": "Security",
+       "model_alias": "m-sec",
+       "duration_ms": 4487.0,
+       "status": "complete"
+      }
+     ],
+     "orchestration": {
+      "mode": "iterative",
+      "status": "completed",
+      "completion_kind": "charlie_approved",
+      "completion_reason": "charlie_finished",
+      "decisions": 3,
+      "executions": 2,
+      "rejected_actions": 0,
+      "elapsed_ms": 12400.0,
+      "steps": [
+       {
+        "sequence": 1,
+        "identity": "nova",
+        "capability": "research",
+        "service": "research",
+        "version": 1,
+        "status": "complete",
+        "duration_ms": 4276.0,
+        "in_final_result": true
+       },
+       {
+        "sequence": 2,
+        "identity": "cipher",
+        "capability": "security_assessment",
+        "service": "security",
+        "version": 1,
+        "status": "complete",
+        "duration_ms": 4487.0,
+        "in_final_result": true
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "schema_version": "1.0",
+   "event_id": "evt-000017",
+   "request_id": "req-123",
+   "sequence": 17,
+   "timestamp": "2026-10-27T19:00:04.000Z",
+   "source": {
+    "identity_id": "application",
+    "display_name": "ViharBot",
+    "role": "application"
+   },
+   "correlation": {
+    "decision_number": null,
+    "execution_id": null,
+    "parent_event_id": "evt-000016"
+   },
+   "event_type": "orchestration_completed",
+   "data": {
+    "status": "completed",
+    "completion_kind": "charlie_approved",
+    "completion_reason": "charlie_finished",
+    "decisions": 3,
+    "executions": 2,
+    "elapsed_ms": 13050.0
+   }
+  }
+ ]
+}

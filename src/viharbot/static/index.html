@@ -282,7 +282,7 @@
         <div class="top-right">
           <span class="privacy-label">Thoughtful answers, with room for uncertainty</span>
           <a class="team-link" id="team-link" href="#team"><span aria-hidden="true">✳</span> Meet the team</a>
-          <span class="team-status"><i></i>6 live · 10 in the crew</span>
+          <span class="team-status"><i></i>4 live · 10 in the crew</span>
         </div>
       </header>
 
@@ -290,22 +290,22 @@
         <aside class="sidebar">
           <div class="eyebrow">A thinking companion</div>
           <h1>A little curiosity can go a long way.</h1>
-          <p class="intro">Ten distinct perspectives. Six already work together in every conversation.</p>
+          <p class="intro">Ten distinct perspectives. Four already work together in every conversation.</p>
           <div class="team-heading"><strong>Meet your crew</strong><span>10 teammates</span></div>
           <section class="team-group" aria-label="Agents active in the current chat pipeline">
-            <div class="team-group-title"><span>In the live chat</span><em>6 agents</em></div>
+            <div class="team-group-title"><span>In the live chat</span><em>4 agents</em></div>
             <div class="agent-list">
               <div class="agent"><img class="agent-photo" src="/images/Charlie_Chatwin_headshot.png" alt="" /><span class="agent-copy"><span class="agent-name">Charlie Chatwin <small>Live · synthesis</small></span><span class="agent-desc">Strategic thinking &amp; orchestration</span></span></div>
               <div class="agent"><img class="agent-photo" src="/images/Nova_headshot.png" alt="" /><span class="agent-copy"><span class="agent-name">Nova <small>Live · research</small></span><span class="agent-desc">Research &amp; knowledge</span></span></div>
-              <div class="agent"><img class="agent-photo" src="/images/Atlas_headshot.png" alt="" /><span class="agent-copy"><span class="agent-name">Atlas <small>Live · sources</small></span><span class="agent-desc">Exploration, logistics &amp; source checks</span></span></div>
-              <div class="agent"><img class="agent-photo" src="/images/Scout_headshot.png" alt="" /><span class="agent-copy"><span class="agent-name">Scout <small>Live · fact check</small></span><span class="agent-desc">Data exploration &amp; evidence analysis</span></span></div>
-              <div class="agent"><img class="agent-photo" src="/images/Cipher_headshot.png" alt="" /><span class="agent-copy"><span class="agent-name">Cipher <small>Live · security</small></span><span class="agent-desc">Security &amp; risk analysis</span></span></div>
-              <div class="agent"><img class="agent-photo" src="/images/Sage_headshot.png" alt="" /><span class="agent-copy"><span class="agent-name">Sage <small>Live · privacy</small></span><span class="agent-desc">Perspective &amp; wisdom</span></span></div>
+              <div class="agent"><img class="agent-photo" src="/images/Scout_headshot.png" alt="" /><span class="agent-copy"><span class="agent-name">Scout <small>Live · fact check &amp; sources</small></span><span class="agent-desc">Data exploration &amp; evidence analysis</span></span></div>
+              <div class="agent"><img class="agent-photo" src="/images/Cipher_headshot.png" alt="" /><span class="agent-copy"><span class="agent-name">Cipher <small>Live · security &amp; privacy</small></span><span class="agent-desc">Security &amp; risk analysis</span></span></div>
             </div>
           </section>
           <section class="team-group" aria-label="Supporting team roles">
-            <div class="team-group-title"><span>Supporting the team</span><em>2 roles</em></div>
+            <div class="team-group-title"><span>Supporting the team</span><em>4 roles</em></div>
             <div class="agent-list">
+              <div class="agent"><img class="agent-photo" src="/images/Atlas_headshot.png" alt="" /><span class="agent-copy"><span class="agent-name">Atlas <small>Planned</small></span><span class="agent-desc">Exploration &amp; logistics</span></span></div>
+              <div class="agent"><img class="agent-photo" src="/images/Sage_headshot.png" alt="" /><span class="agent-copy"><span class="agent-name">Sage <small>Planned</small></span><span class="agent-desc">Perspective &amp; wisdom</span></span></div>
               <div class="agent"><img class="agent-photo" src="/images/Pixel_headshot.png" alt="" /><span class="agent-copy"><span class="agent-name">Pixel <small>Creative support</small></span><span class="agent-desc">Creative content &amp; visuals</span></span></div>
               <div class="agent"><img class="agent-photo" src="/images/Orbit_headshot.png" alt="" /><span class="agent-copy"><span class="agent-name">Orbit <small>Platform support</small></span><span class="agent-desc">Automation &amp; operations</span></span></div>
             </div>
@@ -317,7 +317,7 @@
               <div class="agent proposed"><span class="agent-initial" aria-hidden="true">E</span><span class="agent-copy"><span class="agent-name">Echo <small>Proposed</small></span><span class="agent-desc">Intent &amp; clarification</span></span></div>
             </div>
           </section>
-          <div class="sidebar-foot"><strong>Six live agents · one shared LiteLLM server</strong>Calls run in sequence. Beacon and Echo are proposed roles; they are not part of the live chat pipeline.</div>
+          <div class="sidebar-foot"><strong>Four live agents · one shared LiteLLM server</strong>Calls run in sequence. Atlas and Sage are planned and Pixel and Orbit are support roles; none of them run in the live chat. Beacon and Echo are proposed roles.</div>
         </aside>
 
         <main class="chat-panel">
@@ -410,6 +410,59 @@
       </main>
     </div>
 
+    <style id="live-styles">
+      .live-panel { margin: 12px 0; padding: 14px 16px; border: 1px solid #d9dee7; border-radius: 12px; background: #fff; }
+      .live-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; letter-spacing: .06em; }
+      .live-status { color: #2f6f4f; font-weight: 600; }
+      .live-status.failed { color: #9b2c2c; }
+      .live-status.interrupted { color: #8a5a00; }
+      .live-panel.frozen .live-glyph { animation: none; }
+      .live-list, .interaction-chain { list-style: none; margin: 10px 0 0; padding: 0; }
+      .live-row { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; border-top: 1px solid #eef0f4; }
+      .live-row:first-child { border-top: 0; }
+      .live-portrait { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex: none; }
+      .live-system { display: inline-flex; align-items: center; justify-content: center; background: #e6e9ef; font-size: 10px; font-weight: 700; }
+      .live-body { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; min-width: 0; flex: 1; }
+      .live-text { overflow-wrap: anywhere; }
+      .live-meta { color: #667085; font-size: 12px; margin-left: auto; }
+      .live-detail { flex-basis: 100%; font-size: 12px; color: #475467; }
+      .live-detail summary { cursor: pointer; }
+      .live-detail p { margin: 2px 0; overflow-wrap: anywhere; }
+      .state-active .live-glyph { color: #2f6f4f; animation: live-pulse 1.4s ease-in-out infinite; }
+      .state-done .live-glyph { color: #2f6f4f; }
+      .state-failed .live-glyph, .state-rejected .live-glyph { color: #9b2c2c; }
+      .state-note .live-glyph { color: #8a5a00; }
+      .live-note, .view-note { font-size: 12px; color: #667085; margin: 8px 0 0; }
+      @keyframes live-pulse { 50% { opacity: .35; } }
+      @media (prefers-reduced-motion: reduce) { .state-active .live-glyph { animation: none; } }
+      .live-tabs { margin-top: 14px; border-top: 1px solid #eef0f4; padding-top: 10px; }
+      .tab-list { display: flex; flex-wrap: wrap; gap: 4px; }
+      .tab-button { border: 1px solid #d9dee7; background: #f6f7f9; border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 13px; cursor: pointer; }
+      .tab-button.selected { background: #fff; border-color: #475467; font-weight: 600; }
+      .tab-panel { padding-top: 8px; }
+      .interaction-chain .chain-node { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+      .chain-edge { margin-left: 10px; padding-left: 14px; border-left: 2px solid #d9dee7; font-size: 13px; }
+      .chain-edge.failed, .chain-edge.rejected { border-left-color: #9b2c2c; }
+      .chain-edge.note { border-left-color: #8a5a00; }
+      .chain-arrow { margin-right: 6px; color: #667085; }
+      .chain-final-mark { color: #2f6f4f; font-weight: 700; }
+      .metric-list { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 8px 0; font-size: 13px; }
+      .metric-list dt { color: #667085; }
+      .metric-list dd { margin: 0; overflow-wrap: anywhere; }
+      .metric-table-wrap, .md-table-wrap { overflow-x: auto; max-width: 100%; }
+      .metric-table, .md-table { border-collapse: collapse; font-size: 12px; margin-bottom: 8px; }
+      .metric-table th, .metric-table td, .md-table th, .md-table td { border: 1px solid #d9dee7; padding: 4px 8px; text-align: left; }
+      .answer.markdown p { margin: 0 0 .7em; }
+      .md-code { overflow-x: auto; background: #f6f7f9; padding: 10px; border-radius: 8px; }
+      .answer.markdown code { font-family: ui-monospace, Menlo, monospace; font-size: .92em; }
+      .answer.markdown blockquote { margin: 0 0 .7em; padding-left: 12px; border-left: 3px solid #d9dee7; color: #475467; }
+      @media (max-width: 640px) {
+        .live-panel { padding: 12px; }
+        .live-meta { margin-left: 0; }
+        .metric-list { grid-template-columns: 1fr; }
+        .tab-button { flex: 1 1 auto; }
+      }
+    </style>
     <style id="orchestration-styles">
       .answer-source { margin: -4px 0 14px; color: #8f8e84; font-size: 10px; line-height: 1.5; }
       .orchestration-panel { margin-top: 21px; padding: 15px 15px 12px; border: 1px solid #e3e0f1; border-radius: 17px; background: linear-gradient(135deg, #faf8ff, #fff); }
@@ -575,7 +628,7 @@
         row.append(el("div", "user-bubble", text));
         conversation.append(row);
       }
-      function addResult(result) {
+      function addResult(result, live) {
         const row = el("div", "message");
         const mark = el("div", "bot-mark");
         mark.append(buildBotMark());
@@ -586,7 +639,13 @@
         label.append(el("i", ""));
         label.append(document.createTextNode("A considered answer"));
         card.append(label);
-        card.append(el("p", "answer", synthesis?.answer || result.findings.summary));
+        if (live) {
+          const answer = el("div", "answer markdown");
+          renderMarkdown(answer, synthesis?.answer || result.findings.summary);
+          card.append(answer);
+        } else {
+          card.append(el("p", "answer", synthesis?.answer || result.findings.summary));
+        }
         if (result.orchestration) {
           card.append(el("p", "answer-source", synthesis ? "From the Synthesis agent." : "From the research summary. No synthesis was run for this request."));
         }
@@ -597,7 +656,8 @@
           card.append(points);
         }
         if (synthesis?.caveats?.length) listSection(card, "A few caveats", synthesis.caveats);
-        if (result.orchestration) card.append(buildOrchestration(result.orchestration));
+        if (live) card.append(buildLiveTabs(live, result));
+        else if (result.orchestration) card.append(buildOrchestration(result.orchestration));
         if (result.agent_activity?.length) card.append(buildActivity(result.agent_activity));
 
         const details = document.createElement("details");
@@ -658,6 +718,644 @@
         row.append(card);
         conversation.append(row);
       }
+      // ---- live orchestration: server-sent events from POST /api/chat/stream ----
+      // Everything shown here is built from events the server really emitted, in order.
+      // Nothing is simulated, estimated or guessed, and no text is ever inserted as markup.
+      const portraits = {
+        charlie: "/images/Charlie_Chatwin_headshot.png", nova: "/images/Nova_headshot.png",
+        scout: "/images/Scout_headshot.png", cipher: "/images/Cipher_headshot.png",
+        atlas: "/images/Atlas_headshot.png", sage: "/images/Sage_headshot.png",
+        pixel: "/images/Pixel_headshot.png", orbit: "/images/Orbit_headshot.png",
+      };
+      const liveEventTypes = [
+        "planner_started", "planner_completed", "planner_failed", "delegation_requested",
+        "delegation_authorized", "delegation_rejected", "agent_started", "agent_completed",
+        "agent_failed", "dependency_recorded", "evidence_superseded", "final_response",
+        "orchestration_completed", "orchestration_failed",
+      ];
+      const rejectionText = {
+        dependency_unmet: "a result it needs does not exist yet",
+        dependency_stale: "a result it depends on is out of date",
+        repeat_limit: "it has reached its repeat limit",
+        execution_budget: "the execution budget is used up",
+        time_budget: "the time limit was reached",
+        deadline_exceeded: "the request time limit was reached",
+        mandatory_missing: "the required research and security results are not complete",
+        security_stale: "the security assessment is out of date",
+        capability_not_implemented: "that capability is not available",
+        unknown_capability: "that capability is not recognized",
+        no_binding: "no agent is approved for it",
+        binding_disabled: "its agent is switched off",
+        binding_mismatch: "its agent does not match",
+        identity_invalid: "its agent is not valid",
+        service_unavailable: "its service is not configured",
+        not_a_delegation: "it was not a delegation",
+      };
+      const completionReasonText = {
+        charlie_finished: "Charlie finished", decision_budget: "decision limit", execution_budget: "execution limit",
+        time_budget: "time limit", rejection_limit: "refused-request limit",
+      };
+      function shortName(source) {
+        return String(source && source.display_name ? source.display_name : "").split(" ")[0] || "Someone";
+      }
+      function nameOf(identityId) {
+        return Object.prototype.hasOwnProperty.call(identityNames, identityId) ? identityNames[identityId] : String(identityId);
+      }
+      function capLabel(capability) {
+        return capability ? labelFor(capabilityLabels, capability) : "completion";
+      }
+      function seconds(ms) {
+        return formatDuration(ms || 0);
+      }
+
+      // -- server-sent event framing: tolerant of chunk boundaries, ignores comments --
+      function createFrameParser(onFrame) {
+        let buffer = "";
+        function parseBlock(block) {
+          const frame = { id: null, event: null, data: [] };
+          block.split("\n").forEach((line) => {
+            if (!line || line.charAt(0) === ":") return;
+            const at = line.indexOf(":");
+            const field = at === -1 ? line : line.slice(0, at);
+            const value = at === -1 ? "" : line.slice(at + 1).replace(/^ /, "");
+            if (field === "id") frame.id = value;
+            else if (field === "event") frame.event = value;
+            else if (field === "data") frame.data.push(value);
+          });
+          return frame.data.length ? { id: frame.id, event: frame.event, data: frame.data.join("\n") } : null;
+        }
+        return {
+          push(text) {
+            buffer += text.replace(/\r\n/g, "\n");
+            let at;
+            while ((at = buffer.indexOf("\n\n")) !== -1) {
+              const frame = parseBlock(buffer.slice(0, at));
+              buffer = buffer.slice(at + 2);
+              if (frame) onFrame(frame);
+            }
+          },
+        };
+      }
+
+      // -- the model: one request's events, reduced to what the UI shows --
+      function createLiveModel(expectedRequestId) {
+        return {
+          expectedRequestId: expectedRequestId || null, requestId: null, lastSequence: 0, events: [],
+          rows: [], executions: [], rejections: [], dependencies: [], superseded: [], planner: [],
+          finalResponse: null, terminal: null, completed: null, failed: null, sawFinal: false,
+        };
+      }
+      function checkEvent(model, frame, ev) {
+        if (!ev || typeof ev !== "object") return "an event was not an object";
+        if (ev.schema_version !== "1.0") return "unsupported event schema";
+        if (liveEventTypes.indexOf(ev.event_type) === -1) return "unknown event type";
+        if (frame.event !== ev.event_type || frame.id !== ev.event_id) return "frame and event disagree";
+        if (typeof ev.request_id !== "string" || !ev.request_id) return "missing request id";
+        const wanted = model.requestId || model.expectedRequestId;
+        if (wanted && ev.request_id !== wanted) return "event for a different request";
+        if (ev.sequence !== model.lastSequence + 1) return "events out of order";
+        if (model.terminal) return "event after the end of the stream";
+        if (!ev.data || typeof ev.data !== "object") return "event without data";
+        if (ev.event_type === "orchestration_completed" && !model.sawFinal) return "completion without a final response";
+        if (ev.event_type === "orchestration_failed" && model.sawFinal) return "failure after a final response";
+        if (ev.event_type === "final_response" && model.sawFinal) return "two final responses";
+        return null;
+      }
+      function setRow(model, row) {
+        const existing = model.rows.find((candidate) => candidate.key === row.key);
+        if (existing) { Object.assign(existing, row); return existing; }
+        model.rows.push(row);
+        return row;
+      }
+      function applyEvent(model, ev) {
+        model.requestId = ev.request_id;
+        model.lastSequence = ev.sequence;
+        model.events.push(ev);
+        const data = ev.data;
+        const decision = ev.correlation && ev.correlation.decision_number;
+        const execution = ev.correlation && ev.correlation.execution_id;
+        const who = shortName(ev.source);
+        const cap = capLabel(data.capability);
+        switch (ev.event_type) {
+          case "planner_started":
+            model.planner.push({ decision, remainingMs: data.remaining_budget_ms, durationMs: null, action: null, capability: null });
+            setRow(model, { key: "planner-" + decision, kind: "planner", state: "active", identity: "charlie",
+              text: model.executions.length === 0 ? "Charlie is evaluating your request" : "Charlie is reviewing the results so far",
+              detail: ["Decision " + decision, "Time remaining " + seconds(data.remaining_budget_ms)], durationMs: null, sequence: ev.sequence });
+            break;
+          case "planner_completed": {
+            const entry = model.planner.find((item) => item.decision === decision);
+            if (entry) Object.assign(entry, { durationMs: data.duration_ms, action: data.action, capability: data.capability });
+            const row = model.rows.find((candidate) => candidate.key === "planner-" + decision);
+            setRow(model, { key: "planner-" + decision, kind: "planner", state: "done", identity: "charlie",
+              text: data.action === "delegate" ? "Charlie chose " + cap : "Charlie recommended finishing",
+              detail: [].concat(row ? row.detail : [], data.rationale ? ["Planner rationale: " + data.rationale] : [],
+                data.model_alias ? ["Planner model: " + data.model_alias] : []), durationMs: data.duration_ms, sequence: ev.sequence });
+            break; }
+          case "planner_failed":
+            setRow(model, { key: "planner-" + decision, kind: "planner", state: "failed", identity: "charlie",
+              text: "Charlie's planning did not complete", detail: ["Reason: " + String(data.error_code).replace(/_/g, " ")],
+              durationMs: data.duration_ms, sequence: ev.sequence });
+            break;
+          case "delegation_requested":
+            setRow(model, { key: "deleg-" + decision, kind: "delegation", state: "active", identity: "charlie",
+              text: "Charlie asked " + nameOf(data.target_identity) + " to take on " + cap, detail: [], durationMs: null, sequence: ev.sequence });
+            break;
+          case "delegation_authorized":
+            setRow(model, { key: "deleg-" + decision, kind: "delegation", state: "done", identity: "charlie",
+              text: "Charlie delegated " + cap + " to " + nameOf(data.target_identity),
+              detail: ["Authorized by the application", cap + " result version " + data.result_version, "Execution " + execution],
+              durationMs: null, sequence: ev.sequence });
+            break;
+          case "delegation_rejected": {
+            const why = labelFor(rejectionText, data.rejection_code);
+            model.rejections.push({ decision, capability: data.capability, code: data.rejection_code, sequence: ev.sequence });
+            setRow(model, { key: "deleg-" + decision, kind: "rejection", state: "rejected", identity: "application",
+              text: data.capability ? "The application declined " + cap : "The application declined to finish yet",
+              detail: ["Why: " + why], durationMs: null, sequence: ev.sequence });
+            break; }
+          case "agent_started":
+            setRow(model, { key: "exec-" + execution, kind: "agent", state: "active", identity: ev.source.identity_id,
+              text: who + " is working on " + cap, detail: [cap + " result version " + data.result_version, "Service " + data.service],
+              durationMs: null, sequence: ev.sequence });
+            break;
+          case "agent_completed": {
+            const row = model.rows.find((candidate) => candidate.key === "exec-" + execution);
+            setRow(model, { key: "exec-" + execution, kind: "agent", state: "done", identity: ev.source.identity_id,
+              text: who + " completed " + cap + " (v" + data.result_version + ")",
+              detail: [].concat(row ? row.detail : [], data.model_alias ? ["Model reported by the service: " + data.model_alias] : []),
+              durationMs: data.duration_ms, sequence: ev.sequence });
+            model.executions.push({ execution, decision, identity: ev.source.identity_id, capability: data.capability,
+              version: data.result_version, durationMs: data.duration_ms, failed: false, modelAlias: data.model_alias || null, sequence: ev.sequence });
+            break; }
+          case "agent_failed":
+            setRow(model, { key: "exec-" + execution, kind: "agent", state: "failed", identity: ev.source.identity_id,
+              text: who + " could not complete " + cap, detail: ["Reason: " + String(data.error_code).replace(/_/g, " ")],
+              durationMs: data.duration_ms, sequence: ev.sequence });
+            model.executions.push({ execution, decision, identity: ev.source.identity_id, capability: data.capability,
+              version: null, durationMs: data.duration_ms, failed: true, modelAlias: null, sequence: ev.sequence });
+            break;
+          case "dependency_recorded": {
+            const used = data.dependencies.map((dep) => capLabel(dep.capability) + " v" + dep.result_version + " (" + dep.dependency_type + ")");
+            const row = model.rows.find((candidate) => candidate.key === "exec-" + execution);
+            if (row) row.detail = row.detail.concat(["Used: " + used.join(", ")]);
+            model.dependencies.push({ execution, consumer: data.consumer, dependencies: data.dependencies });
+            break; }
+          case "evidence_superseded": {
+            const named = data.affected_results.map((item) => capLabel(item.capability) + " v" + item.result_version).join(", ");
+            model.superseded.push(data);
+            setRow(model, { key: "superseded-" + ev.sequence, kind: "note", state: "note", identity: "application",
+              text: capLabel(data.capability) + " v" + data.replacement_version + " replaced v" + data.superseded_version,
+              detail: [named + " no longer current"], durationMs: null, sequence: ev.sequence });
+            break; }
+          case "final_response":
+            model.finalResponse = data.response;
+            model.sawFinal = true;
+            break;
+          case "orchestration_completed":
+            model.completed = data;
+            model.terminal = "completed";
+            setRow(model, { key: "end", kind: "end", state: "done", identity: "application",
+              text: data.completion_kind === "charlie_approved" ? "Charlie approved completion"
+                : "Completed under policy budget (" + labelFor(completionReasonText, data.completion_reason) + ")",
+              detail: [data.decisions + " decisions · " + data.executions + " delegated runs"], durationMs: data.elapsed_ms, sequence: ev.sequence });
+            break;
+          case "orchestration_failed":
+            model.failed = data;
+            model.terminal = "failed";
+            setRow(model, { key: "end", kind: "end", state: "failed", identity: "application",
+              text: data.message, detail: ["Code: " + data.error_code], durationMs: data.elapsed_ms, sequence: ev.sequence });
+            break;
+        }
+      }
+
+      // -- rendering a row (incrementally, so the active animation does not restart) --
+      function portraitNode(identityId) {
+        if (Object.prototype.hasOwnProperty.call(portraits, identityId)) {
+          const image = el("img", "live-portrait");
+          image.setAttribute("src", portraits[identityId]);
+          image.setAttribute("alt", "");
+          return image;
+        }
+        return el("span", "live-portrait live-system", "VB");
+      }
+      function stateGlyph(state) {
+        return state === "active" ? "●" : state === "done" ? "✓" : state === "note" ? "↻" : "✗";
+      }
+      function buildRow(row) {
+        const item = el("li", "live-row");
+        item.append(portraitNode(row.identity));
+        const body = el("div", "live-body");
+        body.append(el("span", "live-glyph"));
+        body.append(el("span", "live-text"));
+        body.append(el("span", "live-meta"));
+        item.append(body);
+        updateRow(item, row);
+        return item;
+      }
+      function updateRow(item, row) {
+        item.className = "live-row state-" + row.state + " kind-" + row.kind;
+        const body = item.children[1];
+        body.children[0].textContent = stateGlyph(row.state);
+        body.children[0].setAttribute("aria-hidden", "true");
+        body.children[1].textContent = row.text;
+        body.children[2].textContent = row.durationMs === null || row.durationMs === undefined ? "" : seconds(row.durationMs);
+        while (body.children.length > 3) body.children[3].remove();
+        if (row.detail && row.detail.length) {
+          const details = document.createElement("details");
+          details.className = "live-detail";
+          details.append(el("summary", "", "Details"));
+          row.detail.forEach((line) => details.append(el("p", "", line)));
+          body.append(details);
+        }
+      }
+      function createRowList(label) {
+        const list = document.createElement("ol");
+        list.className = "live-list";
+        list.setAttribute("role", "log");
+        list.setAttribute("aria-label", label);
+        list.setAttribute("aria-live", "polite");
+        const nodes = new Map();
+        return {
+          node: list,
+          sync(rows) {
+            rows.forEach((row) => {
+              const known = nodes.get(row.key);
+              if (known) { updateRow(known, row); return; }
+              const created = buildRow(row);
+              nodes.set(row.key, created);
+              list.append(created);
+            });
+          },
+        };
+      }
+      function buildLivePanel() {
+        const panel = el("section", "live-panel");
+        panel.setAttribute("aria-label", "Charlie's team, live");
+        const head = el("div", "live-head");
+        head.append(el("strong", "", "CHARLIE'S TEAM — LIVE"));
+        const status = el("span", "live-status", "● Live");
+        head.append(status);
+        panel.append(head);
+        const rows = createRowList("What the team is doing");
+        panel.append(rows.node);
+        panel.append(el("p", "live-note", "Each line appears when the application records it. Agents never talk to each other directly; every handoff goes through the application."));
+        return {
+          node: panel,
+          update(model) { rows.sync(model.rows); conversation.scrollTop = conversation.scrollHeight; },
+          freeze(label, tone) { status.textContent = label; status.className = "live-status " + tone; panel.className = "live-panel frozen"; },
+        };
+      }
+
+      // -- after the answer: three views of what actually happened --
+      function buildTimelineView(model) {
+        const view = el("div", "view-timeline");
+        view.append(el("p", "view-note", "What the application did, in order, as it was recorded."));
+        const rows = createRowList("Execution timeline");
+        rows.node.removeAttribute("aria-live");
+        rows.sync(model.rows);
+        view.append(rows.node);
+        return view;
+      }
+      function buildInteractions(model) {
+        const view = el("div", "view-interactions");
+        view.append(el("p", "view-note", "The coordination path. One agent works at a time, and every handoff passes through the application; agents do not message each other."));
+        const chain = document.createElement("ol");
+        chain.className = "interaction-chain";
+        const node = (identityId, label) => {
+          const item = el("li", "chain-node");
+          item.append(portraitNode(identityId));
+          item.append(el("span", "chain-name", label));
+          return item;
+        };
+        const edge = (text, lines, tone) => {
+          const item = el("li", "chain-edge" + (tone ? " " + tone : ""));
+          item.append(el("span", "chain-arrow", "↓"));
+          if (lines && lines.length) {
+            const details = document.createElement("details");
+            details.append(el("summary", "", text));
+            lines.forEach((line) => details.append(el("p", "", line)));
+            item.append(details);
+          } else {
+            item.append(el("span", "chain-text", text));
+          }
+          return item;
+        };
+        chain.append(node("charlie", "Charlie"));
+        const dependencyFor = (execution) => model.dependencies.find((entry) => entry.execution === execution);
+        model.events.forEach((ev) => {
+          const data = ev.data;
+          const execution = ev.correlation && ev.correlation.execution_id;
+          if (ev.event_type === "delegation_authorized") {
+            const dep = dependencyFor(execution);
+            const using = dep ? " using " + dep.dependencies.map((d) => capLabel(d.capability) + " v" + d.result_version).join(", ") : "";
+            chain.append(edge("Delegates " + capLabel(data.capability) + using,
+              ["Decision " + ev.correlation.decision_number, "Execution " + execution, "Event " + ev.event_id, "Authorized by the application"]));
+          } else if (ev.event_type === "agent_completed") {
+            chain.append(node(ev.source.identity_id, shortName(ev.source)));
+            chain.append(edge(capLabel(data.capability) + " v" + data.result_version + " completed · " + seconds(data.duration_ms),
+              ["Execution " + execution, "Event " + ev.event_id, "Validated by the application before it was recorded"]));
+            chain.append(node("charlie", "Charlie"));
+          } else if (ev.event_type === "agent_failed") {
+            chain.append(node(ev.source.identity_id, shortName(ev.source)));
+            chain.append(edge(capLabel(data.capability) + " failed · " + seconds(data.duration_ms),
+              ["Reason: " + String(data.error_code).replace(/_/g, " "), "Event " + ev.event_id], "failed"));
+          } else if (ev.event_type === "delegation_rejected") {
+            chain.append(edge("Declined by the application: " + (data.capability ? capLabel(data.capability) : "finishing"),
+              ["Why: " + labelFor(rejectionText, data.rejection_code), "Event " + ev.event_id], "rejected"));
+          } else if (ev.event_type === "evidence_superseded") {
+            chain.append(edge(capLabel(data.capability) + " v" + data.replacement_version + " replaced v" + data.superseded_version,
+              data.affected_results.map((item) => capLabel(item.capability) + " v" + item.result_version + " is no longer current"), "note"));
+          }
+        });
+        if (model.completed) {
+          chain.append(edge(model.completed.completion_kind === "charlie_approved" ? "Evaluates completion" : "The application completes the request under its policy budget",
+            ["Reason: " + labelFor(completionReasonText, model.completed.completion_reason), model.completed.decisions + " decisions · " + model.completed.executions + " delegated runs"]));
+          const final = el("li", "chain-node chain-final");
+          final.append(el("span", "chain-final-mark", "✓"));
+          final.append(el("span", "chain-name", "Final response"));
+          chain.append(final);
+        }
+        view.append(chain);
+        return view;
+      }
+      function buildMetrics(model, result) {
+        const view = el("div", "view-metrics");
+        view.append(el("p", "view-note", "Operational facts recorded for this request. Anything the services did not report is shown as not reported."));
+        const facts = document.createElement("dl");
+        facts.className = "metric-list";
+        const addFact = (name, value) => { facts.append(el("dt", "", name)); facts.append(el("dd", "", String(value))); };
+        const done = model.completed || {};
+        addFact("Request ID", model.requestId || "unknown");
+        addFact("Events received", model.events.length + " (last sequence " + model.lastSequence + ")");
+        addFact("Charlie decisions", done.decisions === undefined ? "not reported" : done.decisions);
+        addFact("Delegated runs", done.executions === undefined ? "not reported" : done.executions);
+        addFact("Refused requests", model.rejections.length);
+        addFact("Total time", done.elapsed_ms === undefined ? "not reported" : seconds(done.elapsed_ms));
+        addFact("Completion", done.completion_kind ? done.completion_kind.replace(/_/g, " ") + " · " + labelFor(completionReasonText, done.completion_reason) : "not reported");
+        const budgets = model.planner.map((item) => seconds(item.remainingMs)).join(" → ");
+        addFact("Time remaining at each decision", budgets || "not reported");
+        addFact("Planner time per decision", model.planner.map((item) => item.durationMs === null ? "n/a" : seconds(item.durationMs)).join(", ") || "not reported");
+        addFact("Token usage and cost", "not reported by the services");
+        view.append(facts);
+        const table = (title, headers, rowsData) => {
+          if (!rowsData.length) return;
+          view.append(el("h4", "", title));
+          const wrap = el("div", "metric-table-wrap");
+          const tableNode = document.createElement("table");
+          tableNode.className = "metric-table";
+          const head = document.createElement("tr");
+          headers.forEach((name) => head.append(el("th", "", name)));
+          tableNode.append(head);
+          rowsData.forEach((cells) => {
+            const row = document.createElement("tr");
+            cells.forEach((cell) => row.append(el("td", "", String(cell))));
+            tableNode.append(row);
+          });
+          wrap.append(tableNode);
+          view.append(wrap);
+        };
+        table("Agent runs", ["#", "Agent", "Capability", "Version", "Time", "Status", "Model reported"],
+          model.executions.map((run, index) => [index + 1, nameOf(run.identity), capLabel(run.capability), run.version === null ? "—" : "v" + run.version,
+            seconds(run.durationMs), run.failed ? "failed" : "validated", run.modelAlias || "not reported"]));
+        table("Models used (from the response)", ["Agent", "Model", "Time"],
+          ((result && result.agent_activity) || []).map((item) => [item.display_name || item.agent, item.model_alias || "not reported", seconds(item.duration_ms)]));
+        table("Dependencies recorded", ["Result", "Used"],
+          model.dependencies.map((entry) => [capLabel(entry.consumer.capability) + " v" + entry.consumer.result_version,
+            entry.dependencies.map((d) => capLabel(d.capability) + " v" + d.result_version + " (" + d.dependency_type + ")").join(", ")]));
+        table("Evidence superseded", ["Replaced", "No longer current"],
+          model.superseded.map((entry) => [capLabel(entry.capability) + " v" + entry.superseded_version + " → v" + entry.replacement_version,
+            entry.affected_results.map((r) => capLabel(r.capability) + " v" + r.result_version).join(", ")]));
+        table("Refused requests", ["Decision", "Request", "Reason"],
+          model.rejections.map((item) => [item.decision, capLabel(item.capability), item.code.replace(/_/g, " ")]));
+        return view;
+      }
+      function buildLiveTabs(model, result) {
+        const wrap = el("section", "live-tabs");
+        const list = el("div", "tab-list");
+        list.setAttribute("role", "tablist");
+        list.setAttribute("aria-label", "How this answer was produced");
+        const tabs = [
+          { id: "timeline", label: "Execution Timeline", view: buildTimelineView(model) },
+          { id: "interactions", label: "Agent Interactions", view: buildInteractions(model) },
+          { id: "metrics", label: "Developer Metrics", view: buildMetrics(model, result) },
+        ];
+        const buttons = [];
+        const panels = [];
+        const select = (index, focus) => {
+          tabs.forEach((tab, at) => {
+            const on = at === index;
+            buttons[at].setAttribute("aria-selected", on ? "true" : "false");
+            buttons[at].setAttribute("tabindex", on ? "0" : "-1");
+            buttons[at].className = "tab-button tab-" + tab.id + (on ? " selected" : "");
+            panels[at].hidden = !on;
+          });
+          if (focus) buttons[index].focus();
+        };
+        tabs.forEach((tab, at) => {
+          const button = el("button", "tab-button tab-" + tab.id, tab.label);
+          button.setAttribute("type", "button");
+          button.setAttribute("role", "tab");
+          button.setAttribute("id", "tab-" + tab.id);
+          button.setAttribute("aria-controls", "panel-" + tab.id);
+          button.addEventListener("click", () => select(at, false));
+          button.addEventListener("keydown", (event) => {
+            const last = tabs.length - 1;
+            const target = event.key === "ArrowRight" ? (at === last ? 0 : at + 1) : event.key === "ArrowLeft" ? (at === 0 ? last : at - 1)
+              : event.key === "Home" ? 0 : event.key === "End" ? last : null;
+            if (target !== null) { event.preventDefault(); select(target, true); }
+          });
+          buttons.push(button);
+          list.append(button);
+          const panel = el("div", "tab-panel");
+          panel.setAttribute("role", "tabpanel");
+          panel.setAttribute("id", "panel-" + tab.id);
+          panel.setAttribute("aria-labelledby", "tab-" + tab.id);
+          panel.append(tab.view);
+          panels.push(panel);
+        });
+        wrap.append(list);
+        panels.forEach((panel) => wrap.append(panel));
+        select(0, false);
+        return wrap;
+      }
+
+      // -- safe Markdown: headings, paragraphs, lists, tables, quotes, code. No links, no HTML. --
+      const markdownLimit = 20000;
+      function renderInline(parent, text) {
+        const pattern = /(`[^`\n]+`|\*\*[^*\n]+\*\*|\*[^*\n]+\*|_[^_\n]+_)/;
+        String(text).split(pattern).forEach((piece) => {
+          if (!piece) return;
+          if (piece.length > 2 && piece.charAt(0) === "`" && piece.slice(-1) === "`") parent.append(el("code", "", piece.slice(1, -1)));
+          else if (piece.length > 4 && piece.slice(0, 2) === "**" && piece.slice(-2) === "**") parent.append(el("strong", "", piece.slice(2, -2)));
+          else if (piece.length > 2 && (piece.charAt(0) === "*" || piece.charAt(0) === "_") && piece.slice(-1) === piece.charAt(0)) parent.append(el("em", "", piece.slice(1, -1)));
+          else parent.append(document.createTextNode(piece));
+        });
+      }
+      function splitRow(line) {
+        return line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((cell) => cell.trim());
+      }
+      function renderMarkdown(parent, source) {
+        const lines = String(source).slice(0, markdownLimit).replace(/\r\n/g, "\n").split("\n");
+        const separator = /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/;
+        const listItem = /^\s*([-*+]|\d+[.)])\s+(.*)$/;
+        let at = 0;
+        while (at < lines.length) {
+          const line = lines[at];
+          if (/^\s*$/.test(line)) { at += 1; continue; }
+          if (/^```/.test(line)) {
+            const code = [];
+            at += 1;
+            while (at < lines.length && !/^```/.test(lines[at])) { code.push(lines[at]); at += 1; }
+            at += 1;
+            const pre = document.createElement("pre");
+            pre.className = "md-code";
+            pre.append(el("code", "", code.join("\n")));
+            parent.append(pre);
+            continue;
+          }
+          const heading = line.match(/^(#{1,6})\s+(.*)$/);
+          if (heading) {
+            const node = el("h" + Math.min(Math.max(heading[1].length + 3, 4), 6), "md-heading");
+            renderInline(node, heading[2]);
+            parent.append(node);
+            at += 1;
+            continue;
+          }
+          if (line.indexOf("|") !== -1 && at + 1 < lines.length && separator.test(lines[at + 1])) {
+            const table = document.createElement("table");
+            table.className = "md-table";
+            const head = document.createElement("tr");
+            splitRow(line).forEach((cell) => { const th = document.createElement("th"); renderInline(th, cell); head.append(th); });
+            table.append(head);
+            at += 2;
+            while (at < lines.length && lines[at].indexOf("|") !== -1 && !/^\s*$/.test(lines[at])) {
+              const row = document.createElement("tr");
+              splitRow(lines[at]).forEach((cell) => { const td = document.createElement("td"); renderInline(td, cell); row.append(td); });
+              table.append(row);
+              at += 1;
+            }
+            const wrap = el("div", "md-table-wrap");
+            wrap.append(table);
+            parent.append(wrap);
+            continue;
+          }
+          if (listItem.test(line)) {
+            const ordered = /^\s*\d/.test(line);
+            const list = document.createElement(ordered ? "ol" : "ul");
+            list.className = "md-list";
+            while (at < lines.length && listItem.test(lines[at])) {
+              const item = document.createElement("li");
+              renderInline(item, lines[at].match(listItem)[2]);
+              list.append(item);
+              at += 1;
+            }
+            parent.append(list);
+            continue;
+          }
+          if (/^>\s?/.test(line)) {
+            const quote = document.createElement("blockquote");
+            const text = [];
+            while (at < lines.length && /^>\s?/.test(lines[at])) { text.push(lines[at].replace(/^>\s?/, "")); at += 1; }
+            renderInline(quote, text.join(" "));
+            parent.append(quote);
+            continue;
+          }
+          const paragraph = [];
+          while (at < lines.length && !/^\s*$/.test(lines[at]) && !/^(```|#{1,6}\s|>\s?)/.test(lines[at]) && !listItem.test(lines[at])) {
+            paragraph.push(lines[at].trim());
+            at += 1;
+          }
+          if (!paragraph.length) { at += 1; continue; }
+          const node = document.createElement("p");
+          renderInline(node, paragraph.join(" "));
+          parent.append(node);
+        }
+      }
+
+      // -- the live request --
+      let streamingAvailable = typeof ReadableStream === "function" && typeof TextDecoder === "function" && typeof fetch === "function";
+      async function readLiveStream(response, panel, model) {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let problem = null;
+        const parser = createFrameParser((frame) => {
+          if (problem || model.terminal) return;
+          let ev = null;
+          try { ev = JSON.parse(frame.data); } catch (error) { problem = "an event could not be read"; return; }
+          problem = checkEvent(model, frame, ev);
+          if (problem) return;
+          applyEvent(model, ev);
+          panel.update(model);
+        });
+        try {
+          for (;;) {
+            const chunk = await reader.read();
+            if (chunk.done) break;
+            parser.push(decoder.decode(chunk.value, { stream: true }));
+            if (problem || model.terminal) { try { await reader.cancel(); } catch (error) { /* already closed */ } break; }
+          }
+          parser.push(decoder.decode());
+        } catch (error) {
+          problem = problem || "the connection was interrupted";
+        }
+        return problem;
+      }
+      async function runLive(payload, stopPending) {
+        const response = await fetch("/api/chat/stream", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Accept": "text/event-stream" },
+          body: JSON.stringify(payload),
+        });
+        if (response.status === 409) return "unsupported";
+        stopPending();
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          showError(typeof data.detail === "string" ? data.detail : "The agent team could not complete this request.");
+          return "handled";
+        }
+        const kind = (response.headers && response.headers.get && response.headers.get("Content-Type")) || "";
+        if (!/text\/event-stream/i.test(kind) || !response.body || typeof response.body.getReader !== "function") {
+          showError("The live connection could not be established.");
+          return "handled";
+        }
+        const model = createLiveModel(response.headers.get("X-Request-ID"));
+        const panel = buildLivePanel();
+        conversation.append(panel.node);
+        conversation.scrollTop = conversation.scrollHeight;
+        const problem = await readLiveStream(response, panel, model);
+        const verified = model.terminal === "completed" && model.finalResponse && model.finalResponse.request_id === model.requestId && !problem;
+        if (verified) {
+          panel.node.remove();
+          addResult(model.finalResponse, model);
+        } else if (model.terminal === "failed" && !problem) {
+          panel.freeze("✗ Stopped", "failed");
+          showError(model.failed.message || "The agent team could not complete this request.");
+        } else {
+          panel.freeze("⚠ Interrupted", "interrupted");
+          showError("Connection interrupted. Completion could not be verified.");
+        }
+        return "handled";
+      }
+      async function runOrdinary(payload, stopPending) {
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+        stopPending();
+        if (!response.ok) {
+          if (data.detail && typeof data.detail === "object") {
+            showError(data.detail.message || "The agent team could not complete this request.", data.detail.agent_activity || []);
+          } else {
+            showError(data.detail || "The agent team could not complete this request.");
+          }
+          return;
+        }
+        addResult(data);
+      }
+
       function resizeInput() {
         input.style.height = "auto";
         input.style.height = `${Math.min(input.scrollHeight, 130)}px`;
@@ -734,27 +1432,17 @@
         }, 1000);
         conversation.append(pending);
         conversation.scrollTop = conversation.scrollHeight;
+        let stopPending = () => {};
         try {
-          const response = await fetch("/api/chat", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ message, history: history.slice(0, -1).slice(-4) }),
-          });
-          const data = await response.json();
-          window.clearInterval(elapsedTimer);
-          pending.remove();
-          if (!response.ok) {
-            if (data.detail && typeof data.detail === "object") {
-              showError(data.detail.message || "The agent team could not complete this request.", data.detail.agent_activity || []);
-            } else {
-              showError(data.detail || "The agent team could not complete this request.");
-            }
-            return;
+          const payload = { message, history: history.slice(0, -1).slice(-4) };
+          let stopped = false;
+          stopPending = () => { if (stopped) return; stopped = true; window.clearInterval(elapsedTimer); pending.remove(); };
+          const outcome = streamingAvailable ? await runLive(payload, stopPending) : "unsupported";
+          if (outcome === "unsupported") {
+            await runOrdinary(payload, stopPending);
           }
-          addResult(data);
         } catch (error) {
-          window.clearInterval(elapsedTimer);
-          pending.remove();
+          stopPending();
           showError(error.message || "The request failed. Please try again.");
         } finally {
           send.disabled = false;

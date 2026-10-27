@@ -273,3 +273,5 @@ Every action is validated by the application: unknown capabilities, disabled bin
 - Deadline enforcement is cooperative: a single blocked operation can overrun it, and a timeout does not cancel remote work (see above).
 - Persona and decision quality are not measured; tests use a mocked planner.
 - Only the six implemented capabilities can be delegated. Charlie cannot request a new capability, parallel work or a different model.
+
+See [live-observability.md](live-observability.md) for the streaming endpoint (`POST /api/chat/stream`) that reports these steps as they happen.

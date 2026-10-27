@@ -12,8 +12,9 @@ from uuid import uuid4
 
 import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException, Response
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from starlette.background import BackgroundTask
 from pydantic import BaseModel, Field
 
 from .demo import AgentPipelineError, run_pipeline
@@ -21,7 +22,10 @@ from .agentcore_runtime import add_agentcore_routes
 from .delegated_execution import delegation_enabled, run_delegated_pipeline
 from .identity_execution import identity_routing_enabled, run_identity_pipeline
 from .iterative_execution import iterative_orchestration_enabled, run_iterative_pipeline
-from .orchestration_view import OrchestrationMeta, build_orchestration_meta
+from .orchestration_view import OrchestrationMeta, build_orchestration_meta  # noqa: F401
+from .chat_models import AgentActivity, ChatRequest, ChatResponse, ChatTurn  # noqa: F401
+from .live_hooks import CancelToken
+from .live_stream import StreamPermit, dev_diagnostics_enabled, event_stream
 from .observability import configure_logging, get_request_id
 from .schemas import (
     FactCheckReview,
@@ -36,37 +40,6 @@ configure_logging()
 logger = logging.getLogger("web")
 app = FastAPI(title="ViharBot Web Chat", version="1.0")
 basic_auth = HTTPBasic(auto_error=False)
-
-
-class ChatTurn(BaseModel):
-    role: Literal["user", "assistant"]
-    content: str = Field(min_length=1, max_length=500)
-
-
-class ChatRequest(BaseModel):
-    message: str = Field(min_length=1, max_length=3000)
-    history: list[ChatTurn] = Field(default_factory=list, max_length=4)
-
-
-class AgentActivity(BaseModel):
-    agent: str
-    display_name: str
-    model_alias: str | None = None
-    duration_ms: float
-    status: Literal["complete", "failed"]
-
-
-class ChatResponse(BaseModel):
-    request_id: str
-    findings: ResearchFindings
-    assessment: SecurityAssessment
-    fact_check: FactCheckReview | None = None
-    source_quality: SourceQualityReview | None = None
-    privacy_review: PrivacyAssessment | None = None
-    synthesis: FinalSynthesis | None = None
-    agent_activity: list[AgentActivity]
-    # Present only for iterative orchestration; omitted from every other response.
-    orchestration: OrchestrationMeta | None = None
 
 
 def configured_agent_url(name: str, default: str) -> str:
@@ -159,6 +132,49 @@ def make_contextual_question(body: ChatRequest) -> str:
     )
 
 
+def agent_urls() -> dict:
+    """Where the six agents are, from configuration. Never taken from a request."""
+    return dict(
+        research_url=configured_agent_url("RESEARCH", "http://research:8000/research"),
+        security_url=configured_agent_url("SECURITY", "http://security:8000/assess"),
+        specialist_urls={
+            "fact_check": configured_agent_url("FACT_CHECK", "http://fact-check:8000/process"),
+            "source_quality": configured_agent_url(
+                "SOURCE_QUALITY", "http://source-quality:8000/process"
+            ),
+            "privacy_review": configured_agent_url(
+                "PRIVACY_REVIEW", "http://privacy-review:8000/process"
+            ),
+            "synthesis": configured_agent_url("SYNTHESIS", "http://synthesis:8000/process"),
+        },
+    )
+
+
+def build_chat_response(pipeline_result: dict, request_id: str, orchestration=None) -> ChatResponse:
+    """Assemble the validated public response. Shared by /api/chat and the live stream."""
+    fact_check_payload = pipeline_result.get("fact_check", {}).get("result")
+    source_payload = pipeline_result.get("source_quality", {}).get("result")
+    privacy_payload = pipeline_result.get("privacy_review", {}).get("result")
+    synthesis_payload = pipeline_result.get("synthesis", {}).get("result")
+    return ChatResponse(
+        request_id=request_id,
+        findings=ResearchFindings.model_validate(pipeline_result["research"]["findings"]),
+        assessment=SecurityAssessment.model_validate(pipeline_result["security"]["assessment"]),
+        fact_check=(
+            FactCheckReview.model_validate(fact_check_payload) if fact_check_payload else None
+        ),
+        source_quality=(
+            SourceQualityReview.model_validate(source_payload) if source_payload else None
+        ),
+        privacy_review=(
+            PrivacyAssessment.model_validate(privacy_payload) if privacy_payload else None
+        ),
+        synthesis=FinalSynthesis.model_validate(synthesis_payload) if synthesis_payload else None,
+        agent_activity=pipeline_result["agent_activity"],
+        **({"orchestration": orchestration} if orchestration is not None else {}),
+    )
+
+
 @app.post("/api/chat", response_model=ChatResponse, response_model_exclude_unset=True)
 def chat(
     body: ChatRequest,
@@ -171,28 +187,7 @@ def chat(
     started = time.perf_counter()
     try:
         pipeline_args = (make_contextual_question(body), request_id)
-        pipeline_urls = dict(
-            research_url=configured_agent_url(
-                "RESEARCH", "http://research:8000/research"
-            ),
-            security_url=configured_agent_url(
-                "SECURITY", "http://security:8000/assess"
-            ),
-            specialist_urls={
-                "fact_check": configured_agent_url(
-                    "FACT_CHECK", "http://fact-check:8000/process"
-                ),
-                "source_quality": configured_agent_url(
-                    "SOURCE_QUALITY", "http://source-quality:8000/process"
-                ),
-                "privacy_review": configured_agent_url(
-                    "PRIVACY_REVIEW", "http://privacy-review:8000/process"
-                ),
-                "synthesis": configured_agent_url(
-                    "SYNTHESIS", "http://synthesis:8000/process"
-                ),
-            },
-        )
+        pipeline_urls = agent_urls()
         orchestration = None
         if iterative_orchestration_enabled():
             # Charlie recommends one step at a time; application policy authorizes each one.
@@ -211,29 +206,7 @@ def chat(
             ).to_legacy_dict()
         else:
             pipeline_result = run_pipeline(*pipeline_args, **pipeline_urls)
-        fact_check_payload = pipeline_result.get("fact_check", {}).get("result")
-        source_payload = pipeline_result.get("source_quality", {}).get("result")
-        privacy_payload = pipeline_result.get("privacy_review", {}).get("result")
-        synthesis_payload = pipeline_result.get("synthesis", {}).get("result")
-        result = ChatResponse(
-            request_id=request_id,
-            findings=ResearchFindings.model_validate(pipeline_result["research"]["findings"]),
-            assessment=SecurityAssessment.model_validate(
-                pipeline_result["security"]["assessment"]
-            ),
-            fact_check=(
-                FactCheckReview.model_validate(fact_check_payload) if fact_check_payload else None
-            ),
-            source_quality=(
-                SourceQualityReview.model_validate(source_payload) if source_payload else None
-            ),
-            privacy_review=(
-                PrivacyAssessment.model_validate(privacy_payload) if privacy_payload else None
-            ),
-            synthesis=FinalSynthesis.model_validate(synthesis_payload) if synthesis_payload else None,
-            agent_activity=pipeline_result["agent_activity"],
-            **({"orchestration": orchestration} if orchestration is not None else {}),
-        )
+        result = build_chat_response(pipeline_result, request_id, orchestration)
         logger.info(
             "chat request completed",
             extra={
@@ -276,6 +249,62 @@ def chat(
             detail="The agent team could not complete this request",
             headers={"X-Request-ID": request_id},
         ) from None
+
+
+STREAM_UNSUPPORTED_DETAIL = "Live streaming requires iterative orchestration"
+
+
+@app.post(
+    "/api/chat/stream",
+    responses={
+        200: {"description": "Server-sent events (schema 1.0)", "content": {"text/event-stream": {}}},
+        409: {"description": "Iterative orchestration is not enabled; use /api/chat"},
+        429: {"description": "Too many live requests"},
+    },
+)
+async def chat_stream(
+    body: ChatRequest,
+    x_request_id: str | None = Header(default=None),
+    _: None = Depends(require_web_access),
+) -> StreamingResponse:
+    """Stream what the orchestration actually does, as it does it.
+
+    Authentication and request validation have already run, so no stream starts for a bad
+    request. Anything that goes wrong after the 200 is reported as an event, not a status code.
+    """
+    request_id = get_request_id(x_request_id) if x_request_id else str(uuid4())
+    headers = {"X-Request-ID": request_id}
+    if not iterative_orchestration_enabled():
+        raise HTTPException(status_code=409, detail=STREAM_UNSUPPORTED_DETAIL, headers=headers)
+    permit = StreamPermit.acquire()
+    if permit is None:
+        raise HTTPException(status_code=429, detail="Too many live requests", headers=headers)
+
+    cancel = CancelToken()
+    question = make_contextual_question(body)
+    urls = agent_urls()
+
+    def work(emitter, token):
+        iterative = run_iterative_pipeline(question, request_id, emit=emitter, cancel=token, **urls)
+        response = build_chat_response(
+            iterative.to_legacy_dict(), request_id, build_orchestration_meta(iterative))
+        state = iterative.orchestration
+        return response, {
+            "status": state.status, "completion_kind": state.completion_kind,
+            "completion_reason": state.completion_reason, "decisions": state.decision_number,
+            "executions": len(state.completed_steps)}
+
+    def release() -> None:  # runs even if the client left before the first byte
+        cancel.set()
+        permit.release()
+
+    return StreamingResponse(
+        event_stream(request_id=request_id, work=work, permit=permit, cancel=cancel,
+                     diagnostics=dev_diagnostics_enabled()),
+        media_type="text/event-stream; charset=utf-8",
+        headers={**headers, "Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        background=BackgroundTask(release),
+    )
 
 
 add_agentcore_routes(
