@@ -10,6 +10,7 @@ from uuid import uuid4
 from fastapi import FastAPI, Header, HTTPException, Response
 from pydantic import BaseModel
 
+from .contracts import SecurityResponse
 from .memory import remember
 from .agentcore_runtime import add_agentcore_routes
 from .model_agent import build_agent
@@ -23,13 +24,6 @@ app = FastAPI(title="ViharBot SecurityAgent", version="2.3")
 
 class SecurityRequest(BaseModel):
     findings: ResearchFindings
-
-
-class SecurityResponse(BaseModel):
-    request_id: str
-    agent: str = "security"
-    requested_model_alias: str
-    assessment: SecurityAssessment
 
 
 @app.get("/health")

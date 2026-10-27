@@ -10,6 +10,7 @@ from uuid import uuid4
 from fastapi import FastAPI, Header, HTTPException, Response
 from pydantic import BaseModel, Field
 
+from .contracts import ResearchResponse
 from .memory import remember
 from .agentcore_runtime import add_agentcore_routes
 from .model_agent import build_agent
@@ -24,13 +25,6 @@ app = FastAPI(title="ViharBot ResearchAgent", version="2.3")
 
 class ResearchRequest(BaseModel):
     question: str = Field(min_length=1, max_length=6000)
-
-
-class ResearchResponse(BaseModel):
-    request_id: str
-    agent: str = "research"
-    requested_model_alias: str
-    findings: ResearchFindings
 
 
 class ResearchAndAssessmentResponse(BaseModel):
