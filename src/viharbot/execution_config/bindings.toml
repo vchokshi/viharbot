@@ -1,0 +1,34 @@
+# Approved execution bindings: which existing operational service fulfills a capability on
+# behalf of an identity. These describe orchestration responsibility only. The service keeps
+# its own system prompt, model alias and permissions; the identity's personality prompt is
+# not used. Editing this file is the only way to change bindings.
+
+[[binding]]
+identity_id = "nova"
+capability = "research"
+service_name = "research"
+
+[[binding]]
+identity_id = "scout"
+capability = "fact_check"
+service_name = "fact-check"
+
+[[binding]]
+identity_id = "scout"
+capability = "source_quality"
+service_name = "source-quality"
+
+[[binding]]
+identity_id = "cipher"
+capability = "security_assessment"
+service_name = "security"
+
+[[binding]]
+identity_id = "cipher"
+capability = "privacy_review"
+service_name = "privacy-review"
+
+[[binding]]
+identity_id = "charlie"
+capability = "synthesis"
+service_name = "synthesis"

@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 
 from .demo import AgentPipelineError, run_pipeline
 from .agentcore_runtime import add_agentcore_routes
+from .identity_execution import identity_routing_enabled, run_identity_pipeline
 from .observability import configure_logging, get_request_id
 from .schemas import (
     FactCheckReview,
@@ -145,9 +146,8 @@ def chat(
     response.headers["X-Request-ID"] = request_id
     started = time.perf_counter()
     try:
-        pipeline_result = run_pipeline(
-            make_contextual_question(body),
-            request_id,
+        pipeline_args = (make_contextual_question(body), request_id)
+        pipeline_urls = dict(
             research_url=configured_agent_url(
                 "RESEARCH", "http://research:8000/research"
             ),
@@ -169,6 +169,13 @@ def chat(
                 ),
             },
         )
+        if identity_routing_enabled():
+            # The workflow is fixed server-side; it is never chosen by the request.
+            pipeline_result = run_identity_pipeline(
+                *pipeline_args, workflow="full_review", **pipeline_urls
+            ).to_legacy_dict()
+        else:
+            pipeline_result = run_pipeline(*pipeline_args, **pipeline_urls)
         fact_check_payload = pipeline_result.get("fact_check", {}).get("result")
         source_payload = pipeline_result.get("source_quality", {}).get("result")
         privacy_payload = pipeline_result.get("privacy_review", {}).get("result")
