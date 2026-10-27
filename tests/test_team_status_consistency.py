@@ -44,3 +44,22 @@ def test_the_live_status_text_names_the_real_capabilities():
     entries = sidebar_entries()
     assert "fact check" in entries["Scout"] and "sources" in entries["Scout"]
     assert "security" in entries["Cipher"] and "privacy" in entries["Cipher"]
+
+
+def suggestion_prompts():
+    return [re.sub(r"<[^>]+>", "", m) for m in re.findall(r'class="suggestion"[^>]*><b>[^<]*</b><span>(.*?)</span>', HTML)]
+
+
+def test_suggested_prompts_fit_the_input_and_name_every_agents_work():
+    prompts = suggestion_prompts()
+    assert len(prompts) == 4 and all(0 < len(p) <= 3000 for p in prompts)
+    full = prompts[0].lower()
+    # The first prompt asks, in plain words, for every kind of review the team can run.
+    for need in ("research", "fact-check", "source", "security", "privacy", "synthesized"):
+        assert need in full, need
+
+
+def test_together_the_prompts_ask_for_each_live_capability():
+    text = " ".join(suggestion_prompts()).lower()
+    for need in ("research", "fact-check", "reliable", "security", "privacy", "synthesi"):
+        assert need in text, need
