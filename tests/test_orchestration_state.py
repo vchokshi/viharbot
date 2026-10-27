@@ -121,10 +121,18 @@ def test_remaining_budget_reflects_usage_and_never_goes_negative():
 def test_orchestration_state_is_not_part_of_any_public_schema():
     from viharbot import web_app
 
-    assert "orchestration" not in web_app.ChatResponse.model_fields
+    # Only the sanitized view is public; the state object itself never is.
+    from viharbot.orchestration_state import OrchestrationState
+    from viharbot.orchestration_view import OrchestrationMeta
+
+    assert web_app.ChatResponse.model_fields["orchestration"].annotation == OrchestrationMeta | None
+    private = {"original_question", "current_goal", "pending_gaps", "decision_history",
+               "completed_steps", "execution_budget", "request_id", "started_at"}
+    assert not private & set(OrchestrationMeta.model_fields)  # no free text, no raw state
     assert list(web_app.ChatResponse.model_fields) == [
         "request_id", "findings", "assessment", "fact_check", "source_quality",
-        "privacy_review", "synthesis", "agent_activity"]
+        "privacy_review", "synthesis", "agent_activity",
+        "orchestration"]
 
 
 # 8, 17. observations

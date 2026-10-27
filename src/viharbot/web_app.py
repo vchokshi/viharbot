@@ -21,6 +21,7 @@ from .agentcore_runtime import add_agentcore_routes
 from .delegated_execution import delegation_enabled, run_delegated_pipeline
 from .identity_execution import identity_routing_enabled, run_identity_pipeline
 from .iterative_execution import iterative_orchestration_enabled, run_iterative_pipeline
+from .orchestration_view import OrchestrationMeta, build_orchestration_meta
 from .observability import configure_logging, get_request_id
 from .schemas import (
     FactCheckReview,
@@ -64,6 +65,8 @@ class ChatResponse(BaseModel):
     privacy_review: PrivacyAssessment | None = None
     synthesis: FinalSynthesis | None = None
     agent_activity: list[AgentActivity]
+    # Present only for iterative orchestration; omitted from every other response.
+    orchestration: OrchestrationMeta | None = None
 
 
 def configured_agent_url(name: str, default: str) -> str:
@@ -137,7 +140,7 @@ def make_contextual_question(body: ChatRequest) -> str:
     )
 
 
-@app.post("/api/chat", response_model=ChatResponse)
+@app.post("/api/chat", response_model=ChatResponse, response_model_exclude_unset=True)
 def chat(
     body: ChatRequest,
     response: Response,
@@ -171,11 +174,12 @@ def chat(
                 ),
             },
         )
+        orchestration = None
         if iterative_orchestration_enabled():
             # Charlie recommends one step at a time; application policy authorizes each one.
-            pipeline_result = run_iterative_pipeline(
-                *pipeline_args, **pipeline_urls
-            ).to_legacy_dict()
+            iterative = run_iterative_pipeline(*pipeline_args, **pipeline_urls)
+            pipeline_result = iterative.to_legacy_dict()
+            orchestration = build_orchestration_meta(iterative)
         elif delegation_enabled():
             # Charlie recommends one of two predefined workflows; application policy authorizes it.
             pipeline_result = run_delegated_pipeline(
@@ -209,6 +213,7 @@ def chat(
             ),
             synthesis=FinalSynthesis.model_validate(synthesis_payload) if synthesis_payload else None,
             agent_activity=pipeline_result["agent_activity"],
+            **({"orchestration": orchestration} if orchestration is not None else {}),
         )
         logger.info(
             "chat request completed",

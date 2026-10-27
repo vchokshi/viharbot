@@ -216,6 +216,7 @@ class OrchestrationState(BaseModel):
     # agreed. "policy_budget": the application completed it because a limit was reached.
     # "incomplete": it ended without the required results.
     completion_reason: str | None = None
+    elapsed_ms: float | None = None  # total orchestration time, set when the run ends
     completion_kind: Literal["charlie_approved", "policy_budget", "incomplete"] | None = None
 
     def latest(self, capability: Capability) -> StepResult | None:

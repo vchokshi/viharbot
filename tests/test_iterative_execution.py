@@ -516,13 +516,15 @@ def test_iterative_mode_keeps_the_public_response_contract(web):
     assert state["paths"] == ["iterative"]
     body = reply.json()
     web_app.ChatResponse.model_validate(body)
+    # The original eight fields keep their order; iterative responses add one optional key.
     assert list(body) == ["request_id", "findings", "assessment", "fact_check", "source_quality",
-                          "privacy_review", "synthesis", "agent_activity"]
+                          "privacy_review", "synthesis", "agent_activity", "orchestration"]
+    assert body["orchestration"]["mode"] == "iterative"
     assert body["request_id"] == RID and body["findings"] and body["assessment"]
     for field in ("fact_check", "source_quality", "privacy_review", "synthesis"):
         assert body[field] is None
     assert [a["agent"] for a in body["agent_activity"]] == ["research", "security"]
-    assert "orchestration" not in json.dumps(body) and "decision" not in json.dumps(body)
+    assert "rationale" not in json.dumps(body) and "unresolved" not in json.dumps(body)
 
 
 def test_full_iterative_run_matches_the_fixed_pipeline_response(web):
@@ -531,6 +533,7 @@ def test_full_iterative_run_matches_the_fixed_pipeline_response(web):
     state["script"] = lambda: sequence(*FULL)
     enable_all(patch)
     on = chat(client).json()
+    on.pop("orchestration")  # the only difference is the added optional metadata
     assert {**on, "agent_activity": [{**a, "duration_ms": 0} for a in on["agent_activity"]]} == \
         {**off, "agent_activity": [{**a, "duration_ms": 0} for a in off["agent_activity"]]}
 

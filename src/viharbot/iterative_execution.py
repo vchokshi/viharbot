@@ -176,6 +176,7 @@ def run_iterative_pipeline(
         state.status = status  # type: ignore[assignment]
         state.completion_kind = kind  # type: ignore[assignment]
         state.completion_reason = reason
+        state.elapsed_ms = round((clock() - started) * 1000, 1)
         pipeline_state, excluded = _final_state(state, activity)
         log(logging.INFO, "orchestration completed", action_status="completed",
             completion_status=kind, completion_reason=reason, stale_excluded=excluded)
