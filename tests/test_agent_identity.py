@@ -243,8 +243,9 @@ def test_loading_does_not_import_inference_or_cloud_clients():
 
 def test_operational_modules_do_not_import_identities():
     src = Path(identity_registry.__file__).parent
+    # web_app is excluded since Phase 3: it imports identity_execution behind a feature flag.
     for name in ("research_agent", "security_agent", "specialist_agent", "model_agent",
-                 "demo", "web_app", "pipeline_state", "contracts"):
+                 "demo", "pipeline_state", "contracts"):
         text = (src / f"{name}.py").read_text()
         assert "from .identity" not in text and "viharbot.identity" not in text, name
 
