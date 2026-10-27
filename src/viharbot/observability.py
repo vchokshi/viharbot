@@ -58,6 +58,10 @@ class JsonFormatter(logging.Formatter):
             "service_name",
             "remaining_budget",
             "completion_status",
+            "completion_reason",
+            "elapsed_ms",
+            "remaining_ms",
+            "stale_excluded",
         ):
             if hasattr(record, key):
                 fields[key] = getattr(record, key)

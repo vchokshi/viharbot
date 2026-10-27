@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import functools
+import inspect
 import json
 import logging
 import os
@@ -13,6 +15,7 @@ from uuid import uuid4
 from pydantic import BaseModel
 
 from .contracts import AgentResponse, validate_agent_response
+from .deadline import DeadlineExceeded, RequestDeadline, bounded_timeout, is_timeout_error
 from .observability import configure_logging
 from .pipeline_state import (
     AgentActivity,
@@ -41,47 +44,39 @@ class AgentPipelineError(RuntimeError):
         self.activity = activity
 
 
-def post_json(url: str, payload: dict, request_id: str, destination: str) -> dict:
+REST_TIMEOUT_CAP_SECONDS = 90
+_READ_CHUNK_BYTES = 8192
+
+
+def _read_body(response, deadline: RequestDeadline | None) -> bytes:
+    """Read the response body. With a deadline, read in chunks and stop if it passes.
+
+    Socket timeouts apply to each read, not to the whole body, so the chunked read is what
+    lets a slow response be abandoned. It is cooperative: a single blocked read can still
+    last up to the socket timeout.
+    """
+    if deadline is None:
+        return response.read()
+    chunks: list[bytes] = []
+    while True:
+        deadline.require_remaining()
+        chunk = response.read(_READ_CHUNK_BYTES)
+        if not chunk:
+            return b"".join(chunks)
+        chunks.append(chunk)
+
+
+def post_json(
+    url: str,
+    payload: dict,
+    request_id: str,
+    destination: str,
+    *,
+    deadline: RequestDeadline | None = None,
+) -> dict:
     started = time.perf_counter()
-    if url.startswith("agentcore://"):
-        from .agentcore_client import invoke_agentcore
 
-        try:
-            result = invoke_agentcore(url.removeprefix("agentcore://"), payload, request_id)
-        except Exception as exc:
-            logger.error(
-                "agent call failed",
-                extra={
-                    "agent": "orchestrator",
-                    "request_id": request_id,
-                    "destination_agent": destination,
-                    "model_alias": None,
-                    "duration_ms": round((time.perf_counter() - started) * 1000, 2),
-                    "error": type(exc).__name__,
-                },
-            )
-            raise
-        logger.info(
-            "agent call completed",
-            extra={
-                "agent": "orchestrator",
-                "request_id": request_id,
-                "destination_agent": destination,
-                "model_alias": None,
-                "duration_ms": round((time.perf_counter() - started) * 1000, 2),
-            },
-        )
-        return result
-
-    request = Request(
-        url,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json", "X-Request-ID": request_id},
-    )
-    try:
-        with urlopen(request, timeout=90) as response:
-            result = json.loads(response.read().decode("utf-8"))
-    except Exception as exc:
+    def log_failure(exc: BaseException) -> None:
         logger.error(
             "agent call failed",
             extra={
@@ -93,17 +88,58 @@ def post_json(url: str, payload: dict, request_id: str, destination: str) -> dic
                 "error": type(exc).__name__,
             },
         )
-        raise
-    logger.info(
-        "agent call completed",
-        extra={
-            "agent": "orchestrator",
-            "request_id": request_id,
-            "destination_agent": destination,
-            "model_alias": None,
-            "duration_ms": round((time.perf_counter() - started) * 1000, 2),
-        },
+
+    def log_success() -> None:
+        logger.info(
+            "agent call completed",
+            extra={
+                "agent": "orchestrator",
+                "request_id": request_id,
+                "destination_agent": destination,
+                "model_alias": None,
+                "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+            },
+        )
+
+    if url.startswith("agentcore://"):
+        from .agentcore_client import invoke_agentcore
+
+        try:
+            runtime_arn = url.removeprefix("agentcore://")
+            if deadline is None:
+                result = invoke_agentcore(runtime_arn, payload, request_id)
+            else:
+                result = invoke_agentcore(runtime_arn, payload, request_id, deadline=deadline)
+        except Exception as exc:
+            log_failure(exc)
+            raise
+        log_success()
+        return result
+
+    request = Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json", "X-Request-ID": request_id},
     )
+    try:
+        timeout = bounded_timeout(REST_TIMEOUT_CAP_SECONDS, deadline)
+        with urlopen(request, timeout=timeout) as response:
+            if deadline is not None:
+                deadline.require_remaining()  # the response arrived after the deadline
+            result = json.loads(_read_body(response, deadline).decode("utf-8"))
+        if deadline is not None:
+            deadline.require_remaining()  # the body finished arriving after the deadline
+    except DeadlineExceeded as exc:
+        log_failure(exc)
+        raise
+    except Exception as exc:
+        if deadline is not None and deadline.expired() and is_timeout_error(exc):
+            expired = DeadlineExceeded("request deadline exceeded")
+            log_failure(expired)
+            raise expired from None
+        log_failure(exc)
+        raise
+    log_success()
     return result
 
 
@@ -126,6 +162,19 @@ def run_pipeline(
     ).to_legacy_dict()
 
 
+def _bind_deadline(
+    send: Callable[..., dict], deadline: RequestDeadline | None
+) -> Callable[..., dict]:
+    """Pass the deadline only to senders that declare a `deadline` keyword."""
+    if deadline is None:
+        return send
+    try:
+        accepts = "deadline" in inspect.signature(send).parameters
+    except (TypeError, ValueError):
+        accepts = False
+    return functools.partial(send, deadline=deadline) if accepts else send
+
+
 def invoke_agent(
     send: Callable[[str, dict, str, str], dict],
     url: str,
@@ -133,16 +182,34 @@ def invoke_agent(
     request_id: str,
     destination: str,
     activity: list[AgentActivity],
+    *,
+    deadline: RequestDeadline | None = None,
 ) -> tuple[AgentResponse, BaseModel]:
     """Call one service, validate its response and record the activity.
 
     This is the smallest unit of pipeline execution: one capability, one validated response.
+    With a deadline, nothing starts after it has passed and a late response is discarded.
+    DeadlineExceeded is recorded in the activity and re-raised unchanged, never wrapped.
     """
     started = time.perf_counter()
     try:
-        envelope, domain = validate_agent_response(
-            destination, send(url, payload, request_id, destination), request_id
+        if deadline is not None:
+            deadline.require_remaining()
+        raw = _bind_deadline(send, deadline)(url, payload, request_id, destination)
+        if deadline is not None:
+            deadline.require_remaining()  # a late result is never accepted as a success
+        envelope, domain = validate_agent_response(destination, raw, request_id)
+    except DeadlineExceeded:
+        activity.append(
+            AgentActivity(
+                agent=destination,
+                display_name=AGENT_LABELS.get(destination, destination),
+                duration_ms=round((time.perf_counter() - started) * 1000, 2),
+                status="failed",
+                error="DeadlineExceeded",
+            )
         )
+        raise
     except Exception as exc:
         activity.append(
             AgentActivity(

@@ -212,6 +212,11 @@ class OrchestrationState(BaseModel):
     rejected_actions: int = 0
     status: Literal["running", "completed", "budget_exhausted", "failed"] = "running"
     started_at: float = 0.0
+    # Why and how the task ended. "charlie_approved": Charlie asked to finish and policy
+    # agreed. "policy_budget": the application completed it because a limit was reached.
+    # "incomplete": it ended without the required results.
+    completion_reason: str | None = None
+    completion_kind: Literal["charlie_approved", "policy_budget", "incomplete"] | None = None
 
     def latest(self, capability: Capability) -> StepResult | None:
         runs = [s for s in self.completed_steps if s.capability is capability]

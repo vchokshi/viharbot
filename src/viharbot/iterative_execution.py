@@ -16,6 +16,7 @@ from typing import Callable
 from pydantic import BaseModel, ConfigDict
 
 from . import demo, orchestration_planner
+from .deadline import DeadlineExceeded, RequestDeadline
 from .delegated_execution import delegation_enabled
 from .delegation import DelegationError, PlannerInferenceError
 from .demo import AgentPipelineError, invoke_agent
@@ -34,6 +35,8 @@ from .orchestration_policy import (
     authorize_action,
     build_payload,
     check_completion,
+    fresh_latest,
+    fresh_results,
     input_versions,
 )
 from .orchestration_state import (
@@ -76,7 +79,8 @@ class IterativePipelineResult(BaseModel):
         return self.state.to_legacy_dict()
 
 
-def _log(level: int, message: str, state: OrchestrationState, clock, **fields: object) -> None:
+def _log(level: int, message: str, state: OrchestrationState, clock, deadline: RequestDeadline,
+         **fields: object) -> None:
     logger.log(
         level,
         message,
@@ -87,32 +91,45 @@ def _log(level: int, message: str, state: OrchestrationState, clock, **fields: o
             "iteration": state.iteration,
             "decision_number": state.decision_number,
             "remaining_budget": state.remaining(clock),
+            "elapsed_ms": round((clock() - state.started_at) * 1000, 1),
+            "remaining_ms": round(max(deadline.remaining(), 0.0) * 1000, 1),
             **fields,
         },
     )
 
 
-def _final_state(state: OrchestrationState, activity: list[AgentActivity]) -> PipelineState:
-    """Project the latest validated result per capability onto the existing PipelineState."""
-    latest = {c: state.latest(c) for c in CANONICAL_ORDER}
-    context = PipelineContext(
-        research=latest[Capability.RESEARCH].domain,
-        fact_check=latest[Capability.FACT_CHECK].domain if latest[Capability.FACT_CHECK] else None,
-        source_quality=(
-            latest[Capability.SOURCE_QUALITY].domain if latest[Capability.SOURCE_QUALITY] else None
-        ),
-        security=latest[Capability.SECURITY_ASSESSMENT].domain,
-        privacy_review=(
-            latest[Capability.PRIVACY_REVIEW].domain if latest[Capability.PRIVACY_REVIEW] else None
-        ),
+def _final_state(state: OrchestrationState, activity: list[AgentActivity]) -> tuple[PipelineState, int]:
+    """Project the fresh results onto the existing PipelineState.
+
+    A result built on outdated upstream evidence is left out and nothing replaces it. The
+    returned count is how many capabilities were excluded as stale. `activity` still lists
+    everything that actually ran.
+    """
+    fresh = fresh_results(state)
+    excluded = sum(
+        1 for c in CANONICAL_ORDER if state.latest(c) is not None and c not in fresh
     )
-    synthesis = latest[Capability.SYNTHESIS]
-    return PipelineState(
-        request_id=state.request_id,
-        context=context,
-        synthesis=synthesis.domain if synthesis else None,
-        responses={LEGACY_KEYS[c]: step.envelope for c, step in latest.items() if step is not None},
-        agent_activity=activity,
+
+    def domain(capability: Capability):
+        step = fresh.get(capability)
+        return step.domain if step is not None else None
+
+    context = PipelineContext(
+        research=domain(Capability.RESEARCH),
+        fact_check=domain(Capability.FACT_CHECK),
+        source_quality=domain(Capability.SOURCE_QUALITY),
+        security=domain(Capability.SECURITY_ASSESSMENT),
+        privacy_review=domain(Capability.PRIVACY_REVIEW),
+    )
+    return (
+        PipelineState(
+            request_id=state.request_id,
+            context=context,
+            synthesis=domain(Capability.SYNTHESIS),
+            responses={LEGACY_KEYS[c]: step.envelope for c, step in fresh.items()},
+            agent_activity=activity,
+        ),
+        excluded,
     )
 
 
@@ -135,120 +152,175 @@ def run_iterative_pipeline(
         bindings = default_bindings() if registry is default_registry() else load_bindings(registry)
     decide = decide or orchestration_planner.decide_next_action
     send = send or demo.post_json
+    budget = budget or ExecutionBudget.from_env()
+
+    # One absolute deadline for the whole request. It is never reset or extended.
+    started = clock()
+    deadline = RequestDeadline(expires_at=started + budget.max_seconds, clock=clock)
 
     urls = {"research": research_url, "security": security_url}
     urls.update({key.replace("_", "-"): url for key, url in (specialist_urls or {}).items() if url})
     state = OrchestrationState(
         request_id=request_id,
         original_question=question,
-        execution_budget=budget or ExecutionBudget.from_env(),
-        started_at=clock(),
+        execution_budget=budget,
+        started_at=started,
     )
     activity: list[AgentActivity] = []
     notice = None
 
-    def finish_with(status: str, completion: str) -> IterativePipelineResult:
-        state.status = status  # type: ignore[assignment]
-        _log(logging.INFO, "orchestration completed", state, clock,
-             action_status="completed", completion_status=completion)
-        return IterativePipelineResult(state=_final_state(state, activity), orchestration=state)
+    def log(level: int, message: str, **fields: object) -> None:
+        _log(level, message, state, clock, deadline, **fields)
 
-    def terminate(reason: str) -> IterativePipelineResult:
-        """Budget or loop limit reached. Complete only if the mandatory results are valid."""
-        if check_completion(state) is None:
-            return finish_with("budget_exhausted", reason)
+    def complete(kind: str, reason: str, status: str) -> IterativePipelineResult:
+        state.status = status  # type: ignore[assignment]
+        state.completion_kind = kind  # type: ignore[assignment]
+        state.completion_reason = reason
+        pipeline_state, excluded = _final_state(state, activity)
+        log(logging.INFO, "orchestration completed", action_status="completed",
+            completion_status=kind, completion_reason=reason, stale_excluded=excluded)
+        return IterativePipelineResult(state=pipeline_state, orchestration=state)
+
+    def fail(reason: str):
         state.status = "failed"
-        _log(logging.ERROR, "orchestration failed", state, clock,
-             action_status="failed", completion_status=reason, error=reason)
+        state.completion_kind = "incomplete"
+        state.completion_reason = reason
+        error = "DeadlineExceeded" if reason == "time_budget" else reason
+        log(logging.ERROR, "orchestration failed", action_status="failed",
+            completion_status="incomplete", completion_reason=reason, error=error)
+        if reason == "time_budget":
+            raise DeadlineExceeded("request deadline exceeded")
         raise OrchestrationFailed(reason)
 
-    while True:
-        budget_now = state.execution_budget
-        if state.decision_number >= budget_now.max_decisions:
-            return terminate("decision_budget")
-        if state.elapsed(clock) >= budget_now.max_seconds:
-            return terminate("time_budget")
-        if len(state.completed_steps) >= budget_now.max_executions:
-            return terminate("execution_budget")
+    def by_policy(reason: str) -> IterativePipelineResult:
+        """A limit was reached. The application completes only if the required results are
+        present and fresh; this is never recorded as Charlie's decision."""
+        if check_completion(state) is None:
+            return complete("policy_budget", reason, "budget_exhausted")
+        return fail(reason)
 
-        seconds_left = budget_now.max_seconds - state.elapsed(clock)
+    def reject(action: OrchestrationAction, code: str) -> None:
+        state.rejected_actions += 1
+        state.record(DecisionRecord(
+            decision_number=state.decision_number, requested_action=action.action,
+            capability=Capability(action.capability) if action.capability else None,
+            status="rejected", reason_code=code))
+        log(logging.WARNING, "action rejected", action_status="rejected",
+            requested_action=action.action, capability=action.capability, error=code)
+
+    while True:
+        if deadline.expired():
+            return by_policy("time_budget")
+        if state.decision_number >= budget.max_decisions:
+            return by_policy("decision_budget")
+        # When the execution budget is used up, Charlie still gets one final evaluation of
+        # the last result, but only `finish` is accepted. No further delegation is possible.
+        final_evaluation = len(state.completed_steps) >= budget.max_executions
+        if final_evaluation and check_completion(state) is not None:
+            return by_policy("execution_budget")
+
         state.decision_number += 1
-        allowed = allowed_capabilities(state, registry, bindings, set(urls), seconds_left=seconds_left)
+        allowed = () if final_evaluation else allowed_capabilities(
+            state, registry, bindings, set(urls), seconds_left=deadline.remaining())
         context = DecisionContext(
             notice=notice,
             allowed_capabilities=allowed,
             finish_allowed=check_completion(state) is None,
-            timeout_seconds=seconds_left,
+            deadline=deadline,
+            final_evaluation=final_evaluation,
         )
         try:
             action = decide(state, context)  # exactly one planning call per decision
+        except DeadlineExceeded:
+            log(logging.ERROR, "orchestration planner timed out", action_status="planner_failed",
+                error="DeadlineExceeded")
+            return by_policy("time_budget")
         except DelegationError as exc:
             state.status = "failed"
-            _log(logging.ERROR, "orchestration planner failed", state, clock,
-                 action_status="planner_failed", error=exc.cause_type or type(exc).__name__)
+            log(logging.ERROR, "orchestration planner failed", action_status="planner_failed",
+                error=exc.cause_type or type(exc).__name__)
             raise
         except Exception as exc:
             state.status = "failed"
-            _log(logging.ERROR, "orchestration planner failed", state, clock,
-                 action_status="planner_failed", error=type(exc).__name__)
+            log(logging.ERROR, "orchestration planner failed", action_status="planner_failed",
+                error=type(exc).__name__)
             raise PlannerInferenceError("planning inference failed", type(exc).__name__) from None
         notice = None
-        _log(logging.INFO, "action recommended", state, clock, action_status="recommended",
-             requested_action=action.action, capability=action.capability)
+        if deadline.expired():
+            # Charlie answered after the deadline. Nothing he said is acted on, and a late
+            # `finish` is not recorded as his approval.
+            state.record(DecisionRecord(
+                decision_number=state.decision_number, requested_action=action.action,
+                capability=Capability(action.capability) if action.capability else None,
+                status="rejected", reason_code="deadline_exceeded"))
+            log(logging.WARNING, "late planning result discarded", action_status="rejected",
+                requested_action=action.action, error="DeadlineExceeded")
+            return by_policy("time_budget")
+        log(logging.INFO, "action recommended", action_status="recommended",
+            requested_action=action.action, capability=action.capability)
 
         rejection: str | None = None
         authorized = None
         if action.action == "finish":
             rejection = check_completion(state)
             if rejection is None:
+                if deadline.expired():  # last check before accepting normal completion
+                    return by_policy("time_budget")
                 state.record(DecisionRecord(decision_number=state.decision_number,
                                             requested_action="finish", status="completed"))
-                return finish_with("completed", "finished")
+                return complete("charlie_approved", "charlie_finished", "completed")
+        elif final_evaluation:
+            rejection = "execution_budget"
         else:
             try:
+                # Recomputed now: planning may have taken a long time.
                 authorized = authorize_action(action, state, registry, bindings, set(urls),
-                                              seconds_left=seconds_left)
+                                              seconds_left=deadline.remaining())
             except ActionRejected as exc:
                 rejection = exc.code
 
         if rejection is not None:
-            state.rejected_actions += 1
-            state.record(DecisionRecord(
-                decision_number=state.decision_number, requested_action=action.action,
-                capability=Capability(action.capability) if action.capability else None,
-                status="rejected", reason_code=rejection))
-            _log(logging.WARNING, "action rejected", state, clock, action_status="rejected",
-                 requested_action=action.action, capability=action.capability, error=rejection)
-            if state.rejected_actions >= budget_now.max_rejected_actions:
-                return terminate("rejection_limit")
+            reject(action, rejection)
+            if final_evaluation:
+                return by_policy("execution_budget")  # Charlie did not finish; policy decides
+            if state.rejected_actions >= budget.max_rejected_actions:
+                return by_policy("rejection_limit")
             notice = rejection_notice(rejection)
             continue
 
         # Authorized delegation: run exactly one capability on its approved service.
         assert authorized is not None
-        _log(logging.INFO, "action authorized", state, clock, action_status="authorized",
-             requested_action="delegate", capability=authorized.capability.value,
-             identity_id=authorized.identity_id, service_name=authorized.service_name)
+        log(logging.INFO, "action authorized", action_status="authorized",
+            requested_action="delegate", capability=authorized.capability.value,
+            identity_id=authorized.identity_id, service_name=authorized.service_name)
         state.iteration += 1
         state.add_gap(action.unresolved_question)
         payload = build_payload(authorized.capability, state)
         based_on = input_versions(authorized.capability, state)
-        started = time.perf_counter()
+        call_started = time.perf_counter()
         try:
             envelope, domain = invoke_agent(
                 send, urls[authorized.service_name], payload, request_id,
-                authorized.service_name, activity)
+                authorized.service_name, activity, deadline=deadline)
+        except DeadlineExceeded:
+            state.record(DecisionRecord(
+                decision_number=state.decision_number, requested_action="delegate",
+                capability=authorized.capability, status="failed",
+                reason_code="deadline_exceeded"))
+            log(logging.ERROR, "delegated execution timed out", action_status="failed",
+                capability=authorized.capability.value, identity_id=authorized.identity_id,
+                service_name=authorized.service_name, error="DeadlineExceeded")
+            return by_policy("time_budget")
         except AgentPipelineError:
             state.status = "failed"
             state.record(DecisionRecord(
                 decision_number=state.decision_number, requested_action="delegate",
                 capability=authorized.capability, status="failed", reason_code="agent_failed"))
-            _log(logging.ERROR, "delegated execution failed", state, clock,
-                 action_status="failed", capability=authorized.capability.value,
-                 identity_id=authorized.identity_id, service_name=authorized.service_name,
-                 error="AgentPipelineError")
+            log(logging.ERROR, "delegated execution failed", action_status="failed",
+                capability=authorized.capability.value, identity_id=authorized.identity_id,
+                service_name=authorized.service_name, error="AgentPipelineError")
             raise
-        duration_ms = round((time.perf_counter() - started) * 1000, 2)
+        duration_ms = round((time.perf_counter() - call_started) * 1000, 2)
         step = StepResult(
             capability=authorized.capability,
             version=state.run_count(authorized.capability) + 1,
@@ -264,8 +336,8 @@ def run_iterative_pipeline(
         state.record(DecisionRecord(
             decision_number=state.decision_number, requested_action="delegate",
             capability=authorized.capability, status="executed", duration_ms=duration_ms))
-        # "executed" is only claimed here, after the validated response arrived.
-        _log(logging.INFO, "delegated execution completed", state, clock,
-             action_status="executed", capability=authorized.capability.value,
-             identity_id=authorized.identity_id, service_name=authorized.service_name,
-             model_alias=envelope.requested_model_alias or None, execution_duration_ms=duration_ms)
+        # "executed" is only claimed here, after a validated, on-time response arrived.
+        log(logging.INFO, "delegated execution completed", action_status="executed",
+            capability=authorized.capability.value, identity_id=authorized.identity_id,
+            service_name=authorized.service_name,
+            model_alias=envelope.requested_model_alias or None, execution_duration_ms=duration_ms)
