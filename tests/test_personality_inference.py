@@ -290,7 +290,9 @@ def test_service_openapi_contracts_do_not_change_with_the_flags(harness):
 def test_chat_response_schema_is_unchanged():
     from viharbot import web_app
 
+    # Phase 6.2 added one optional field; the original eight fields and their order are unchanged.
     assert list(web_app.ChatResponse.model_fields) == [
         "request_id", "findings", "assessment", "fact_check", "source_quality",
         "privacy_review", "synthesis", "agent_activity",
+        "orchestration",
     ]

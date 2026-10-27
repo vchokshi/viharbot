@@ -194,9 +194,52 @@ The final evaluation never exceeds the decision budget or the deadline, and no c
 
 `VIHARBOT_ITERATIVE_ORCHESTRATION_ENABLED` (default false) also requires `VIHARBOT_DELEGATION_ENABLED` and `VIHARBOT_IDENTITY_ROUTING_ENABLED`. If either is off, iterative mode stays inactive and the Phase 5, Phase 3 or legacy path runs. `CHARLIE_PLANNER_MODEL` and `VIHARBOT_PLANNER_TIMEOUT_SECONDS` are reused. Personality-aware inference stays on its own flags. None of these is set in `compose.yaml`, `.env.example` or the DigitalOcean spec. As in Phase 5, the **web service needs LiteLLM credentials** for planning, and Phase 6 changes no deployment configuration.
 
-## Public API and activity
+## Public API and the `orchestration` object
 
-`/api/chat` schemas, authentication, request ID handling and 502 handling are unchanged, and the response contains no orchestration fields. Repeated executions appear as repeated entries in `agent_activity`. The UI shows the research summary as the answer when no synthesis was run.
+`/api/chat` request schema, authentication, request ID handling and 502 handling are unchanged. A response from **iterative** orchestration adds one optional object, `orchestration`. Every other path (the fixed pipeline, identity routing and Phase 5 delegation) omits the key entirely, so their response bodies are byte-for-byte what they were. Failures (502) carry no metadata, and the AgentCore `/invocations` wrapper serializes the field as `null` when it is absent.
+
+```json
+"orchestration": {
+  "mode": "iterative",
+  "status": "completed",
+  "completion_kind": "charlie_approved",
+  "completion_reason": "charlie_finished",
+  "decisions": 3,
+  "executions": 2,
+  "rejected_actions": 0,
+  "elapsed_ms": 2100.0,
+  "steps": [
+    {"sequence": 1, "identity": "nova", "capability": "research", "service": "research",
+     "version": 1, "status": "complete", "duration_ms": 1200.0, "in_final_result": true},
+    {"sequence": 2, "identity": "cipher", "capability": "security_assessment", "service": "security",
+     "version": 1, "status": "complete", "duration_ms": 800.0, "in_final_result": true}
+  ]
+}
+```
+
+- It is built from the real orchestration state after the run: `steps` are the delegated executions that completed, in order, with repeats listed separately (`version` 2 and up). Refused actions are counted in `rejected_actions` and never listed as steps. `in_final_result` is false when newer evidence superseded a result and it was left out of the response.
+- `status` is `completed` or `budget_exhausted`. `completion_kind` is `charlie_approved` (Charlie asked to finish and policy agreed) or `policy_budget` (a limit was reached and the application completed the request). `completion_reason` is one of `charlie_finished`, `decision_budget`, `execution_budget`, `time_budget`, `rejection_limit`.
+- It carries no free text: no rationales, unresolved questions, observations, prompts, model aliases, URLs, credentials or user text. The status and reason fields are enumerations, and the models reject unknown fields. `agent_activity` still lists every call, including repeats, with models and timings.
+
+## Web UI
+
+The existing page renders the response with DOM nodes and `textContent` only; it uses no `innerHTML`, framework, streaming, polling or browser storage.
+
+- **Loading:** a neutral "The team is working on your question" card with an elapsed timer. It makes no claim about how many agents will run and shows no invented progress.
+- **Iterative response:** the answer, a line saying where it came from ("From the Synthesis agent", or "From the research summary. No synthesis was run for this request."), a **coordination panel**, then the existing "The team at work" panel and the review sections. The answer is never credited to Charlie. Charlie is shown as a coordinator, and his identity appears on a step only when a Synthesis step ran.
+  - The panel header shows the decision and delegated-run counts, any refused requests, and the elapsed time.
+  - The badge reads **Finished by Charlie** or **Completed under policy budget**, with a sentence explaining the reason. For policy completions it says the application completed the request with the results it had.
+  - Each step shows its order, identity and capability, a "Run 2" tag for repeats, a "Not in the final answer" tag for superseded results, the duration and the status.
+  - The panel states that it is the server's record shown after the request finished, not a live feed.
+- **Other responses:** without `orchestration` the page renders exactly as before: the answer, the activity panel and the reviews. The optional reviews (Fact Check, Source Quality, Privacy review, Synthesis) appear only when returned.
+- **Errors:** a 502 or a network failure shows an error card (with the failed activity when the server returns it) and re-enables the form.
+- **Layout:** the new panel reuses the existing colors and breakpoints, is an ordered list inside a labelled section for screen readers, and collapses to a compact layout at 680 px.
+
+## Local Dev testing
+
+This phase deploys nothing. To see iterative mode locally you need what Phase 5 and 6 already require: identity routing, delegation and iterative orchestration enabled (`VIHARBOT_IDENTITY_ROUTING_ENABLED`, `VIHARBOT_DELEGATION_ENABLED`, `VIHARBOT_ITERATIVE_ORCHESTRATION_ENABLED` set to `true`), plus `LITELLM_BASE_URL`, `LITELLM_API_KEY` and `CHARLIE_PLANNER_MODEL` on the **web** service. `compose.yaml` does not pass these to web, so for a local run add them to the web service in your own uncommitted compose override, then open the page, ask a question and compare the panel with the server logs (`action_status` lines carry the same decisions and steps). With the flags off the page behaves as before and shows no coordination panel.
+
+Automated checks need no network or credentials: `pytest -q` runs the API tests, and the UI tests run the page's real script against a small fake DOM in Node (`tests/js/`). They are skipped when Node is not installed, for example in `Dockerfile.tests`.
 
 ## Observability
 
@@ -210,7 +253,10 @@ Every action is validated by the application: unknown capabilities, disabled bin
 
 - Outbound payloads are unchanged, so repeating a capability gives another model sample on the same input unless upstream results changed. Sending refined questions to services needs a versioned payload and is not implemented.
 - Cost and latency rise: up to 8 planner calls plus up to 6 service calls per request.
-- Which steps ran is visible in logs and `agent_activity` but there is no field for the decision history.
+- The `orchestration` object reports counts, completed steps and how the run ended. It has no per-decision history, and refused actions appear only as a count.
+- The UI shows the result after the request finishes. There is no live progress, because the response is a single JSON document.
+- The UI tests run in Node against a fake DOM, not in a real browser, so layout and focus behavior still need a manual check on desktop and mobile.
+- Static page copy (the header route label, "Six agents ready" and the welcome text) describes the team in general and was not changed.
 - Deadline enforcement is cooperative: a single blocked operation can overrun it, and a timeout does not cancel remote work (see above).
 - Persona and decision quality are not measured; tests use a mocked planner.
 - Only the six implemented capabilities can be delegated. Charlie cannot request a new capability, parallel work or a different model.
