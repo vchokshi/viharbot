@@ -148,9 +148,15 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Would make {len(cases)} billable calls to {args.model}. Re-run with --confirm-billable.",
               file=sys.stderr)
         return 2
+    missing = [name for name in ("LITELLM_BASE_URL", "LITELLM_API_KEY") if not os.getenv(name, "").strip()]
+    if missing:
+        print(f"Set {' and '.join(missing)} first (the containers get them from compose).", file=sys.stderr)
+        return 2
     results = evaluate(cases, live_runner(args.model), workers=args.workers)
     summary = summarize(results)
     print(report(args.model, summary))
+    if summary["errors"] == summary["cases"]:
+        print("Every call failed, so these numbers say nothing about the model.", file=sys.stderr)
     if args.out:
         args.out.write_text(json.dumps({"model": args.model, "summary": summary, "results": results},
                                        indent=1), encoding="utf-8")
