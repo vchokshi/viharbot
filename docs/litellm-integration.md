@@ -6,8 +6,12 @@ LiteLLM is an external project already running at https://litellm.viharchokshi.c
 
 - LITELLM_BASE_URL: defaults to the supplied HTTPS endpoint.
 - LITELLM_API_KEY: proxy key injected into each model-using agent container.
-- RESEARCH_MODEL: openai/gpt-5.4-mini (user reports a successful HTTP 200 chat completion).
-- SECURITY_MODEL: openai/gpt-5.4 (candidate alias; must pass a real inference check).
+- RESEARCH_MODEL, PRIVACY_MODEL, SYNTHESIS_MODEL: openai/gpt-5.4-mini.
+- SECURITY_MODEL: openai/gpt-5.4.
+- FACT_CHECK_MODEL, SOURCE_QUALITY_MODEL: gemini/gemini-3.5-flash (since PR #13). Other Gemini aliases were tested on 2026-10-27 and are not usable on this account today: gemini-2.5-flash and gemini-2.5-flash-lite return 404 (retired for new users), gemini-3.7-flash and gemini-3.8-flash returned 503 for high demand, and the Pro models returned 429 quota errors.
+- CHARLIE_PLANNER_MODEL: no default; set deliberately (never inferred from another alias). Used by the planner in the web container, which also needs WEB_LITELLM_API_KEY.
+
+These are configured defaults. A configured alias does not prove a live request succeeds, and the alias list reflects one account at one time; confirm availability with GET /v1/models and a small real call before relying on an alias.
 
 Aliases are passed to Strands LiteLLMModel with use_litellm_proxy enabled. The API base URL is normalized to end in /v1. No provider model IDs or provider credentials are configured here.
 
@@ -17,6 +21,6 @@ scripts/check_litellm.py calls the OpenAI-compatible GET /v1/models endpoint wit
 
 Run the standalone connectivity check inside the test image with: docker compose --profile tests run --build --rm tests python scripts/check_litellm.py
 
-Agent inference uses Strands structured output on LiteLLM's OpenAI-compatible chat completions API. ResearchAgent uses RESEARCH_MODEL; SecurityAgent uses SECURITY_MODEL. Errors fail the HTTP request safely; there is no provider fallback.
+Agent inference uses Strands structured output on LiteLLM's OpenAI-compatible chat completions API. Each agent uses its own alias variable; Charlie's planner uses CHARLIE_PLANNER_MODEL. Errors fail the HTTP request safely; there is no provider fallback.
 
-Keys are sent in Authorization headers by the SDK and never logged or passed to the other agent. Keep .env out of version control and rotate proxy credentials through the LiteLLM operator.
+Keys are sent in Authorization headers by the SDK and never logged or passed to another agent. The web container receives a key only through the opt-in WEB_LITELLM_API_KEY. All containers trust the Cloudflare gateway CA in certs/; a host Python process does not, so run live scripts such as scripts/fact_check_eval/run.py inside a container. Keep .env out of version control and rotate proxy credentials through the LiteLLM operator.

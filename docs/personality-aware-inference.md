@@ -1,5 +1,7 @@
 # Personality-aware inference
 
+> **Historical (Phase 4), still accurate.** The flag defaults to `false` and nothing in Compose or the Stage template enables it. Current state: [architecture](architecture.md).
+
 Phase 4 lets an operational service run its model call with the system prompt of the identity bound to it, instead of only its own prompt. It is **off by default**, and with the flags off every service behaves exactly as before.
 
 ## Attribution versus personality-aware inference

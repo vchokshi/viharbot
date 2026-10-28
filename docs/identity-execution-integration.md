@@ -1,5 +1,7 @@
 # Identity execution integration
 
+> **Historical (Phase 3), still accurate for what it describes.** Later phases build on these bindings: personality-aware inference (Phase 4), controlled delegation (Phase 5) and iterative orchestration (Phase 6). Current state: [architecture](architecture.md).
+
 Phase 3 lets the orchestrator resolve a named workflow through approved **execution bindings** and run it on the existing six services. It adds identity attribution. It does **not** make the underlying models run with an identity's personality.
 
 ## Attribution versus personality-specific inference
