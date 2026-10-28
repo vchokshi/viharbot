@@ -95,10 +95,8 @@ Pushing to `main` updates source only; nothing deploys automatically.
 | Target | State |
 |---|---|
 | Local Docker Compose | The development environment (seven services plus `orchestrator` and `tests` profiles) |
-| DigitalOcean App Platform | A template exists in [`deploy/digitalocean/app.yaml`](deploy/digitalocean/app.yaml) (seven components, `deploy_on_push: false`). **No Stage app is currently running.** The committed spec keeps every optional mode off, so a Stage built from it runs the fixed pipeline and `/api/chat/stream` answers `409` |
+| DigitalOcean App Platform | A template exists in [`deploy/digitalocean/app.yaml`](deploy/digitalocean/app.yaml) (seven components, `deploy_on_push: false`). The committed spec keeps every optional mode off, so a Stage built from it runs the fixed pipeline and `/api/chat/stream` answers `409` |
 | AWS / Bedrock AgentCore | Compatibility code and notes only ([AgentCore notes](deploy/agentcore/README.md)); nothing is deployed and the streaming route is not bridged |
-
-Before deploying to Stage, finish local verification, summarize the change and any monthly cost change, then ask: **"Do you want to promote this dev build to Stage?"** and wait for an affirmative answer for that build. Approval alone does not establish success: verify the deployment status and `/health`. See [deployment strategy](docs/deployment-strategy.md).
 
 ## Security boundaries
 
