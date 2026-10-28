@@ -205,3 +205,21 @@ def test_each_speaker_names_the_model_the_service_reported():
 def test_no_model_is_claimed_when_none_was_reported():
     _, result = run("A_successful_request")
     assert not [n for n in with_class(result["final"], "live-name") if "·" in text_of(n)]
+
+
+@needs_node
+def test_the_fact_check_section_shows_the_cited_quote_and_whether_it_was_found():
+    from test_ui_orchestration import chat_body
+    claims = [
+        {"claim": "A", "status": "supported_by_supplied_evidence", "rationale": "r", "follow_up": "f",
+         "evidence_quote": "the audit found 4%", "citation_verified": True},
+        {"claim": "B", "status": "insufficient_evidence", "rationale": "r", "follow_up": "f",
+         "evidence_quote": "an invented line", "citation_verified": False},
+        {"claim": "C", "status": "insufficient_evidence", "rationale": "r", "follow_up": "f"},
+    ]
+    body = chat_body(fact_check={"summary": "s", "claims": claims, "limitations": []})
+    result = stream({"status": 409, "ordinaryBody": body, "chunks": []})
+    shown = text_of(result["final"])
+    assert "“the audit found 4%” (found in the supplied evidence)" in shown
+    assert "“an invented line” (not found in the supplied evidence)" in shown
+    assert shown.count("Evidence cited") == 2  # none is claimed for a claim with no quote

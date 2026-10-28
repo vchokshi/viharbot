@@ -64,6 +64,11 @@ def legacy_findings_payload(findings: ResearchFindings) -> dict[str, Any]:
     return {"findings": findings.model_dump()}
 
 
+def fact_check_payload(question: str, findings: ResearchFindings) -> dict[str, Any]:
+    """Outbound payload for the fact-check agent: the findings plus the original question."""
+    return {"question": question, "findings": findings.model_dump()}
+
+
 def legacy_context_payload(responses: dict[str, AgentResponse]) -> dict[str, Any]:
     """Outbound context for the privacy-review and synthesis agents.
 

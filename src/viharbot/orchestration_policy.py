@@ -20,7 +20,7 @@ from .orchestration_state import (
     OrchestrationState,
     StepResult,
 )
-from .pipeline_state import legacy_context_payload, legacy_findings_payload
+from .pipeline_state import fact_check_payload, legacy_context_payload, legacy_findings_payload
 from .schemas import ResearchFindings
 
 CapabilityName = Literal[
@@ -257,11 +257,9 @@ def build_payload(capability: Capability, state: OrchestrationState) -> dict[str
         return {"question": question}
     research = state.latest(Capability.RESEARCH)
     findings: ResearchFindings = research.domain  # type: ignore[assignment]
-    if capability in (
-        Capability.FACT_CHECK,
-        Capability.SOURCE_QUALITY,
-        Capability.SECURITY_ASSESSMENT,
-    ):
+    if capability is Capability.FACT_CHECK:
+        return fact_check_payload(question, findings)
+    if capability in (Capability.SOURCE_QUALITY, Capability.SECURITY_ASSESSMENT):
         return legacy_findings_payload(findings)
     context_inputs = (
         Capability.RESEARCH,

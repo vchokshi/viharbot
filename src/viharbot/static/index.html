@@ -679,7 +679,7 @@
           const section = el("section", "result-section");
           section.append(el("h4", "", "Fact Check · supplied evidence only"));
           section.append(el("p", "", result.fact_check.summary));
-          listSection(section, "Claim reviews", result.fact_check.claims.map((claim) => `${claim.status}: ${claim.claim} — ${claim.rationale} Follow-up: ${claim.follow_up}`));
+          listSection(section, "Claim reviews", result.fact_check.claims.map((claim) => `${claim.status}: ${claim.claim} — ${claim.rationale}${claim.evidence_quote ? ` Evidence cited: \u201c${claim.evidence_quote}\u201d (${claim.citation_verified === true ? "found in the supplied evidence" : "not found in the supplied evidence"}).` : ""} Follow-up: ${claim.follow_up}`));
           listSection(section, "Limitations", result.fact_check.limitations);
           body.append(section);
         }
