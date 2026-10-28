@@ -857,12 +857,13 @@
             break;
           case "planner_completed": {
             const entry = model.planner.find((item) => item.decision === decision);
-            if (entry) Object.assign(entry, { durationMs: data.duration_ms, action: data.action, capability: data.capability });
+            if (entry) Object.assign(entry, { durationMs: data.duration_ms, action: data.action, capability: data.capability, modelAlias: data.model_alias || null });
             const row = model.rows.find((candidate) => candidate.key === "planner-" + decision);
             setRow(model, { key: "planner-" + decision, kind: "planner", state: "done", identity: "charlie",
               text: data.action === "delegate" ? "Next up: " + lower(cap) + "." : "I think we have enough to finish.",
               detail: [].concat(row ? row.detail : [], data.rationale ? ["Planner rationale: " + data.rationale] : [],
-                data.model_alias ? ["Planner model: " + data.model_alias] : []), durationMs: data.duration_ms, sequence: ev.sequence });
+                data.model_alias ? ["Planner model: " + data.model_alias] : []), durationMs: data.duration_ms, sequence: ev.sequence,
+              model: data.model_alias || null });
             break; }
           case "planner_failed":
             setRow(model, { key: "planner-" + decision, kind: "planner", state: "failed", identity: "charlie",
@@ -871,7 +872,8 @@
             break;
           case "delegation_requested":
             setRow(model, { key: "deleg-" + decision, kind: "delegation", state: "active", identity: "charlie",
-              text: "Let's get " + lower(cap) + " going. " + nameOf(data.target_identity) + ", can you please take it?", detail: [], durationMs: null, sequence: ev.sequence });
+              text: "Let's get " + lower(cap) + " going. " + nameOf(data.target_identity) + ", can you please take it?", detail: [], durationMs: null, sequence: ev.sequence,
+              model: (model.planner.find((item) => item.decision === decision) || {}).modelAlias || null });
             break;
           case "delegation_authorized":
             settle(model, "deleg-" + decision, "done");
@@ -895,7 +897,8 @@
             break;
           case "agent_completed": {
             settle(model, "exec-" + execution, "done");
-            setRow(model, { key: "done-" + execution, kind: "agent", state: "done", identity: ev.source.identity_id,
+            if (data.model_alias) { const started = model.rows.find((candidate) => candidate.key === "exec-" + execution); if (started) started.model = data.model_alias; }
+            setRow(model, { key: "done-" + execution, kind: "agent", state: "done", identity: ev.source.identity_id, model: data.model_alias || null,
               text: "Done: " + lower(cap) + " is finished (v" + data.result_version + ").",
               detail: [cap + " result version " + data.result_version].concat(data.model_alias ? ["Model reported by the service: " + data.model_alias] : []),
               durationMs: data.duration_ms, sequence: ev.sequence });
@@ -982,7 +985,8 @@
         item.className = "live-row state-" + row.state + " kind-" + row.kind;
         const body = item.children[1];
         item.className += " side-" + sideOf(row.identity);
-        body.children[0].textContent = speakerName(row.identity);
+        // The model is shown only when a service really reported it (Dev diagnostics on).
+        body.children[0].textContent = speakerName(row.identity) + (row.model ? " · " + row.model : "");
         body.children[1].textContent = stateGlyph(row.state);
         body.children[1].setAttribute("aria-hidden", "true");
         body.children[2].textContent = row.text;

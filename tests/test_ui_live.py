@@ -188,6 +188,25 @@ def test_the_team_talks_as_a_conversation_with_charlie_left_and_specialists_righ
 
 
 @needs_node
+def test_each_speaker_names_the_model_the_service_reported():
+    events = load("A_successful_request_with_diagnostics")
+    for event in events:
+        if event["event_type"] == "planner_completed":
+            event["data"]["model_alias"] = "planner-m"
+    result = stream({"chunks": [frame(e) for e in events], "headers": {"X-Request-ID": events[0]["request_id"]}})
+    names = [text_of(n) for n in with_class(result["final"], "live-name")]
+    assert "Charlie · planner-m" in names
+    assert "Nova · m-r" in names and "Cipher · m-sec" in names
+    # the "on it" line also names the model once the service has reported it
+    assert names.count("Nova · m-r") == 2
+
+
+@needs_node
+def test_no_model_is_claimed_when_none_was_reported():
+    _, result = run("A_successful_request")
+    assert not [n for n in with_class(result["final"], "live-name") if "·" in text_of(n)]
+
+
 def test_the_fact_check_section_shows_the_cited_quote_and_whether_it_was_found():
     from test_ui_orchestration import chat_body
     claims = [
