@@ -16,6 +16,8 @@ Charlie is the coordinator, and the application is the execution authority. Char
 
 ## Sequence
 
+The diagram shows `POST /api/chat`. `POST /api/chat/stream` runs the same loop (`run_iterative_pipeline` with an event reporter and a cancel token) and returns the steps as live events instead of one response; see [live observability](live-observability.md) for that sequence and its terminal-event rules. When a streaming client disconnects, the loop stops starting new delegations, but a planner or agent call already in flight is not interrupted (cooperative cancellation, the same limit as the deadline described below).
+
 ```mermaid
 sequenceDiagram
     participant U as User
@@ -223,14 +225,14 @@ The final evaluation never exceeds the decision budget or the deadline, and no c
 
 ## Web UI
 
-The existing page renders the response with DOM nodes and `textContent` only; it uses no `innerHTML`, framework, streaming, polling or browser storage.
+This section describes the Phase 6.2 rendering of the `/api/chat` response, which the page still uses as the fallback when `POST /api/chat/stream` answers `409`. Since Phase 6.4 the page streams live events when iterative mode is on and shows them as a chat between Charlie and the specialists; that behavior, its event schema and its guarantees are specified in [live observability](live-observability.md). The page still renders everything with DOM nodes and `textContent` only (no `innerHTML`, framework, polling or browser storage), and uses `fetch` with a `ReadableStream` for the live path.
 
 - **Loading:** a neutral "The team is working on your question" card with an elapsed timer. It makes no claim about how many agents will run and shows no invented progress.
 - **Iterative response:** the answer, a line saying where it came from ("From the Synthesis agent", or "From the research summary. No synthesis was run for this request."), a **coordination panel**, then the existing "The team at work" panel and the review sections. The answer is never credited to Charlie. Charlie is shown as a coordinator, and his identity appears on a step only when a Synthesis step ran.
   - The panel header shows the decision and delegated-run counts, any refused requests, and the elapsed time.
   - The badge reads **Finished by Charlie** or **Completed under policy budget**, with a sentence explaining the reason. For policy completions it says the application completed the request with the results it had.
   - Each step shows its order, identity and capability, a "Run 2" tag for repeats, a "Not in the final answer" tag for superseded results, the duration and the status.
-  - The panel states that it is the server's record shown after the request finished, not a live feed.
+  - The panel states that it is the server's record shown after the request finished, not a live feed. (This applies to the non-streaming fallback; the live path shows events as they happen.)
 - **Other responses:** without `orchestration` the page renders exactly as before: the answer, the activity panel and the reviews. The optional reviews (Fact Check, Source Quality, Privacy review, Synthesis) appear only when returned.
 - **Errors:** a 502 or a network failure shows an error card (with the failed activity when the server returns it) and re-enables the form.
 - **Layout:** the new panel reuses the existing colors and breakpoints, is an ordered list inside a labelled section for screen readers, and collapses to a compact layout at 680 px.

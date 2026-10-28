@@ -1,5 +1,7 @@
 # Agent communication
 
+> The flow below is the **fixed pipeline** (the default mode). In iterative mode Charlie's planner chooses the next capability instead, with the same payload shapes; see [iterative orchestration](iterative-orchestration.md). Fact Check now also receives the original `question` next to `findings` in every mode, used only to judge relevance. Live events for iterative mode are specified in [live observability](live-observability.md).
+
 The web service coordinates six private FastAPI agents with plain JSON REST. Every call carries the same `X-Request-ID`; agent responses echo the ID in their body and response header. The ID correlates logs and is not authentication.
 
 ## Flow
@@ -30,4 +32,4 @@ Pydantic validates all public and agent result structures. A malformed incoming 
 
 Locally, only the web container is published at `127.0.0.1:8080`; agent ports are private to the Compose network. On DigitalOcean, only the web service has a public HTTP port. Each agent has a distinct internal component name and private port 8000.
 
-The web service and agents exchange questions and research results over private-network HTTP. Model-using agents send LiteLLM API keys only to the configured LiteLLM endpoint over HTTPS. The web container does not receive those keys. Privacy Review also sends the question and structured results to LiteLLM for analysis.
+The web service and agents exchange questions and research results over private-network HTTP. Model-using agents send LiteLLM API keys only to the configured LiteLLM endpoint over HTTPS. The web container receives a key only if you opt in with `WEB_LITELLM_API_KEY`, which Charlie's planner needs in iterative mode. Privacy Review also sends the question and structured results to LiteLLM for analysis.
