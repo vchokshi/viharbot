@@ -84,7 +84,7 @@ The App Platform template writes each agent's memory under `/tmp`, which is ephe
 
 ## Models and credentials
 
-The example aliases use `openai/gpt-5.4-mini` for Research, Fact Check, Source Quality, Privacy, and Synthesis, and `openai/gpt-5.4` for Security. Confirm that each alias is available to your LiteLLM account before using inference. `LITELLM_BASE_URL` defaults to `https://litellm.viharchokshi.com`. ViharBot does not deploy or modify LiteLLM.
+The example aliases use `openai/gpt-5.4-mini` for Research, Privacy, and Synthesis, `openai/gpt-5.4` for Security, and `gemini/gemini-3.5-flash` for Fact Check and Source Quality. Confirm that each alias is available to your LiteLLM account before using inference. `LITELLM_BASE_URL` defaults to `https://litellm.viharchokshi.com`. ViharBot does not deploy or modify LiteLLM.
 
 Do not commit `.env` or put credentials in source. The API key is sent to LiteLLM over HTTPS and is not logged or passed to the web container. Agent-to-agent and web-to-agent calls use JSON over the private Compose/App Platform network.
 

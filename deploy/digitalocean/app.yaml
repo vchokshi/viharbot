@@ -137,7 +137,7 @@ services:
         scope: RUN_TIME
         type: GENERAL
       - key: FACT_CHECK_MODEL
-        value: openai/gpt-5.4-mini
+        value: gemini/gemini-3.5-flash
         scope: RUN_TIME
         type: GENERAL
       - key: MEMORY_DIR
@@ -167,7 +167,7 @@ services:
         scope: RUN_TIME
         type: GENERAL
       - key: SOURCE_QUALITY_MODEL
-        value: openai/gpt-5.4-mini
+        value: gemini/gemini-3.5-flash
         scope: RUN_TIME
         type: GENERAL
       - key: MEMORY_DIR

@@ -105,7 +105,7 @@ services:
       AGENT_KIND: fact-check
       LITELLM_BASE_URL: ${LITELLM_BASE_URL:-https://litellm.viharchokshi.com}
       LITELLM_API_KEY: ${LITELLM_API_KEY:-}
-      FACT_CHECK_MODEL: ${FACT_CHECK_MODEL:-openai/gpt-5.4-mini}
+      FACT_CHECK_MODEL: ${FACT_CHECK_MODEL:-gemini/gemini-3.5-flash}
       MEMORY_DIR: /data
     volumes:
       - fact_check_data:/data
@@ -128,7 +128,7 @@ services:
       AGENT_KIND: source-quality
       LITELLM_BASE_URL: ${LITELLM_BASE_URL:-https://litellm.viharchokshi.com}
       LITELLM_API_KEY: ${LITELLM_API_KEY:-}
-      SOURCE_QUALITY_MODEL: ${SOURCE_QUALITY_MODEL:-openai/gpt-5.4-mini}
+      SOURCE_QUALITY_MODEL: ${SOURCE_QUALITY_MODEL:-gemini/gemini-3.5-flash}
       MEMORY_DIR: /data
     volumes:
       - source_quality_data:/data
