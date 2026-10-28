@@ -1,0 +1,85 @@
+# Scout: Intelligence Validation. Declarative skills from Skills Registry v1.0.
+# Every skill here is `proposed`: declared only, with no execution contract. Listing a
+# skill grants no tool, scope or data access and does not make it executable.
+
+[[skill]]
+skill_id = "verification.fact_check"
+version = "0.1.0"
+name = "Fact checking"
+description = "Fact checking. Expected deliverable: claim verification results."
+owner = "scout"
+category = "verification"
+outputs = ["Claim verification results"]
+capability = "fact_check"
+status = "proposed"
+
+[[skill]]
+skill_id = "verification.source_quality"
+version = "0.1.0"
+name = "Source-quality assessment"
+description = "Source-quality assessment. Expected deliverable: source reliability findings."
+owner = "scout"
+category = "verification"
+outputs = ["Source reliability findings"]
+capability = "source_quality"
+status = "proposed"
+
+[[skill]]
+skill_id = "verification.corroboration"
+version = "0.1.0"
+name = "Cross-source corroboration"
+description = "Cross-source corroboration. Expected deliverable: corroboration matrix."
+owner = "scout"
+category = "verification"
+outputs = ["Corroboration matrix"]
+status = "proposed"
+
+[[skill]]
+skill_id = "verification.contradictions"
+version = "0.1.0"
+name = "Contradiction detection"
+description = "Contradiction detection. Expected deliverable: conflicting claims report."
+owner = "scout"
+category = "verification"
+outputs = ["Conflicting claims report"]
+status = "proposed"
+
+[[skill]]
+skill_id = "verification.provenance"
+version = "0.1.0"
+name = "Provenance validation"
+description = "Provenance validation. Expected deliverable: evidence traceability report."
+owner = "scout"
+category = "verification"
+outputs = ["Evidence traceability report"]
+status = "proposed"
+
+[[skill]]
+skill_id = "verification.claim_extraction"
+version = "0.1.0"
+name = "Claim extraction"
+description = "Claim extraction. Expected deliverable: structured claims inventory."
+owner = "scout"
+category = "verification"
+outputs = ["Structured claims inventory"]
+status = "proposed"
+
+[[skill]]
+skill_id = "verification.confidence"
+version = "0.1.0"
+name = "Evidence confidence assessment"
+description = "Evidence confidence assessment. Expected deliverable: qualified confidence findings."
+owner = "scout"
+category = "verification"
+outputs = ["Qualified confidence findings"]
+status = "proposed"
+
+[[skill]]
+skill_id = "verification.independent_review"
+version = "0.1.0"
+name = "Independent review"
+description = "Independent review. Expected deliverable: review and challenge report."
+owner = "scout"
+category = "verification"
+outputs = ["Review and challenge report"]
+status = "proposed"

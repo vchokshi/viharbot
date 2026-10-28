@@ -1,0 +1,105 @@
+# Sage: Philosophy and Human Perspective. Declarative skills from Skills Registry v1.0.
+# Every skill here is `proposed`: declared only, with no execution contract. Listing a
+# skill grants no tool, scope or data access and does not make it executable.
+
+[[skill]]
+skill_id = "human.ethical_analysis"
+version = "0.1.0"
+name = "Ethical analysis"
+description = "Ethical analysis. Expected deliverable: ethical impact assessment."
+owner = "sage"
+category = "human"
+outputs = ["Ethical impact assessment"]
+status = "proposed"
+
+[[skill]]
+skill_id = "human.ai_governance"
+version = "0.1.0"
+name = "AI governance"
+description = "AI governance. Expected deliverable: governance recommendations."
+owner = "sage"
+eligible_agents = ["cipher", "atlas"]
+category = "human"
+outputs = ["Governance recommendations"]
+status = "proposed"
+
+[[skill]]
+skill_id = "human.change_management"
+version = "0.1.0"
+name = "Change management"
+description = "Change management. Expected deliverable: change-management plan."
+owner = "sage"
+category = "human"
+outputs = ["Change-management plan"]
+status = "proposed"
+
+[[skill]]
+skill_id = "human.stakeholder_impact"
+version = "0.1.0"
+name = "Stakeholder impact analysis"
+description = "Stakeholder impact analysis. Expected deliverable: human impact assessment."
+owner = "sage"
+category = "human"
+outputs = ["Human impact assessment"]
+status = "proposed"
+
+[[skill]]
+skill_id = "human.organizational_culture"
+version = "0.1.0"
+name = "Organizational culture"
+description = "Organizational culture. Expected deliverable: culture and adoption assessment."
+owner = "sage"
+category = "human"
+outputs = ["Culture and adoption assessment"]
+status = "proposed"
+
+[[skill]]
+skill_id = "human.decision_frameworks"
+version = "0.1.0"
+name = "Decision frameworks"
+description = "Decision frameworks. Expected deliverable: decision-support framework."
+owner = "sage"
+category = "human"
+outputs = ["Decision-support framework"]
+status = "proposed"
+
+[[skill]]
+skill_id = "human.knowledge_transfer"
+version = "0.1.0"
+name = "Knowledge transfer"
+description = "Knowledge transfer. Expected deliverable: education and enablement plan."
+owner = "sage"
+eligible_agents = ["nova", "pixel"]
+category = "human"
+outputs = ["Education and enablement plan"]
+status = "proposed"
+
+[[skill]]
+skill_id = "human.training_design"
+version = "0.1.0"
+name = "Training design"
+description = "Training design. Expected deliverable: learning objectives and curriculum."
+owner = "sage"
+category = "human"
+outputs = ["Learning objectives and curriculum"]
+status = "proposed"
+
+[[skill]]
+skill_id = "human.adoption_strategy"
+version = "0.1.0"
+name = "Technology adoption"
+description = "Technology adoption. Expected deliverable: adoption strategy."
+owner = "sage"
+category = "human"
+outputs = ["Adoption strategy"]
+status = "proposed"
+
+[[skill]]
+skill_id = "human.responsible_ai"
+version = "0.1.0"
+name = "Responsible AI assessment"
+description = "Responsible AI assessment. Expected deliverable: responsible ai recommendations."
+owner = "sage"
+category = "human"
+outputs = ["Responsible AI recommendations"]
+status = "proposed"

@@ -1,0 +1,85 @@
+# Nova: Research and Knowledge. Declarative skills from Skills Registry v1.0.
+# Every skill here is `proposed`: declared only, with no execution contract. Listing a
+# skill grants no tool, scope or data access and does not make it executable.
+
+[[skill]]
+skill_id = "research.technical"
+version = "0.1.0"
+name = "Technical research"
+description = "Technical research. Expected deliverable: technical findings report."
+owner = "nova"
+eligible_agents = ["scout", "orbit"]
+category = "research"
+outputs = ["Technical findings report"]
+capability = "research"
+status = "proposed"
+
+[[skill]]
+skill_id = "research.market"
+version = "0.1.0"
+name = "Market intelligence"
+description = "Market intelligence. Expected deliverable: market landscape assessment."
+owner = "nova"
+category = "research"
+outputs = ["Market landscape assessment"]
+status = "proposed"
+
+[[skill]]
+skill_id = "research.comparative"
+version = "0.1.0"
+name = "Comparative research"
+description = "Comparative research. Expected deliverable: evidence-based comparison."
+owner = "nova"
+category = "research"
+outputs = ["Evidence-based comparison"]
+status = "proposed"
+
+[[skill]]
+skill_id = "research.documentation"
+version = "0.1.0"
+name = "Documentation analysis"
+description = "Documentation analysis. Expected deliverable: document findings and references."
+owner = "nova"
+category = "research"
+outputs = ["Document findings and references"]
+status = "proposed"
+
+[[skill]]
+skill_id = "research.standards"
+version = "0.1.0"
+name = "Standards research"
+description = "Standards research. Expected deliverable: standards applicability assessment."
+owner = "nova"
+category = "research"
+outputs = ["Standards applicability assessment"]
+status = "proposed"
+
+[[skill]]
+skill_id = "research.literature"
+version = "0.1.0"
+name = "Literature review"
+description = "Literature review. Expected deliverable: research synthesis."
+owner = "nova"
+category = "research"
+outputs = ["Research synthesis"]
+status = "proposed"
+
+[[skill]]
+skill_id = "research.knowledge_mapping"
+version = "0.1.0"
+name = "Knowledge mapping"
+description = "Knowledge mapping. Expected deliverable: topic and dependency map."
+owner = "nova"
+category = "research"
+outputs = ["Topic and dependency map"]
+status = "proposed"
+
+[[skill]]
+skill_id = "research.evidence_collection"
+version = "0.1.0"
+name = "Evidence collection"
+description = "Evidence collection. Expected deliverable: provenance-aware evidence set."
+owner = "nova"
+category = "research"
+outputs = ["Provenance-aware evidence set"]
+status = "proposed"

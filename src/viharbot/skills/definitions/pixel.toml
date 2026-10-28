@@ -1,0 +1,83 @@
+# Pixel: Creative Intelligence. Declarative skills from Skills Registry v1.0.
+# Every skill here is `proposed`: declared only, with no execution contract. Listing a
+# skill grants no tool, scope or data access and does not make it executable.
+
+[[skill]]
+skill_id = "creative.presentation_design"
+version = "0.1.0"
+name = "Presentation development"
+description = "Presentation development. Expected deliverable: presentation."
+owner = "pixel"
+category = "creative"
+outputs = ["Presentation"]
+status = "proposed"
+
+[[skill]]
+skill_id = "creative.architecture_visualization"
+version = "0.1.0"
+name = "Architecture visualization"
+description = "Architecture visualization. Expected deliverable: architecture diagram."
+owner = "pixel"
+category = "creative"
+outputs = ["Architecture diagram"]
+status = "proposed"
+
+[[skill]]
+skill_id = "creative.data_storytelling"
+version = "0.1.0"
+name = "Data storytelling"
+description = "Data storytelling. Expected deliverable: visual analytical narrative."
+owner = "pixel"
+category = "creative"
+outputs = ["Visual analytical narrative"]
+status = "proposed"
+
+[[skill]]
+skill_id = "creative.ux_design"
+version = "0.1.0"
+name = "User experience design"
+description = "User experience design. Expected deliverable: ux specification."
+owner = "pixel"
+category = "creative"
+outputs = ["UX specification"]
+status = "proposed"
+
+[[skill]]
+skill_id = "creative.information_design"
+version = "0.1.0"
+name = "Information architecture"
+description = "Information architecture. Expected deliverable: structured information design."
+owner = "pixel"
+category = "creative"
+outputs = ["Structured information design"]
+status = "proposed"
+
+[[skill]]
+skill_id = "creative.executive_communication"
+version = "0.1.0"
+name = "Executive visual communication"
+description = "Executive visual communication. Expected deliverable: executive-ready visual artifact."
+owner = "pixel"
+category = "creative"
+outputs = ["Executive-ready visual artifact"]
+status = "proposed"
+
+[[skill]]
+skill_id = "creative.technical_illustration"
+version = "0.1.0"
+name = "Technical illustration"
+description = "Technical illustration. Expected deliverable: technical visual."
+owner = "pixel"
+category = "creative"
+outputs = ["Technical visual"]
+status = "proposed"
+
+[[skill]]
+skill_id = "creative.brand_consistency"
+version = "0.1.0"
+name = "Visual identity consistency"
+description = "Visual identity consistency. Expected deliverable: brand-compliant design."
+owner = "pixel"
+category = "creative"
+outputs = ["Brand-compliant design"]
+status = "proposed"
