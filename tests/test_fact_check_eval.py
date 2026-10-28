@@ -80,3 +80,10 @@ def test_the_report_names_the_model_and_the_mistakes():
     summary = ev.summarize(ev.evaluate(CASES[:2], lambda case: [{"status": I, "rationale": "r"}]))
     text = ev.report("some/model", summary)
     assert "some/model" in text and "Exact match" in text and "Wrong:" in text
+
+
+def test_the_live_run_stops_early_when_litellm_settings_are_missing(monkeypatch, capsys):
+    monkeypatch.delenv("LITELLM_BASE_URL", raising=False)
+    monkeypatch.setenv("LITELLM_API_KEY", "set")
+    assert ev.main(["--model", "x/y", "--confirm-billable"]) == 2
+    assert "LITELLM_BASE_URL" in capsys.readouterr().err
