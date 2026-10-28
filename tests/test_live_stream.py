@@ -315,6 +315,14 @@ def wait_until(condition, seconds=3.0):
     return False
 
 
+@pytest.fixture(autouse=True)
+def no_stray_workers():
+    """Count only this test's stream workers: wait out any left by a slow neighbour or a failed test."""
+    assert wait_until(lambda: not workers(), seconds=10.0), "a stream worker from an earlier test is still running"
+    yield
+    wait_until(lambda: not workers(), seconds=10.0)
+
+
 def test_a_full_queue_closes_a_stream_nobody_is_reading_and_frees_everything():
     cancel, permit = CancelToken(), StreamPermit.acquire()
     emitted = []
@@ -381,7 +389,8 @@ def test_a_disconnect_cancels_new_work_and_releases_the_slot_without_replaying_a
 
     asyncio.run(scenario())
     assert cancel.is_set() and permits_available() == MAX_CONCURRENT_STREAMS
-    assert calls == ["planner"] and len(workers()) == 1  # the in-flight call is still running
+    assert wait_until(lambda: calls == ["planner"])  # the worker may not have recorded its call yet
+    assert len(workers()) == 1  # the in-flight call is still running
     gate.set()  # when it returns, the next event cannot be delivered and the run stops
     assert wait_until(lambda: not workers())
     assert calls == ["planner"]  # nothing further happened and nothing was retried
