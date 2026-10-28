@@ -1,103 +1,117 @@
 # ViharBot
 
-ViharBot is a web-based research and security platform. A browser talks to a FastAPI web container, which coordinates six independently deployed FastAPI agents using JSON REST. Research gathers structured findings; Fact Check, Source Quality, Security, and Privacy review them; Synthesis produces a final answer. All model inference uses Strands Agents through the separately managed LiteLLM proxy. No direct provider calls are made.
+ViharBot is a browser-based, multi-agent research and security assistant. A FastAPI web container coordinates six independently deployed FastAPI agents over private JSON REST. A named coordinator, Charlie Chatwin, can plan the work one step at a time, but the application, not the model, decides what may run. All model inference goes through Strands Agents to an externally managed [LiteLLM](docs/litellm-integration.md) proxy; there are no direct provider calls.
+
+This README describes what the code on `main` does today. Planned work is labelled as planned. See [development status](docs/development-status.md) for what is implemented, tested, integrated, deployed and operationally validated, and the [Phase 6.5 audit](docs/audits/phase-6.5-architecture-audit.md) for the evidence behind these statements.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-  B[Browser chat] -->|HTTPS / Basic Auth on DigitalOcean| W[Web container]
-  W -->|private JSON REST + request ID| R[ResearchAgent]
-  W -->|private JSON REST + request ID| F[Fact Check]
-  W -->|private JSON REST + request ID| Q[Source Quality]
-  W -->|private JSON REST + request ID| S[Security]
-  W -->|private JSON REST + request ID| P[Privacy]
-  W -->|private JSON REST + request ID| Y[Synthesis]
-  R -->|Strands / RESEARCH_MODEL| L[External LiteLLM]
-  F -->|Strands / FACT_CHECK_MODEL| L
-  Q -->|Strands / SOURCE_QUALITY_MODEL| L
-  S -->|Strands / SECURITY_MODEL| L
-  P -->|Strands / PRIVACY_MODEL| L
-  Y -->|Strands / SYNTHESIS_MODEL| L
-  R --> RF[Research findings]
-  F --> W
-  Q --> W
-  S --> W
-  P --> W
-  RF --> W
-  Y --> A[Team answer]
-  A --> W
+  B[Browser chat] -->|Basic Auth when enabled| W[Web container]
+  W -. "planner only (opt-in key)" .-> L[(External LiteLLM)]
+  W -->|private JSON REST + request ID| R[research]
+  W -->|private JSON REST| F[fact-check]
+  W -->|private JSON REST| Q[source-quality]
+  W -->|private JSON REST| S[security]
+  W -->|private JSON REST| P[privacy-review]
+  W -->|private JSON REST| Y[synthesis]
+  R --> L
+  F --> L
+  Q --> L
+  S --> L
+  P --> L
+  Y --> L
 ```
 
-The web service is the only public component in the DigitalOcean App Platform template. All six agents are private internal services. Locally, Compose binds only the web UI to `127.0.0.1:8080`; agent ports stay on the private Compose network. The web app is a coordinator and UI, not a seventh model-backed agent.
+The web container serves the UI and runs the orchestration. It is model-backed only for Charlie's planner, and only when iterative orchestration is enabled and a planner alias and key are supplied. Locally, Compose publishes only the web port, on `127.0.0.1:8080`; the six agents stay on the private Compose network. See [architecture](docs/architecture.md) for the full picture.
 
-Pushing to `main` updates source only. DigitalOcean and AWS are separate, manually selected deployment targets. The DigitalOcean template disables deploy-on-push for all seven components.
+## Agents and capabilities
 
-The web page presents the synthesized answer plus the findings and reviews in a chat layout. It sends the last four user/assistant turns from the current browser tab as context with each message. The history is held in browser memory only, is not stored server-side, and disappears on reload. Privacy Review receives the current question and structured team results. The privacy analysis itself is a model call through the configured LiteLLM service. Each response also shows the six calls in order, the model alias used by each agent, and its round-trip duration. Calls are sequential and share one LiteLLM server, so longer waits are expected.
+Eight agent identities are defined; four are connected to running services. Logical identities and physical services are different things: Scout and Cipher each own two services, and Charlie owns the Synthesis service and the planner.
 
-Fact Check and Source Quality review only supplied findings and references. They do not browse the web or independently verify claims. Their outputs call out that limitation and identify follow-up checks.
+| Identity | Status | Capability | Service | Default model alias |
+|---|---|---|---|---|
+| Nova | live | research | `research` | `openai/gpt-5.4-mini` |
+| Scout | live | fact check | `fact-check` | `gemini/gemini-3.5-flash` |
+| Scout | live | source quality | `source-quality` | `gemini/gemini-3.5-flash` |
+| Cipher | live | security assessment | `security` | `openai/gpt-5.4` |
+| Cipher | live | privacy review | `privacy-review` | `openai/gpt-5.4-mini` |
+| Charlie | live | synthesis | `synthesis` | `openai/gpt-5.4-mini` |
+| Charlie | live (opt-in) | planning | in the web container | `CHARLIE_PLANNER_MODEL`, no default |
+| Atlas, Sage | planned | none connected | none | none |
+| Pixel, Orbit | support roles, not connected | none connected | none | none |
 
-## Run locally
+Fact Check reviews only the evidence Research supplied; it does not browse. Each non-trivial verdict must quote that evidence, and the application checks the quote. Source Quality inspects reference strings without fetching them.
 
-Copy `.env.example` to `.env`, then set `LITELLM_API_KEY` and LiteLLM aliases available to your account:
+## Execution modes
 
-```bash
-cp .env.example .env
-docker compose up --build -d web
-```
+`POST /api/chat` picks the first mode whose flags allow it (`web_app.py`):
 
-Open [http://127.0.0.1:8080](http://127.0.0.1:8080). Local Basic Auth is disabled by default because the listener is bound to loopback. To exercise local auth, set `WEB_AUTH_ENABLED=1`, `WEB_USERNAME`, and `WEB_PASSWORD` in `.env`, then recreate the web service.
+| Mode | Flags | Behavior |
+|---|---|---|
+| Iterative orchestration | `VIHARBOT_ITERATIVE_ORCHESTRATION_ENABLED`, `VIHARBOT_DELEGATION_ENABLED` and `VIHARBOT_IDENTITY_ROUTING_ENABLED` all `true`, plus `CHARLIE_PLANNER_MODEL` | Charlie recommends one step at a time; policy authorizes it; the loop runs it |
+| Controlled delegation | `VIHARBOT_DELEGATION_ENABLED` and identity routing | Charlie picks one of two predefined workflows |
+| Identity-attributed execution | `VIHARBOT_IDENTITY_ROUTING_ENABLED` | The fixed pipeline, attributed to identities |
+| Fixed pipeline | none (the default) | Research, then the specialists in a fixed order |
 
-To run the CLI-style pipeline without the web app:
+All flags default to `false`. `POST /api/chat/stream` (live events) works only in iterative mode and returns `409` otherwise. Details: [iterative orchestration](docs/iterative-orchestration.md), [controlled delegation](docs/controlled-delegation.md), [identity execution](docs/identity-execution-integration.md).
 
-```bash
-docker compose --profile demo run --build --rm orchestrator
-```
+## Charlie's orchestration
 
-To stop the local containers:
+Each decision is a fresh, stateless planner call that can only propose `delegate <capability>` or `finish`. The application enforces dependencies (Research first; Security needs Research; Privacy Review and Synthesis need Research and Security), freshness of versioned results, budgets (8 decisions, 6 executions, 2 repeats, 120 seconds, 2 refused actions by default) and an absolute request deadline. A recommendation is never an authorization.
 
-```bash
-docker compose down
-```
+## Live observability
 
-## Deployment choices
-
-The repository provides a DigitalOcean App Platform template and an Amazon Bedrock AgentCore compatibility path. Neither deploys automatically from a push to `main`. Review [deployment strategy](docs/deployment-strategy.md) for the provider gates and [AgentCore deployment notes](deploy/agentcore/README.md) for current runtime requirements and the required web hosting bridge.
-
-## DigitalOcean App Platform
-
-[`deploy/digitalocean/app.yaml`](deploy/digitalocean/app.yaml) defines the `viharbot-stage` app with seven containers from this GitHub repository: a public web service and six private agents. It uses the linked GitHub source with `deploy_on_push: false`, so a push to `main` does not deploy the app. App Platform supports Dockerfile-backed components and internal service ports; see the [App Spec reference](https://docs.digitalocean.com/products/app-platform/reference/app-spec/) and [internal routing guide](https://docs.digitalocean.com/products/app-platform/how-to/manage-internal-routing/).
-
-Before creating the app, connect DigitalOcean to GitHub and replace the empty secret values in the template through the DigitalOcean control panel with encrypted runtime secrets:
-
-- Set `LITELLM_API_KEY` on each of the six model-using agent components. The web component does not receive this key.
-- Set `WEB_USERNAME` and `WEB_PASSWORD` on the web component. The template enables HTTP Basic Auth for `/` and `/api/chat`; `/health` remains open for platform health checks.
-- Configure the six model aliases on their matching agent services.
-
-Then review the spec and create the app using DigitalOcean's [App Platform CLI flow](https://docs.digitalocean.com/products/app-platform/how-to/create-apps/), for example `doctl apps propose --spec deploy/digitalocean/app.yaml` followed by `doctl apps create --spec deploy/digitalocean/app.yaml`. Its GitHub source sets `deploy_on_push: false`; updates require a separately chosen deployment action. Creating the app provisions billable DigitalOcean resources; no resources are created automatically by this repository.
-
-### Promote dev to Stage
-
-Local Docker Compose is the dev environment. Complete the local build and health checks first, then review the exact change and any monthly cost change. Ask explicitly: **“Do you want to promote this dev build to Stage?”** Wait for an affirmative answer before updating or deploying the Stage app. Approval applies only to the reviewed build. After approval, deploy and verify the DigitalOcean deployment status and public health endpoint. Do not count approval alone as successful deployment.
-
-The App Platform template writes each agent's memory under `/tmp`, which is ephemeral and can be lost when an instance is replaced. Local Compose gives every agent its own memory volume or bind mount. This is an initial deployment layout, not production-grade persistent memory, multi-user identity, or authorization between users.
+With iterative mode on, the page streams real events as they happen: Charlie's planning, delegations, each agent starting and finishing, dependencies, superseded evidence and the final answer. It shows them as a chat between Charlie and the specialists, with the model for each speaker when the service reported it (requires `VIHARBOT_DEV_DIAGNOSTICS_ENABLED`). The chat wording is templated from recorded events, not generated by the agents' models. The protocol is documented in [live observability](docs/live-observability.md).
 
 ## Models and credentials
 
-The example aliases use `openai/gpt-5.4-mini` for Research, Privacy, and Synthesis, `openai/gpt-5.4` for Security, and `gemini/gemini-3.5-flash` for Fact Check and Source Quality. Confirm that each alias is available to your LiteLLM account before using inference. `LITELLM_BASE_URL` defaults to `https://litellm.viharchokshi.com`. ViharBot does not deploy or modify LiteLLM.
+Every model call goes through `build_agent()` (`src/viharbot/model_agent.py`), which builds a Strands `LiteLLMModel` pointed at LiteLLM. Each agent container gets its own alias and `LITELLM_API_KEY`. The web container receives a key only if you opt in with `WEB_LITELLM_API_KEY` (needed for Charlie's planner). `LITELLM_BASE_URL` defaults to `https://litellm.viharchokshi.com`. A configured alias does not prove it works: confirm each alias is available to your LiteLLM account first (see [LiteLLM integration](docs/litellm-integration.md)). ViharBot does not deploy or modify LiteLLM. Never commit `.env`.
 
-Do not commit `.env` or put credentials in source. The API key is sent to LiteLLM over HTTPS and is not logged or passed to the web container. Agent-to-agent and web-to-agent calls use JSON over the private Compose/App Platform network.
+## Run locally
+
+```bash
+cp .env.example .env     # set LITELLM_API_KEY and aliases your account can use
+docker compose up --build -d
+```
+
+Open [http://127.0.0.1:8080](http://127.0.0.1:8080). Local Basic Auth is off by default because the listener is bound to loopback; set `WEB_AUTH_ENABLED=1`, `WEB_USERNAME` and `WEB_PASSWORD` to try it. To turn on live orchestration, add the three flags, `CHARLIE_PLANNER_MODEL` and `WEB_LITELLM_API_KEY` to `.env` (this makes billable calls). A CLI-style run: `docker compose --profile demo run --build --rm orchestrator`. Stop with `docker compose down`.
 
 ## Tests
 
-The default suite mocks model and LiteLLM calls. Run it in Docker with:
+The default suite mocks all model and LiteLLM calls and is the authoritative one. Run it on the host with Node installed (the UI tests run the page's real script in a fake DOM):
 
 ```bash
-docker compose --profile tests run --build --rm tests
+python -m pytest -q
 ```
 
-Optional live connectivity and inference checks are described in the [LiteLLM integration notes](docs/litellm-integration.md). They are disabled by default; inference checks can consume model quota.
+Two environment notes. A local `.env` is loaded by python-dotenv and can flip the feature flags on, which makes about 15 tests fail; move `.env` aside when running tests. The Docker profile (`docker compose --profile tests run --build --rm tests`) does **not** run the full suite today: its image has no Node, no `compose.yaml`, no `.env.example` and no `images/`, so one test module fails to import and several others fail. See [development status](docs/development-status.md). Opt-in live checks (`RUN_LITELLM_INTEGRATION`, `RUN_LITELLM_INFERENCE`) and `scripts/fact_check_eval/run.py` make billable calls and are off by default.
 
-## Project scope
+## Deployment
 
-The six-agent lineup is Research, Fact Check, Source Quality, Security, Privacy, and Synthesis. Every agent runs in its own container with its own model alias, memory path, and structured logs. Independent cloud identities and authenticated agent-to-agent calls, per-user accounts, rate limiting, durable web sessions, and production-grade memory remain future work. The current target is a browser-based web app; a native or phone-specific client may be considered later. No AWS resources or DigitalOcean resources are provisioned automatically.
+Pushing to `main` updates source only; nothing deploys automatically.
+
+| Target | State |
+|---|---|
+| Local Docker Compose | The development environment (seven services plus `orchestrator` and `tests` profiles) |
+| DigitalOcean App Platform | A template exists in [`deploy/digitalocean/app.yaml`](deploy/digitalocean/app.yaml) (seven components, `deploy_on_push: false`). The committed spec keeps every optional mode off, so a Stage built from it runs the fixed pipeline and `/api/chat/stream` answers `409` |
+| AWS / Bedrock AgentCore | Compatibility code and notes only ([AgentCore notes](deploy/agentcore/README.md)); nothing is deployed and the streaming route is not bridged |
+
+## Security boundaries
+
+* All web routes except `/health` use the same shared Basic Auth when enabled (`/`, `/images/*`, `/api/chat`, `/api/chat/stream`). It is not per-user identity.
+* The six agents have **no authentication**; they rely on the private network. Do not publish their ports.
+* The browser never receives an agent key. Logs hold agent, request ID, destination, alias, duration and error type, never prompts, findings or keys.
+* Model output is untrusted: the page renders it with `textContent`, and Markdown answers produce no links or HTML.
+
+## Known limitations
+
+* Agent memory is append-only JSONL, written but never read back, and ephemeral on App Platform.
+* Agent-to-agent REST is unauthenticated; identities do not have separate cloud permissions.
+* Calls run one at a time, and cancelling a browser request does not stop work already in flight.
+* Planned, not built: per-user accounts, durable sessions and memory, authenticated inter-agent calls, distributed runtimes, Atlas, Sage, Pixel and Orbit.
+
+## Documentation
+
+[Architecture](docs/architecture.md) · [Development status](docs/development-status.md) · [Phase 6.5 audit](docs/audits/phase-6.5-architecture-audit.md) · [Live observability protocol](docs/live-observability.md) · [Iterative orchestration](docs/iterative-orchestration.md) · [Controlled delegation](docs/controlled-delegation.md) · [Identity execution](docs/identity-execution-integration.md) · [Personality-aware inference](docs/personality-aware-inference.md) · [Agent identities](docs/agent-identity-architecture.md) · [Agent communication](docs/agent-communication.md) · [LiteLLM](docs/litellm-integration.md) · [Deployment](docs/deployment-strategy.md) · [Identity and security](docs/identity-and-security.md) · [Memory](docs/memory-architecture.md) · [Observability](docs/observability.md) · [AgentCore](deploy/agentcore/README.md)

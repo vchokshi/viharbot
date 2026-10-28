@@ -1,5 +1,7 @@
 # Controlled delegation
 
+> **Historical (Phase 5), still accurate.** Iterative orchestration (Phase 6) takes precedence over this mode when its flags are on. Current state: [architecture](architecture.md) and [iterative orchestration](iterative-orchestration.md).
+
 Phase 5 lets Charlie Chatwin **recommend** one of two predefined workflows for a request. The application validates and authorizes the recommendation before anything runs. It is **off by default**, and with the flags off the existing paths are unchanged.
 
 ## Model-assisted selection versus autonomous orchestration
