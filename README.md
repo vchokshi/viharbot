@@ -1,5 +1,15 @@
 # ViharBot
 
+[![CI](https://github.com/vchokshi/viharbot/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/vchokshi/viharbot/actions/workflows/ci.yml?query=branch%3Amain)
+[![Tests](https://img.shields.io/github/check-runs/vchokshi/viharbot/main?nameFilter=Python%20tests%20%283.12%29&label=tests)](https://github.com/vchokshi/viharbot/actions/workflows/ci.yml?query=branch%3Amain)
+[![Coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fvchokshi%2Fviharbot%2Fbadges%2Fcoverage.json)](https://github.com/vchokshi/viharbot/actions/workflows/ci.yml?query=branch%3Amain)
+[![Lint](https://img.shields.io/github/check-runs/vchokshi/viharbot/main?nameFilter=Lint%20%28Ruff%29&label=lint)](https://github.com/vchokshi/viharbot/actions/workflows/ci.yml?query=branch%3Amain)
+[![Docker Build](https://img.shields.io/github/check-runs/vchokshi/viharbot/main?nameFilter=Docker%20build%20and%20smoke%20test&label=docker%20build)](https://github.com/vchokshi/viharbot/actions/workflows/ci.yml?query=branch%3Amain)
+
+[![CodeQL](https://github.com/vchokshi/viharbot/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/vchokshi/viharbot/security/code-scanning)
+[![Dependency Review](https://github.com/vchokshi/viharbot/actions/workflows/dependency-review.yml/badge.svg?branch=main)](https://github.com/vchokshi/viharbot/actions/workflows/dependency-review.yml)
+[![Security Scan](https://github.com/vchokshi/viharbot/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/vchokshi/viharbot/actions/workflows/security.yml?query=branch%3Amain)
+
 ViharBot is a browser-based, multi-agent research and security assistant. A FastAPI web container coordinates six independently deployed FastAPI agents over private JSON REST. A named coordinator, Charlie Chatwin, can plan the work one step at a time, but the application, not the model, decides what may run. All model inference goes through Strands Agents to an externally managed [LiteLLM](docs/litellm-integration.md) proxy; there are no direct provider calls.
 
 This README describes what the code on `main` does today. Planned work is labelled as planned. See [development status](docs/development-status.md) for what is implemented, tested, integrated, deployed and operationally validated, and the [Phase 6.5 audit](docs/audits/phase-6.5-architecture-audit.md) for the evidence behind these statements.
@@ -88,6 +98,20 @@ python -m pytest -q
 
 Two environment notes. A local `.env` is loaded by python-dotenv and can flip the feature flags on, which makes about 15 tests fail; move `.env` aside when running tests. The Docker profile (`docker compose --profile tests run --build --rm tests`) does **not** run the full suite today: its image has no Node, no `compose.yaml`, no `.env.example` and no `images/`, so one test module fails to import and several others fail. See [development status](docs/development-status.md). Opt-in live checks (`RUN_LITELLM_INTEGRATION`, `RUN_LITELLM_INFERENCE`) and `scripts/fact_check_eval/run.py` make billable calls and are off by default.
 
+## Quality checks
+
+Every pull request and every push to `main` runs [GitHub Actions](https://github.com/vchokshi/viharbot/actions): Python tests on 3.12 and 3.13 with coverage, frontend tests on Node 24, Ruff, and a Docker build with a health smoke test. CodeQL, dependency review and four security scanners run separately. The badges above come from those runs; none is hand-maintained. A green badge says the check ran and passed against the latest run on `main`. It does not prove the code has no bugs or vulnerabilities, and a badge can show an older successful run until the next one finishes.
+
+Test results, coverage (XML and HTML) and scan reports are uploaded as artifacts on each run. Code scanning findings are under [Security](https://github.com/vchokshi/viharbot/security/code-scanning). The same checks locally:
+
+```bash
+python -m pip install -e ".[test]" ruff==0.17.3
+python -m pytest --cov              # also needs Node for the UI tests; move any .env aside
+ruff check src tests scripts .github/scripts
+```
+
+Details, thresholds, required repository settings and known limits: [continuous integration](docs/continuous-integration.md).
+
 ## Deployment
 
 Pushing to `main` updates source only; nothing deploys automatically.
@@ -114,4 +138,4 @@ Pushing to `main` updates source only; nothing deploys automatically.
 
 ## Documentation
 
-[Architecture](docs/architecture.md) · [Development status](docs/development-status.md) · [Phase 6.5 audit](docs/audits/phase-6.5-architecture-audit.md) · [Live observability protocol](docs/live-observability.md) · [Iterative orchestration](docs/iterative-orchestration.md) · [Controlled delegation](docs/controlled-delegation.md) · [Identity execution](docs/identity-execution-integration.md) · [Personality-aware inference](docs/personality-aware-inference.md) · [Agent identities](docs/agent-identity-architecture.md) · [Agent communication](docs/agent-communication.md) · [LiteLLM](docs/litellm-integration.md) · [Deployment](docs/deployment-strategy.md) · [Identity and security](docs/identity-and-security.md) · [Memory](docs/memory-architecture.md) · [Observability](docs/observability.md) · [AgentCore](deploy/agentcore/README.md)
+[Architecture](docs/architecture.md) · [Continuous integration](docs/continuous-integration.md) · [Development status](docs/development-status.md) · [Phase 6.5 audit](docs/audits/phase-6.5-architecture-audit.md) · [Live observability protocol](docs/live-observability.md) · [Iterative orchestration](docs/iterative-orchestration.md) · [Controlled delegation](docs/controlled-delegation.md) · [Identity execution](docs/identity-execution-integration.md) · [Personality-aware inference](docs/personality-aware-inference.md) · [Agent identities](docs/agent-identity-architecture.md) · [Agent communication](docs/agent-communication.md) · [LiteLLM](docs/litellm-integration.md) · [Deployment](docs/deployment-strategy.md) · [Identity and security](docs/identity-and-security.md) · [Memory](docs/memory-architecture.md) · [Observability](docs/observability.md) · [AgentCore](deploy/agentcore/README.md)
