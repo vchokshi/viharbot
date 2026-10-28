@@ -1,0 +1,185 @@
+name: Security Scan
+
+# Four practical scanners. A green run means the scans EXECUTED and nothing crossed the blocking
+# threshold below. It does not mean the repository has zero vulnerabilities: informational
+# findings are counted in each job's summary and kept in the viharbot-security-reports artifact.
+#
+# Policy (see docs/continuous-integration.md):
+#   Gitleaks   any leak fails the run.
+#   Bandit     a HIGH severity finding fails the run; lower severities are reported.
+#   pip-audit  reported, not blocking (a new advisory in a transitive dependency should not turn
+#              unrelated pull requests red).
+#   Trivy      reported, not blocking (HIGH and CRITICAL, fixable only).
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    - cron: "23 4 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+jobs:
+  bandit:
+    name: Bandit (Python static analysis)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install Bandit
+        run: python -m pip install "bandit==1.9.4"
+      - name: Report all findings (non-blocking)
+        shell: bash
+        run: |
+          mkdir -p reports
+          bandit -r src -f json -o reports/bandit.json --exit-zero --quiet
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from collections import Counter
+          results = json.load(open("reports/bandit.json"))["results"]
+          by = Counter(r["issue_severity"] for r in results)
+          print("### Bandit")
+          print("| Severity | Findings |")
+          print("|---|---|")
+          for level in ("HIGH", "MEDIUM", "LOW"):
+              print(f"| {level} | {by.get(level, 0)} |")
+          print()
+          print("Only HIGH severity blocks. Details are in the `viharbot-security-reports` artifact.")
+          PY
+      - name: Fail on HIGH severity
+        run: bandit -r src -lll --quiet
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: viharbot-security-reports-bandit
+          path: reports/bandit.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  pip-audit:
+    name: pip-audit (dependency vulnerabilities)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      # Audits the environment the project actually installs, so transitive dependencies count.
+      - name: Install the project and pip-audit
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . "pip-audit==2.10.1"
+      - name: Audit (report only)
+        shell: bash
+        run: |
+          mkdir -p reports
+          pip-audit --skip-editable --format json --output reports/pip-audit.json || true
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json, sys
+          try:
+              data = json.load(open("reports/pip-audit.json"))
+          except Exception:
+              print("### pip-audit\npip-audit produced no report, so the scan did not complete.")
+              sys.exit(1)
+          deps = data["dependencies"]
+          vulnerable = [d for d in deps if d.get("vulns")]
+          print("### pip-audit")
+          print("| Packages audited | Packages with known vulnerabilities |")
+          print("|---|---|")
+          print(f"| {len(deps)} | {len(vulnerable)} |")
+          for d in vulnerable:
+              ids = ", ".join(v["id"] for v in d["vulns"])
+              print(f"- `{d['name']} {d['version']}`: {ids}")
+          print()
+          print("Report only; this does not fail the run.")
+          PY
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: viharbot-security-reports-pip-audit
+          path: reports/pip-audit.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  gitleaks:
+    name: Gitleaks (secret detection)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # No report is uploaded and no PR comment is posted: a secret must never be copied into an
+      # artifact or a comment. The job log and summary show redacted findings only.
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+          GITLEAKS_ENABLE_COMMENTS: "false"
+          GITLEAKS_ENABLE_SUMMARY: "true"
+
+  trivy:
+    name: Trivy (Dockerfiles and dependencies)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Scan the repository (report only)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,misconfig
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          format: table
+          output: trivy-report.txt
+          exit-code: "0"
+          hide-progress: true
+          version: v0.76.1
+      - name: Summarize
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p reports
+          cp trivy-report.txt reports/ 2>/dev/null || echo "Trivy produced no report." > reports/trivy-report.txt
+          findings=$(grep -cE '^(DS-[0-9]+|CVE-[0-9-]+|GHSA-[a-z0-9-]+) \(' reports/trivy-report.txt || true)
+          {
+            echo "### Trivy"
+            echo "| Scope | HIGH and CRITICAL findings (fixable) |"
+            echo "|---|---|"
+            echo "| Dockerfiles and dependency manifests | ${findings} |"
+            echo
+            echo "Report only; this does not fail the run. Details are in the \`viharbot-security-reports-trivy\` artifact."
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: viharbot-security-reports-trivy
+          path: reports/trivy-report.txt
+          if-no-files-found: warn
+          retention-days: 14
