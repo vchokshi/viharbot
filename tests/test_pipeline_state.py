@@ -116,8 +116,10 @@ def test_outbound_payloads_match_the_legacy_wire_format():
     send = FakeSend()
     run(send)
     assert send.payload("research") == {"question": "q"}
-    for name in ("fact-check", "source-quality", "security"):
+    for name in ("source-quality", "security"):
         assert send.payload(name) == {"findings": FINDINGS}
+    # Fact Check also receives the question, so it can judge relevance (it is not evidence).
+    assert send.payload("fact-check") == {"question": "q", "findings": FINDINGS}
     privacy = send.payload("privacy-review")
     assert privacy["question"] == "q"
     context = privacy["context"]

@@ -35,6 +35,10 @@ class ClaimReview(BaseModel):
     ]
     rationale: str
     follow_up: str
+    # Optional so older results and other agents validate unchanged. The reviewer proposes the
+    # quote; the application sets citation_verified by checking it against the supplied evidence.
+    evidence_quote: str | None = Field(default=None, max_length=400)
+    citation_verified: bool | None = None
 
 
 class FactCheckReview(BaseModel):

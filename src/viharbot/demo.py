@@ -22,6 +22,7 @@ from .pipeline_state import (
     PipelineContext,
     PipelineState,
     legacy_context_payload,
+    fact_check_payload,
     legacy_findings_payload,
 )
 
@@ -256,9 +257,12 @@ def run_typed_pipeline(
     for name in ("fact_check", "source_quality"):
         url = (specialist_urls or {}).get(name)
         if url:
-            responses[name], domain = invoke(
-                url, legacy_findings_payload(findings), name.replace("_", "-")
+            payload = (
+                fact_check_payload(question, findings)
+                if name == "fact_check"
+                else legacy_findings_payload(findings)
             )
+            responses[name], domain = invoke(url, payload, name.replace("_", "-"))
             setattr(context, name, domain)
 
     responses["security"], context.security = invoke(
