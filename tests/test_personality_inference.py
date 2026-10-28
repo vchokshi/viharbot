@@ -31,7 +31,7 @@ from viharbot.schemas import (
 LEGACY_PROMPT_HASHES = {
     "research": "e5dfe436140b4e60d37dfb762dd5119299d4f0f6675637699fb94f6d7e658eb6",
     "security": "3a5146b6a1aa694ee7b3355cec40fee34c993e90f84b7acf9ad9ae1f9ea4b338",
-    "fact-check": "e0ff8872a198a3471884ce19eaea19eedb785c15ba3e054fdbce5090ab23fb09",
+    "fact-check": "ddc49ef25c1bb76646897559c2ff63172024396caa82341b3181a3da59271629",
     "source-quality": "93d2e8256c9534bee489e5aab168c31be730361918cfa0d3942876c58237199d",
     "privacy-review": "cb8308540cc5b5c6885a2bc26b038caa9ec364167ea16e0e86088ceb3459659f",
     "synthesis": "a144547e47f36a39483dcbf5b0e0ca80eab44ad0ef2380f1ccf1e2bc7f8468b8",
