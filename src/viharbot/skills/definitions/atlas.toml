@@ -1,0 +1,106 @@
+# Atlas: Business Strategy and Logistics. Declarative skills from Skills Registry v1.0.
+# Every skill here is `proposed`: declared only, with no execution contract. Listing a
+# skill grants no tool, scope or data access and does not make it executable.
+
+[[skill]]
+skill_id = "strategy.business_case"
+version = "0.1.0"
+name = "Business-case development"
+description = "Business-case development. Expected deliverable: business case."
+owner = "atlas"
+eligible_agents = ["charlie", "orbit"]
+category = "strategy"
+outputs = ["Business case"]
+status = "proposed"
+
+[[skill]]
+skill_id = "strategy.roi_analysis"
+version = "0.1.0"
+name = "ROI and financial analysis"
+description = "ROI and financial analysis. Expected deliverable: financial evaluation."
+owner = "atlas"
+category = "strategy"
+outputs = ["Financial evaluation"]
+status = "proposed"
+
+[[skill]]
+skill_id = "strategy.tco_analysis"
+version = "0.1.0"
+name = "Total cost of ownership"
+description = "Total cost of ownership. Expected deliverable: cost model."
+owner = "atlas"
+category = "strategy"
+outputs = ["Cost model"]
+status = "proposed"
+
+[[skill]]
+skill_id = "strategy.transformation"
+version = "0.1.0"
+name = "Transformation strategy"
+description = "Transformation strategy. Expected deliverable: transformation roadmap."
+owner = "atlas"
+eligible_agents = ["sage", "charlie"]
+category = "strategy"
+outputs = ["Transformation roadmap"]
+status = "proposed"
+
+[[skill]]
+skill_id = "strategy.operating_model"
+version = "0.1.0"
+name = "Operating-model design"
+description = "Operating-model design. Expected deliverable: target operating model."
+owner = "atlas"
+category = "strategy"
+outputs = ["Target operating model"]
+status = "proposed"
+
+[[skill]]
+skill_id = "strategy.vendor_evaluation"
+version = "0.1.0"
+name = "Vendor evaluation"
+description = "Vendor evaluation. Expected deliverable: vendor comparison."
+owner = "atlas"
+category = "strategy"
+outputs = ["Vendor comparison"]
+status = "proposed"
+
+[[skill]]
+skill_id = "strategy.organizational_readiness"
+version = "0.1.0"
+name = "Organizational readiness"
+description = "Organizational readiness. Expected deliverable: readiness assessment."
+owner = "atlas"
+category = "strategy"
+outputs = ["Readiness assessment"]
+status = "proposed"
+
+[[skill]]
+skill_id = "strategy.logistics"
+version = "0.1.0"
+name = "Logistics planning"
+description = "Logistics planning. Expected deliverable: resource and logistics plan."
+owner = "atlas"
+category = "strategy"
+outputs = ["Resource and logistics plan"]
+capability = "logistics_planning"
+status = "proposed"
+
+[[skill]]
+skill_id = "strategy.portfolio_prioritization"
+version = "0.1.0"
+name = "Initiative prioritization"
+description = "Initiative prioritization. Expected deliverable: prioritized investment portfolio."
+owner = "atlas"
+category = "strategy"
+outputs = ["Prioritized investment portfolio"]
+status = "proposed"
+
+[[skill]]
+skill_id = "strategy.value_realization"
+version = "0.1.0"
+name = "Value realization"
+description = "Value realization. Expected deliverable: benefits and measurement plan."
+owner = "atlas"
+category = "strategy"
+outputs = ["Benefits and measurement plan"]
+status = "proposed"

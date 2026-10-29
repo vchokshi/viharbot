@@ -1,0 +1,144 @@
+# Orbit: Engineering and Automation. Declarative skills from Skills Registry v1.0.
+# Every skill here is `proposed`: declared only, with no execution contract. Listing a
+# skill grants no tool, scope or data access and does not make it executable.
+
+[[skill]]
+skill_id = "engineering.enterprise_architecture"
+version = "0.1.0"
+name = "Enterprise architecture"
+description = "Enterprise architecture. Expected deliverable: architecture specification."
+owner = "orbit"
+eligible_agents = ["cipher", "atlas"]
+category = "engineering"
+outputs = ["Architecture specification"]
+status = "proposed"
+
+[[skill]]
+skill_id = "engineering.cloud_architecture"
+version = "0.1.0"
+name = "Cloud architecture"
+description = "Cloud architecture. Expected deliverable: cloud reference design."
+owner = "orbit"
+category = "engineering"
+outputs = ["Cloud reference design"]
+status = "proposed"
+
+[[skill]]
+skill_id = "engineering.network_architecture"
+version = "0.1.0"
+name = "Network architecture"
+description = "Network architecture. Expected deliverable: network design."
+owner = "orbit"
+category = "engineering"
+outputs = ["Network design"]
+status = "proposed"
+
+[[skill]]
+skill_id = "engineering.software_development"
+version = "0.1.0"
+name = "Software engineering"
+description = "Software engineering. Expected deliverable: code and tests."
+owner = "orbit"
+category = "engineering"
+outputs = ["Code and tests"]
+status = "proposed"
+
+[[skill]]
+skill_id = "engineering.devops"
+version = "0.1.0"
+name = "DevOps engineering"
+description = "DevOps engineering. Expected deliverable: delivery pipeline design."
+owner = "orbit"
+category = "engineering"
+outputs = ["Delivery pipeline design"]
+status = "proposed"
+
+[[skill]]
+skill_id = "engineering.infrastructure_as_code"
+version = "0.1.0"
+name = "Infrastructure as code"
+description = "Infrastructure as code. Expected deliverable: iac artifacts."
+owner = "orbit"
+category = "engineering"
+outputs = ["IaC artifacts"]
+status = "proposed"
+
+[[skill]]
+skill_id = "engineering.automation"
+version = "0.1.0"
+name = "Workflow automation"
+description = "Workflow automation. Expected deliverable: automation implementation."
+owner = "orbit"
+category = "engineering"
+outputs = ["Automation implementation"]
+status = "proposed"
+
+[[skill]]
+skill_id = "engineering.integration"
+version = "0.1.0"
+name = "Systems integration"
+description = "Systems integration. Expected deliverable: integration specification."
+owner = "orbit"
+category = "engineering"
+outputs = ["Integration specification"]
+status = "proposed"
+
+[[skill]]
+skill_id = "engineering.ai_platforms"
+version = "0.1.0"
+name = "AI platform engineering"
+description = "AI platform engineering. Expected deliverable: ai platform architecture."
+owner = "orbit"
+category = "engineering"
+outputs = ["AI platform architecture"]
+status = "proposed"
+
+[[skill]]
+skill_id = "engineering.agent_platforms"
+version = "0.1.0"
+name = "Agent platform engineering"
+description = "Agent platform engineering. Expected deliverable: agent runtime design."
+owner = "orbit"
+category = "engineering"
+outputs = ["Agent runtime design"]
+status = "proposed"
+
+[[skill]]
+skill_id = "engineering.testing"
+version = "0.1.0"
+name = "Engineering validation"
+description = "Engineering validation. Expected deliverable: test results."
+owner = "orbit"
+category = "engineering"
+outputs = ["Test results"]
+status = "proposed"
+
+[[skill]]
+skill_id = "engineering.deployment"
+version = "0.1.0"
+name = "Deployment engineering"
+description = "Deployment engineering. Expected deliverable: deployment plan and results."
+owner = "orbit"
+category = "engineering"
+outputs = ["Deployment plan and results"]
+status = "proposed"
+
+[[skill]]
+skill_id = "engineering.reliability"
+version = "0.1.0"
+name = "Reliability engineering"
+description = "Reliability engineering. Expected deliverable: reliability assessment."
+owner = "orbit"
+category = "engineering"
+outputs = ["Reliability assessment"]
+status = "proposed"
+
+[[skill]]
+skill_id = "engineering.observability"
+version = "0.1.0"
+name = "Observability engineering"
+description = "Observability engineering. Expected deliverable: monitoring and tracing design."
+owner = "orbit"
+category = "engineering"
+outputs = ["Monitoring and tracing design"]
+status = "proposed"

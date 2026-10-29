@@ -1,0 +1,85 @@
+# Charlie: Strategy and Orchestration. Declarative skills from Skills Registry v1.0.
+# Every skill here is `proposed`: declared only, with no execution contract. Listing a
+# skill grants no tool, scope or data access and does not make it executable.
+
+[[skill]]
+skill_id = "consulting.discovery"
+version = "0.1.0"
+name = "Consulting discovery"
+description = "Consulting discovery. Expected deliverable: problem statement, objectives, constraints."
+owner = "charlie"
+category = "consulting"
+outputs = ["Problem statement, objectives, constraints"]
+status = "proposed"
+
+[[skill]]
+skill_id = "consulting.requirements"
+version = "0.1.0"
+name = "Requirements analysis"
+description = "Requirements analysis. Expected deliverable: business and technical requirements."
+owner = "charlie"
+category = "consulting"
+outputs = ["Business and technical requirements"]
+status = "proposed"
+
+[[skill]]
+skill_id = "consulting.engagement_planning"
+version = "0.1.0"
+name = "Engagement planning"
+description = "Engagement planning. Expected deliverable: work plan and specialist assignments."
+owner = "charlie"
+category = "consulting"
+outputs = ["Work plan and specialist assignments"]
+status = "proposed"
+
+[[skill]]
+skill_id = "consulting.executive_advisory"
+version = "0.1.0"
+name = "Executive advisory"
+description = "Executive advisory. Expected deliverable: decision brief and recommendations."
+owner = "charlie"
+eligible_agents = ["atlas"]
+category = "consulting"
+outputs = ["Decision brief and recommendations"]
+status = "proposed"
+
+[[skill]]
+skill_id = "consulting.solution_evaluation"
+version = "0.1.0"
+name = "Solution evaluation"
+description = "Solution evaluation. Expected deliverable: options and trade-off analysis."
+owner = "charlie"
+category = "consulting"
+outputs = ["Options and trade-off analysis"]
+status = "proposed"
+
+[[skill]]
+skill_id = "consulting.synthesis"
+version = "0.1.0"
+name = "Multidisciplinary synthesis"
+description = "Multidisciplinary synthesis. Expected deliverable: integrated consulting recommendation."
+owner = "charlie"
+category = "consulting"
+outputs = ["Integrated consulting recommendation"]
+capability = "synthesis"
+status = "proposed"
+
+[[skill]]
+skill_id = "consulting.stakeholder_management"
+version = "0.1.0"
+name = "Stakeholder analysis"
+description = "Stakeholder analysis. Expected deliverable: stakeholder map and communication plan."
+owner = "charlie"
+category = "consulting"
+outputs = ["Stakeholder map and communication plan"]
+status = "proposed"
+
+[[skill]]
+skill_id = "consulting.quality_review"
+version = "0.1.0"
+name = "Deliverable quality review"
+description = "Deliverable quality review. Expected deliverable: review findings and acceptance decision."
+owner = "charlie"
+category = "consulting"
+outputs = ["Review findings and acceptance decision"]
+status = "proposed"

@@ -1,0 +1,126 @@
+# Cipher: Security and Risk. Declarative skills from Skills Registry v1.0.
+# Every skill here is `proposed`: declared only, with no execution contract. Listing a
+# skill grants no tool, scope or data access and does not make it executable.
+
+[[skill]]
+skill_id = "security.risk_assessment"
+version = "0.1.0"
+name = "Enterprise risk assessment"
+description = "Enterprise risk assessment. Expected deliverable: risk register."
+owner = "cipher"
+category = "security"
+outputs = ["Risk register"]
+capability = "security_assessment"
+status = "proposed"
+
+[[skill]]
+skill_id = "security.threat_modeling"
+version = "0.1.0"
+name = "Threat modeling"
+description = "Threat modeling. Expected deliverable: threat model."
+owner = "cipher"
+category = "security"
+outputs = ["Threat model"]
+status = "proposed"
+
+[[skill]]
+skill_id = "security.cloud_posture"
+version = "0.1.0"
+name = "Cloud security posture"
+description = "Cloud security posture. Expected deliverable: control-gap assessment."
+owner = "cipher"
+category = "security"
+outputs = ["Control-gap assessment"]
+status = "proposed"
+
+[[skill]]
+skill_id = "security.data_security"
+version = "0.1.0"
+name = "Data security and DSPM"
+description = "Data security and DSPM. Expected deliverable: data-risk assessment."
+owner = "cipher"
+category = "security"
+outputs = ["Data-risk assessment"]
+status = "proposed"
+
+[[skill]]
+skill_id = "security.agentic_ai"
+version = "0.1.0"
+name = "Agentic AI security"
+description = "Agentic AI security. Expected deliverable: agent risk assessment."
+owner = "cipher"
+eligible_agents = ["orbit", "nova"]
+category = "security"
+outputs = ["Agent risk assessment"]
+status = "proposed"
+
+[[skill]]
+skill_id = "security.iam"
+version = "0.1.0"
+name = "Identity and access review"
+description = "Identity and access review. Expected deliverable: privilege analysis."
+owner = "cipher"
+category = "security"
+outputs = ["Privilege analysis"]
+status = "proposed"
+
+[[skill]]
+skill_id = "security.zero_trust"
+version = "0.1.0"
+name = "Zero Trust architecture"
+description = "Zero Trust architecture. Expected deliverable: control recommendations."
+owner = "cipher"
+category = "security"
+outputs = ["Control recommendations"]
+status = "proposed"
+
+[[skill]]
+skill_id = "security.compliance_mapping"
+version = "0.1.0"
+name = "Framework and control mapping"
+description = "Framework and control mapping. Expected deliverable: control matrix."
+owner = "cipher"
+category = "security"
+outputs = ["Control matrix"]
+status = "proposed"
+
+[[skill]]
+skill_id = "security.privacy"
+version = "0.1.0"
+name = "Privacy review"
+description = "Privacy review. Expected deliverable: privacy impact findings."
+owner = "cipher"
+category = "security"
+outputs = ["Privacy impact findings"]
+capability = "privacy_review"
+status = "proposed"
+
+[[skill]]
+skill_id = "security.application_security"
+version = "0.1.0"
+name = "Application security"
+description = "Application security. Expected deliverable: application risk findings."
+owner = "cipher"
+category = "security"
+outputs = ["Application risk findings"]
+status = "proposed"
+
+[[skill]]
+skill_id = "security.incident_readiness"
+version = "0.1.0"
+name = "Incident readiness"
+description = "Incident readiness. Expected deliverable: response-readiness assessment."
+owner = "cipher"
+category = "security"
+outputs = ["Response-readiness assessment"]
+status = "proposed"
+
+[[skill]]
+skill_id = "security.guardrail_evaluation"
+version = "0.1.0"
+name = "AI guardrail evaluation"
+description = "AI guardrail evaluation. Expected deliverable: guardrail test report."
+owner = "cipher"
+category = "security"
+outputs = ["Guardrail test report"]
+status = "proposed"
