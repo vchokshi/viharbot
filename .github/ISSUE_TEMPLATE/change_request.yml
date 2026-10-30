@@ -1,0 +1,51 @@
+name: Change request
+description: Propose work with an explicit rationale and measurable outcome
+title: "[Change]: "
+body:
+  - type: markdown
+    attributes:
+      value: "Explain WHY before proposing HOW. Avoid placeholders or generic justifications."
+  - type: textarea
+    id: why
+    attributes:
+      label: "WHY — Why is this necessary?"
+      description: "What problem, risk, unmet need, or opportunity motivates this work? Include evidence where available."
+      placeholder: "Because... The current behavior causes..."
+    validations:
+      required: true
+  - type: textarea
+    id: why_now
+    attributes:
+      label: "WHY NOW — Why prioritize it?"
+      description: "What makes this timely? If not urgent, explain that."
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: "WHAT — Desired outcome and scope"
+      description: "Describe the desired behavior, boundaries, and constraints without assuming a particular solution."
+    validations:
+      required: true
+  - type: textarea
+    id: inaction
+    attributes:
+      label: "WHY NOT — Consequences of doing nothing"
+      description: "Describe the expected impact if this issue is not addressed."
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: "HOW WE KNOW — Acceptance criteria"
+      description: "Provide observable or testable success criteria."
+      placeholder: "- [ ] ..."
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: "Evidence, dependencies, and references"
+      description: "Related issues, architecture decisions, screenshots, logs, risks, or open questions."
+    validations:
+      required: false
