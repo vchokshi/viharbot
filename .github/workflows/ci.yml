@@ -2,7 +2,7 @@ name: CI
 
 # Validates every pull request and every push to main. It runs offline: no secrets, no live
 # model calls, no deployment. See docs/continuous-integration.md.
-# The Docker job runs on pull requests only when a container definition changes.
+# The Docker job runs on pull requests only when a container definition or src/ changes.
 on:
   pull_request:
     branches: [main]
@@ -220,10 +220,10 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
-          # What counts as a container definition: what builds or starts the images. Application
-          # source is deliberately not listed; it is covered by the test jobs, and every push to
-          # main still builds the images.
-          pattern='^(Dockerfile(\.[^/]+)?|compose\.yaml|\.dockerignore|requirements\.txt|pyproject\.toml|certs/.*|\.github/workflows/ci\.yml)$'
+          # What counts as a container change: what builds or starts the images, plus src/, which
+          # every image copies. images/ and README.md are copied too but cannot break a build or
+          # start-up, so they are not listed; every push to main still builds the images.
+          pattern='^(Dockerfile(\.[^/]+)?|compose\.yaml|\.dockerignore|requirements\.txt|pyproject\.toml|certs/.*|src/.*|\.github/workflows/ci\.yml)$'
           run_docker() { echo "docker=true" >> "$GITHUB_OUTPUT"; echo "Docker job will run: $1"; exit 0; }
           [ "$EVENT_NAME" = "pull_request" ] || run_docker "this is not a pull request"
           # The first parent of the merge commit is the base branch, so this is the PR's own change.
