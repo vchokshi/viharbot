@@ -11,7 +11,7 @@ Create two repositories under the founder's account, both with GitHub visibility
 
 A directory inside a shared clone is not an access boundary. Do not add trainees to the instructor repository. Do not place instructor-only material in the trainee repository, its Git history, pull requests, issues, Actions logs, or artifacts.
 
-**Current status:** Repository creation and visibility verification must be performed and recorded by the founder; this document does not assert either repository already exists.
+**Current status:** Both repositories have been created and GitHub reports their visibility as **Private**. The founder reports that the access-isolation, acknowledgment-gate and revocation verification checks are complete. Verification evidence and live acknowledgment records belong in founder-controlled private storage, not this public document.
 
 ## Prerequisites to invite a trainee
 
