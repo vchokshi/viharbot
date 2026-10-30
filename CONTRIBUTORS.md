@@ -4,11 +4,11 @@ This file is the **current trusted-contributor eligibility registry** for ViharB
 
 ## Registry
 
-| GitHub username | GitHub numeric account ID | Approved on (UTC) |
-| --- | ---: | --- |
-| [@vchokshi](https://github.com/vchokshi) | 8943966 | Founder |
+| GitHub username | GitHub numeric account ID | Role | Approved on (UTC) |
+| --- | ---: | --- | --- |
+| [@vchokshi](https://github.com/vchokshi) | 8943966 | Founder | N/A |
 
-The founder is listed as the project owner; this is not an assessment sign-off. Other rows are added only after the required security acknowledgment, Git qualification, and explicit founder authorization.
+The founder is listed as the project owner; this is not an assessment sign-off. The founder's approval date is **N/A** because founder status is not a contributor onboarding approval. For all future approved contributors, use the role **Trusted contributor** and an actual approval date in ISO 8601 format (`YYYY-MM-DD`); never invent a date. Other rows are added only after the required security acknowledgment, Git qualification, and explicit founder authorization.
 
 ## How registration works
 
