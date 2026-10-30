@@ -1,0 +1,64 @@
+name: Contributor registry
+
+# Validates CONTRIBUTORS.md changes. It never grants trust and never approves anything: a pass
+# means the change is well formed. Founder approval is a ruleset and CODEOWNERS control, not
+# something this workflow can enforce. See docs/governance/contributor-registry-automation.md.
+#
+# Why pull_request_target: the workflow and the validation script must come from the protected
+# base branch, so a pull request cannot edit the check that judges it. The pull request's code is
+# never checked out or executed. Its CONTRIBUTORS.md is fetched as plain data and only parsed.
+# The token is read-only and no secret is used.
+on:
+  pull_request_target:
+    branches: [main]
+
+# Runs on every pull request, with no path filter, so the check can be required without ever
+# leaving an unrelated pull request waiting for a result that will not come.
+concurrency:
+  group: contributor-registry-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  registry:
+    name: Contributor registry
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      # Base branch only. The default for this event is the base branch; the SHA makes it explicit.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - name: Validate the registry change
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          AUTHOR_ID: ${{ github.event.pull_request.user.id }}
+          AUTHOR_LOGIN: ${{ github.event.pull_request.user.login }}
+        run: |
+          set -euo pipefail
+          # Fetch the pull request's commit as data. Nothing from it is checked out or run.
+          git fetch --no-tags --depth=1 origin "refs/pull/${PR_NUMBER}/head"
+          head_file="$RUNNER_TEMP/head-CONTRIBUTORS.md"
+          if git cat-file -e "FETCH_HEAD:CONTRIBUTORS.md" 2>/dev/null; then
+            git show "FETCH_HEAD:CONTRIBUTORS.md" > "$head_file"
+          else
+            rm -f "$head_file"
+          fi
+          changed="$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/files" \
+            --jq '.[] | .filename, (.previous_filename // empty)' | paste -sd, -)"
+          python3 .github/scripts/contributor_registry.py check \
+            --base-file CONTRIBUTORS.md \
+            --head-file "$head_file" \
+            --author-id "$AUTHOR_ID" \
+            --author-login "$AUTHOR_LOGIN" \
+            --changed-files "$changed"

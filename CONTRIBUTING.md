@@ -88,7 +88,7 @@ The candidate must not use AI during this manual assessment. The instructor sepa
 
 ### Offboarding trusted contributors
 
-Offboarding requires a founder-approved PR removing the person's row from the current [CONTRIBUTORS.md](CONTRIBUTORS.md), plus **separate** revocation of GitHub collaborator/team access and relevant credentials. Verify both steps and retain evidence privately. Removing a row does not erase Git history or revoke GitHub permissions on its own. Do not commit personal access records or assessment results to the public repository.
+Offboarding requires a founder-approved PR removing the person's row from the current [CONTRIBUTORS.md](CONTRIBUTORS.md), plus **separate** revocation of GitHub collaborator/team access and relevant credentials. Verify both steps and retain evidence privately. Removing a row does not erase Git history or revoke GitHub permissions on its own. What is automated, what is not, the required GitHub settings and the full offboarding steps are in [contributor registry automation](docs/governance/contributor-registry-automation.md). Do not commit personal access records or assessment results to the public repository.
 
 The assessment tasks, answers and grading criteria are private and are not in this repository. Do not ask for them in public issues or pull requests, and do not share them if you have seen them.
 
