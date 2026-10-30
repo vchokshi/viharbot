@@ -22,10 +22,10 @@ A revoked contributor is simply absent from the registry; the registry does not 
 
 The check enforces, and reports with a line number and a fix:
 
-* The table header, one row per contributor, valid username syntax, an account ID that is a positive whole number with no leading zeros, and an `Approved on` value that is a real `YYYY-MM-DD` date or `Founder`.
+* The table header, one row per contributor, valid username syntax, an account ID that is a positive whole number with no leading zeros, and a `Role` of `Founder` or `Trusted contributor`, and an `Approved on` value that is a real `YYYY-MM-DD` date for a trusted contributor or `N/A` for the founder. These are the four columns of the current registry.
 * No duplicate account IDs and no duplicate usernames (case-insensitive).
-* **Registration requests.** A pull request that adds exactly one row, for its own author (matching the author's account ID and username), changes only `CONTRIBUTORS.md`, and does not claim `Founder`, is classified as a registration. Anything else that adds rows is rejected.
-* **Unauthorized modification.** Changing an existing row (username, date or founder marker), or adding and removing rows together, is rejected. Existing rows may only be changed by the founder, identified as the `Founder` row **on the base branch**, never in the pull request's own copy.
+* **Registration requests.** A pull request that adds exactly one row, for its own author (matching the author's account ID and username), changes only `CONTRIBUTORS.md`, and does not claim the `Founder` role, is classified as a registration. Anything else that adds rows is rejected.
+* **Unauthorized modification.** Changing an existing row (username, role or date), or adding and removing rows together, is rejected. Existing rows may only be changed by the founder, identified by the `Founder` role **on the base branch**, never in the pull request's own copy.
 * **Removal.** Removing rows is accepted as a well-formed removal request and flagged as needing founder approval.
 * **Identity.** For rows a pull request adds or changes, the script asks GitHub for the account with that ID and confirms its current login matches the username. If GitHub cannot be reached, is rate limited or errors, the check **fails** and says the identity is unverified. It never passes silently.
 * A pull request that does not touch the registry passes without contacting GitHub, so ordinary external pull requests are unaffected.

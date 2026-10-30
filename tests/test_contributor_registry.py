@@ -33,15 +33,18 @@ ALICE = (2002, "alice")
 BOB = (3003, "bob")
 
 
-def row(login: str, account_id: int | str, approved: str) -> str:
-    return f"| [@{login}](https://github.com/{login}) | {account_id} | {approved} |"
+def row(login: str, account_id: int | str, approved: str, role: str | None = None) -> str:
+    """`approved` is the date; "Founder" is shorthand for the founder's role with an N/A date."""
+    if approved == "Founder":
+        role, approved = "Founder", "N/A"
+    return f"| [@{login}](https://github.com/{login}) | {account_id} | {role or 'Trusted contributor'} | {approved} |"
 
 
 def registry(*rows: str, header: str | None = None) -> str:
-    head = header or "| GitHub username | GitHub numeric account ID | Approved on (UTC) |"
+    head = header or "| GitHub username | GitHub numeric account ID | Role | Approved on (UTC) |"
     return "\n".join(
-        ["# Approved Trusted Contributors", "", "## Registry", "", head, "| --- | ---: | --- |", *rows,
-         "", "## How registration works", "", "| not | a | row |"]
+        ["# Approved Trusted Contributors", "", "## Registry", "", head, "| --- | ---: | --- | --- |", *rows,
+         "", "## How registration works", "", "| not | a | row | x |"]
     ) + "\n"
 
 
@@ -59,7 +62,7 @@ def evaluate(base, head, author=BOB, changed=CHANGED):
 def test_valid_registry_parses():
     entries, errors = cr.parse(BASE)
     assert errors == [] and [(e.username, e.account_id) for e in entries] == [("founder", 1), ("alice", 2002)]
-    assert entries[0].is_founder and not entries[1].is_founder
+    assert entries[0].is_founder and entries[0].approved == "N/A" and not entries[1].is_founder
 
 
 def test_the_real_registry_is_valid_when_present():
@@ -92,9 +95,12 @@ def test_other_structural_problems_are_reported():
     assert cr.parse("# nothing here\n")[1] == ["There is no '## Registry' section."]
     assert cr.parse("## Registry\n\ntext only\n")[1] == ["The Registry section has no table."]
     assert any("header" in e for e in cr.parse(registry(row("founder", 1, "Founder"), header="| a | b | c |"))[1])
-    assert any("YYYY-MM-DD" in e for e in cr.parse(registry(row("a", 1, "Founder"), row("b", 2, "2026-13-45")))[1])
-    assert any("link target" in e for e in cr.parse(registry("| [@a](https://github.com/b) | 1 | Founder |"))[1])
-    assert any("3 columns" in e for e in cr.parse(registry("| a | 1 |"))[1])
+    assert any("real date" in e for e in cr.parse(registry(row("a", 1, "Founder"), row("b", 2, "2026-13-45")))[1])
+    assert any("Role must be" in e for e in cr.parse(registry(row("a", 1, "Founder"), row("b", 2, "2026-10-30", role="Admin")))[1])
+    assert any("must be `N/A`" in e for e in cr.parse(registry("| [@a](https://github.com/a) | 1 | Founder | 2026-10-30 |"))[1])
+    assert any("real date" in e for e in cr.parse(registry(row("a", 1, "Founder"), row("b", 2, "N/A")))[1])
+    assert any("link target" in e for e in cr.parse(registry("| [@a](https://github.com/b) | 1 | Founder | N/A |"))[1])
+    assert any("4 columns" in e for e in cr.parse(registry("| a | 1 | x |"))[1])
     assert any("at least one" in e for e in cr.parse(registry())[1])
 
 
@@ -115,8 +121,9 @@ def test_self_authorization_attempts_are_rejected():
     spoof = registry(row("founder", 1, "Founder"), row("alice", 2002, "2026-10-30"), row("bob", 2002, "2026-11-01"))
     assert any("account ID 2002 is already listed" in e for e in evaluate(BASE, spoof).errors)
     # Claiming the founder marker, adding two rows, or sneaking in other files.
-    founder_claim = registry(row("founder", 1, "Founder"), row("alice", 2002, "2026-10-30"), row("bob", 3003, "Founder"))
-    assert any("cannot be claimed" in e for e in evaluate(BASE, founder_claim).errors)
+    founder_claim = registry(row("founder", 1, "Founder"), row("alice", 2002, "2026-10-30"),
+                             row("bob", 3003, "N/A", role="Founder"))
+    assert any("role cannot be claimed" in e for e in evaluate(BASE, founder_claim).errors)
     two = registry(row("founder", 1, "Founder"), row("alice", 2002, "2026-10-30"), row("bob", 3003, "2026-11-01"),
                    row("carol", 4004, "2026-11-01"))
     assert any("only one row" in e for e in evaluate(BASE, two).errors)
@@ -149,7 +156,8 @@ def test_the_founder_may_maintain_the_registry():
 
 def test_a_pr_cannot_pass_by_claiming_to_be_the_founder_in_its_own_registry():
     # The founder row is read from the base only; a head that crowns bob changes nothing.
-    head = registry(row("founder", 1, "2026-01-01"), row("alice", 2002, "2026-10-30"), row("bob", 3003, "Founder"))
+    head = registry(row("founder", 1, "2026-01-01"), row("alice", 2002, "2026-10-30"),
+                    row("bob", 3003, "N/A", role="Founder"))
     assert not evaluate(BASE, head, author=BOB).ok
 
 
@@ -206,7 +214,7 @@ def test_an_invalid_trusted_registry_refuses_to_decide(capsys):
 
 # ---- GitHub identity verification (mocked) ---------------------------------------------------
 def entry(login="bob", account_id=3003):
-    return cr.Entry(login, account_id, "2026-11-01")
+    return cr.Entry(login, account_id, "Trusted contributor", "2026-11-01")
 
 
 def test_identity_verification_accepts_a_matching_account():

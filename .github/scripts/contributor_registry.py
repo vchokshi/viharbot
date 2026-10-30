@@ -32,8 +32,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 REGISTRY_PATH = "CONTRIBUTORS.md"
-FOUNDER_MARKER = "Founder"
-HEADER = ("GitHub username", "GitHub numeric account ID", "Approved on (UTC)")
+FOUNDER_ROLE = "Founder"
+TRUSTED_ROLE = "Trusted contributor"
+NOT_APPLICABLE = "N/A"
+HEADER = ("GitHub username", "GitHub numeric account ID", "Role", "Approved on (UTC)")
 
 USERNAME = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$")
 ACCOUNT_ID = re.compile(r"^[1-9][0-9]{0,15}$")
@@ -49,11 +51,12 @@ class IdentityUnavailable(Exception):
 class Entry:
     username: str
     account_id: int
+    role: str
     approved: str
 
     @property
     def is_founder(self) -> bool:
-        return self.approved == FOUNDER_MARKER
+        return self.role == FOUNDER_ROLE
 
 
 def safe(value: object, limit: int = 60) -> str:
@@ -89,10 +92,10 @@ def parse(text: str) -> tuple[list[Entry], list[str]]:
     seen_names: dict[str, int] = {}
     for number, line in table[2:]:
         cells = _cells(line)
-        if len(cells) != 3:
-            errors.append(f"Line {number}: expected 3 columns, found {len(cells)}.")
+        if len(cells) != 4:
+            errors.append(f"Line {number}: expected 4 columns, found {len(cells)}.")
             continue
-        link, raw_id, approved = cells
+        link, raw_id, role, approved = cells
         match = ROW_LINK.match(link)
         if not match:
             errors.append(f"Line {number}: the username must look like [@name](https://github.com/name).")
@@ -111,8 +114,14 @@ def parse(text: str) -> tuple[list[Entry], list[str]]:
                 "with no leading zeros (find it at https://api.github.com/users/<username>)."
             )
             row_ok = False
-        if approved != FOUNDER_MARKER and not _valid_date(approved):
-            errors.append(f"Line {number}: 'Approved on' must be YYYY-MM-DD or `{FOUNDER_MARKER}`.")
+        if role not in {FOUNDER_ROLE, TRUSTED_ROLE}:
+            errors.append(f"Line {number}: Role must be `{FOUNDER_ROLE}` or `{TRUSTED_ROLE}`.")
+            row_ok = False
+        elif role == FOUNDER_ROLE and approved != NOT_APPLICABLE:
+            errors.append(f"Line {number}: the founder's 'Approved on' must be `{NOT_APPLICABLE}`.")
+            row_ok = False
+        elif role == TRUSTED_ROLE and not _valid_date(approved):
+            errors.append(f"Line {number}: 'Approved on' must be a real date, YYYY-MM-DD.")
             row_ok = False
         if not row_ok:
             continue
@@ -123,7 +132,7 @@ def parse(text: str) -> tuple[list[Entry], list[str]]:
             errors.append(f"Line {number}: username `{safe(name)}` is already listed on line {seen_names[name.lower()]}.")
         seen_ids.setdefault(account_id, number)
         seen_names.setdefault(name.lower(), number)
-        entries.append(Entry(name, account_id, approved))
+        entries.append(Entry(name, account_id, role, approved))
     if not errors and not entries:
         errors.append("The registry must list at least one contributor.")
     return entries, errors
@@ -251,7 +260,7 @@ def evaluate(
                 f"request author (`{safe(author_login)}`, ID {author_id}). You may register only yourself."
             )
         if row.is_founder:
-            problems.append(f"`{FOUNDER_MARKER}` cannot be claimed in a registration.")
+            problems.append(f"The `{FOUNDER_ROLE}` role cannot be claimed in a registration.")
         extra = changed_files - {REGISTRY_PATH}
         if extra:
             problems.append(f"A registration must change only {REGISTRY_PATH}; it also changes other files.")
