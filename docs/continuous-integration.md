@@ -29,6 +29,7 @@ flowchart LR
 | `dependency-review.yml` | pull request to `main` | Blocks new dependencies with a known high or critical vulnerability |
 | `security.yml` | pull request, push to `main`, weekly, manual | Bandit, pip-audit, Gitleaks, Trivy |
 | `scorecard.yml` | push to `main`, weekly, branch-protection changes, manual | OpenSSF Scorecard, published to the public API |
+| `contributor-registry.yml` | pull request to `main` (`pull_request_target`, base-branch code only) | Validates `CONTRIBUTORS.md` changes; never grants trust or approval. See [contributor registry automation](governance/contributor-registry-automation.md) |
 | `.github/dependabot.yml` | weekly | Update PRs for pip, GitHub Actions and Docker (max 3 open each, grouped, never auto-merged) |
 
 All workflows use `contents: read` by default. Elevated permissions are granted per job and only where needed: `security-events: write` for CodeQL and Scorecard, `id-token: write` for Scorecard publishing, and `contents: write` for the one job that publishes coverage badge data, which runs only on a push to `main`. No workflow uses `pull_request_target`, deploys infrastructure, or reads a secret other than the automatic `GITHUB_TOKEN`. Pull requests from forks therefore run with a read-only token and no secrets. Every third-party action is pinned to a full commit SHA (the release tag is in a comment next to it). Superseded pull-request runs are cancelled; runs on `main` are never cancelled, because their results feed the badges.
@@ -141,7 +142,7 @@ These are repository settings, not code, and were not changed by the pull reques
 | Secret scanning and push protection | Complements Gitleaks | reported `enabled` |
 | Actions permissions | Default workflow token should be read-only | verify under Settings > Actions > General |
 
-**Branch protection** is not configured on `main`. Recommended: require a pull request, and require the status checks `CI result`, `Analyze (python)`, `Analyze (javascript-typescript)`, `Dependency review`, `Bandit (Python static analysis)` and `Gitleaks (secret detection)`. Add status checks only after they have run once, so GitHub can offer them.
+**Branch protection** classic rules are not configured on `main`; a ruleset is (see [contributor registry automation](governance/contributor-registry-automation.md) for what it does and does not require). Recommended: require a pull request, and require the status checks `CI result`, `Analyze (python)`, `Analyze (javascript-typescript)`, `Dependency review`, `Bandit (Python static analysis)` and `Gitleaks (secret detection)`. Add status checks only after they have run once, so GitHub can offer them.
 
 ## Known limitations
 

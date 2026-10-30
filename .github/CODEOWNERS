@@ -1,0 +1,11 @@
+# Code owners. GitHub requests these reviewers automatically. A review is only *required* when
+# the branch ruleset enables "Require review from Code Owners"; this file alone enforces nothing.
+# See docs/governance/contributor-registry-automation.md for the ruleset settings.
+
+# Who is a trusted contributor, and the workflows and scripts that judge registry changes.
+/CONTRIBUTORS.md @vchokshi
+/.github/ @vchokshi
+
+# The governance that registry changes rely on.
+/CONTRIBUTING.md @vchokshi
+/docs/governance/ @vchokshi
