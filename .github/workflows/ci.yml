@@ -2,6 +2,7 @@ name: CI
 
 # Validates every pull request and every push to main. It runs offline: no secrets, no live
 # model calls, no deployment. See docs/continuous-integration.md.
+# The Docker job runs on pull requests only when a container definition or src/ changes.
 on:
   pull_request:
     branches: [main]
@@ -198,8 +199,49 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  # Decides whether the Docker job is needed. The job below is skipped, not removed, when it is
+  # not, so the "CI result" gate always runs and can stay a required check. See "CI result".
+  changes:
+    name: Detect container changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      docker: ${{ steps.filter.outputs.docker }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # A pull request is checked out as a merge commit; depth 2 includes both its parents.
+          fetch-depth: 2
+      - name: Did a container definition change?
+        id: filter
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          # What counts as a container change: what builds or starts the images, plus src/, which
+          # every image copies. images/ and README.md are copied too but cannot break a build or
+          # start-up, so they are not listed; every push to main still builds the images.
+          pattern='^(Dockerfile(\.[^/]+)?|compose\.yaml|\.dockerignore|requirements\.txt|pyproject\.toml|certs/.*|src/.*|\.github/workflows/ci\.yml)$'
+          run_docker() { echo "docker=true" >> "$GITHUB_OUTPUT"; echo "Docker job will run: $1"; exit 0; }
+          [ "$EVENT_NAME" = "pull_request" ] || run_docker "this is not a pull request"
+          # The first parent of the merge commit is the base branch, so this is the PR's own change.
+          files="$(git diff --name-only --no-renames HEAD^1 HEAD 2>/dev/null)" \
+            || run_docker "the changed files could not be determined"
+          [ -n "$files" ] || run_docker "no changed files were found"
+          if printf '%s\n' "$files" | grep -Eq "$pattern"; then
+            echo "Changed container definitions:"; printf '%s\n' "$files" | grep -E "$pattern"
+            run_docker "a container definition changed"
+          fi
+          echo "docker=false" >> "$GITHUB_OUTPUT"
+          echo "Docker job skipped: no container definition changed."
+
   docker:
     name: Docker build and smoke test
+    needs: [changes]
+    # Always on pushes to main and manual runs; on pull requests only for container changes.
+    if: needs.changes.outputs.docker == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -254,7 +296,7 @@ jobs:
   ci:
     name: CI result
     if: always()
-    needs: [python-tests, frontend-tests, lint, docker]
+    needs: [python-tests, frontend-tests, lint, changes, docker]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -268,13 +310,25 @@ jobs:
             echo "| Python tests (3.12, 3.13) | ${{ needs.python-tests.result }} |"
             echo "| Frontend tests (Node 24) | ${{ needs.frontend-tests.result }} |"
             echo "| Lint (Ruff) | ${{ needs.lint.result }} |"
-            echo "| Docker build and smoke test | ${{ needs.docker.result }} |"
+            if [ "${{ needs.docker.result }}" = "skipped" ] && [ "${{ needs.changes.outputs.docker }}" = "false" ]; then
+              echo "| Docker build and smoke test | skipped: no container definition changed |"
+            else
+              echo "| Docker build and smoke test | ${{ needs.docker.result }} |"
+            fi
             echo
             echo "Counts, coverage and findings are in each job's own summary and in the run's artifacts."
           } >> "$GITHUB_STEP_SUMMARY"
-          for result in "${{ needs.python-tests.result }}" "${{ needs.frontend-tests.result }}" "${{ needs.lint.result }}" "${{ needs.docker.result }}"; do
+          for result in "${{ needs.python-tests.result }}" "${{ needs.frontend-tests.result }}" "${{ needs.lint.result }}" "${{ needs.changes.result }}"; do
             if [ "$result" != "success" ]; then echo "A required job did not succeed: $result"; exit 1; fi
           done
+          # Docker may be skipped only if the detection job ran and said no container changed.
+          # A failed or missing detection job already failed the gate above.
+          docker_result="${{ needs.docker.result }}"
+          if [ "${{ needs.changes.outputs.docker }}" = "true" ]; then
+            [ "$docker_result" = "success" ] || { echo "Docker build and smoke test did not succeed: $docker_result"; exit 1; }
+          else
+            [ "$docker_result" = "skipped" ] || { echo "Unexpected Docker result: $docker_result"; exit 1; }
+          fi
 
   publish-coverage-badge:
     name: Publish coverage badge data
