@@ -104,7 +104,7 @@ Two environment notes. A local `.env` is loaded by python-dotenv and can flip th
 
 ## Quality checks
 
-Every pull request and every push to `main` runs [GitHub Actions](https://github.com/vchokshi/viharbot/actions): Python tests on 3.12 and 3.13 with coverage, frontend tests on Node 24, Ruff, and a Docker build with a health smoke test. CodeQL, dependency review and four security scanners run separately. The badges above come from those runs; none is hand-maintained. A green badge says the check ran and passed against the latest run on `main`. It does not prove the code has no bugs or vulnerabilities, and a badge can show an older successful run until the next one finishes.
+Every pull request and every push to `main` runs [GitHub Actions](https://github.com/vchokshi/viharbot/actions): Python tests on 3.12 and 3.13 with coverage, frontend tests on Node 24, Ruff, and a Docker build with a health smoke test (on pull requests only when a container definition changes; always on `main`). CodeQL, dependency review and four security scanners run separately. The badges above come from those runs; none is hand-maintained. A green badge says the check ran and passed against the latest run on `main`. It does not prove the code has no bugs or vulnerabilities, and a badge can show an older successful run until the next one finishes.
 
 Test results, coverage (XML and HTML) and scan reports are uploaded as artifacts on each run. Code scanning findings are under [Security](https://github.com/vchokshi/viharbot/security/code-scanning). The same checks locally:
 
