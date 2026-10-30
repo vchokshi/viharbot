@@ -32,13 +32,13 @@ Your pull request can be reviewed, discussed and merged without completing the o
 
 ### Path B: trusted contributors
 
-Trusted contributors can be given additional repository access. All three of these are needed:
+Trusted contributors can be given additional repository access. Approved trusted-contributor status is recorded in [CONTRIBUTORS.md](CONTRIBUTORS.md). All three of these are needed:
 
 1. A security acknowledgment.
 2. Successful technical qualification (see [Onboarding](#onboarding)).
 3. Authorization from the founder.
 
-Completing onboarding does not grant access by itself. The founder decides, and access can be limited to a defined scope of work. Contribution-rights terms for trusted contributors are set when access is authorized; they are not defined in this document yet.
+Completing onboarding does not grant access by itself. The founder decides, and access can be limited to a defined scope of work. A proposed registration row does not confer trusted status; only a founder-approved merge into the current registry establishes registry eligibility. GitHub collaborator/team permissions must be granted separately. Contribution-rights terms for trusted contributors are set when access is authorized; they are not defined in this document yet.
 
 Trusted contributors branch from current `main` in this repository, push to a feature branch and open a pull request. They do not push directly to `main`.
 
@@ -79,6 +79,16 @@ Onboarding is how someone qualifies for trusted access. It has two parts and is 
 **Part 1: general engineering qualification.** This checks Git proficiency, branching and pull-request workflow, code comprehension, debugging and root-cause analysis, testing and validation, code-review judgment, and security fundamentals. The manual assessment must be done without AI assistance.
 
 **Part 2: ViharBot architectural orientation.** This is an introduction, not an exam. It covers the project's mission and governance; the multi-agent architecture and how the agents collaborate; agent identities and responsibilities; inference routing through the external LiteLLM gateway; security boundaries and handling of sensitive data; architectural change control; and the founder's decision authority. Not every topic is separately graded.
+
+### First Git proficiency assessment: contributor registration
+
+The first assessment is a real pull request proposing the candidate's addition to [CONTRIBUTORS.md](CONTRIBUTORS.md). The candidate must fork the public ViharBot repository, clone their fork, configure `origin` and `upstream`, create an `onboarding/<github-username>` branch, add only their own row with GitHub username and numeric account ID, inspect and commit the change, push it, and open a PR against `vchokshi/viharbot:main`. They must respond to instructor review feedback by updating the same PR and explain the difference between requesting approval and receiving authorization.
+
+The candidate must not use AI during this manual assessment. The instructor separately evaluates Git proficiency, including troubleshooting and recovery in a safe training environment. The founder verifies security acknowledgment, instructor qualification and contribution rights, then decides whether to approve the registry PR. **The candidate's proposed row must never be treated as authorization before a founder-approved merge.** External Path A contributors remain free to submit ordinary PRs without being registered.
+
+### Offboarding trusted contributors
+
+Offboarding requires a founder-approved PR removing the person's row from the current [CONTRIBUTORS.md](CONTRIBUTORS.md), plus **separate** revocation of GitHub collaborator/team access and relevant credentials. Verify both steps and retain evidence privately. Removing a row does not erase Git history or revoke GitHub permissions on its own. Do not commit personal access records or assessment results to the public repository.
 
 The assessment tasks, answers and grading criteria are private and are not in this repository. Do not ask for them in public issues or pull requests, and do not share them if you have seen them.
 
