@@ -24,3 +24,14 @@ def sns_client(region: str):
 
 def cloudwatch_client(region: str):
     return client("cloudwatch", region)
+
+
+def bedrock_runtime_client(region: str):
+    """A Bedrock Runtime client with short timeouts and at most one retry: a draft is optional,
+    so a slow or failing model must never hold a poll up."""
+    import boto3
+    from botocore.config import Config
+
+    return boto3.client(
+        "bedrock-runtime", region_name=region,
+        config=Config(connect_timeout=5, read_timeout=20, retries={"max_attempts": 2}))
