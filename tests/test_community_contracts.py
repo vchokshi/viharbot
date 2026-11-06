@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import re
 from pathlib import Path
 
@@ -129,8 +130,27 @@ def test_sender_and_recipient_must_differ():
     rejects(review_request(sender="scout", recipient="scout"), "must differ")
 
 
-def test_the_application_is_not_a_valid_recipient():
-    rejects(review_request(recipient="application"), "registered identity")
+def test_the_application_can_receive_only_review_reports():
+    rejects(review_request(recipient="application"), "cannot receive this message type")
+    rejects(challenge(recipient="application"), "cannot receive this message type")
+    rejects(resolution(recipient="application"), "cannot receive this message type")
+    assert parse_message(review_report(recipient="application")).recipient == "application"
+
+
+def test_the_application_can_send_only_review_requests():
+    for make in (review_report, challenge, resolution):
+        rejects(make(sender="application", recipient="charlie"), "cannot send this message type")
+
+
+def test_an_application_originated_review_has_a_complete_valid_exchange():
+    # Sage's C1 finding: the report to an application request must be representable.
+    request = parse_message(review_request(sender="application"))
+    report = parse_message(review_report(recipient="application"))
+    validate_reply(request, report)
+    assert (report.sender, report.recipient) == (request.recipient, request.sender)
+    # And a report for a request an agent sent still cannot be redirected to the application.
+    with pytest.raises(ContractError, match="from the original recipient"):
+        validate_reply(parse_message(review_request()), report)
 
 
 def test_a_message_cannot_reply_to_itself():
@@ -204,7 +224,7 @@ def test_a_challenge_cannot_be_made_without_evidence():
 
 
 def test_only_an_agent_can_challenge():
-    rejects(challenge(sender="application"), "only an agent identity")
+    rejects(challenge(sender="application"), "application cannot send")
 
 
 def test_decided_resolution_needs_evidence_and_unresolved_material_needs_escalation():
@@ -229,13 +249,13 @@ def test_decided_resolution_needs_evidence_and_unresolved_material_needs_escalat
     {"trust_score": 0.99}, {"seniority": "senior"}, {"authorized_resources": ["db"]},
 ])
 def test_messages_cannot_carry_authority_or_budget(factory, extra):
-    rejects({**factory(), **extra}, "Extra inputs are not permitted")
+    rejects({**factory(), **extra}, "unknown field not permitted")
 
 
 def test_nested_objects_also_forbid_unknown_fields():
     payload = challenge()
     payload["evidence"][0]["permissions"] = ["read"]
-    rejects(payload, "Extra inputs are not permitted")
+    rejects(payload, "unknown field not permitted")
 
 
 def test_messages_are_immutable():
@@ -264,6 +284,35 @@ def test_errors_do_not_echo_rejected_values():
     with pytest.raises(ContractError) as raised:
         parse_message({**review_request(), "api_key": secret})
     assert secret not in str(raised.value)
+
+
+MARKER = "SENSITIVE-MARKER-9f3a"
+
+
+@pytest.mark.parametrize("entry", [parse_message, lambda p: parse_message_json(json.dumps(p))])
+@pytest.mark.parametrize("hostile", [
+    {**review_request(), MARKER: "x"},                          # sender-chosen top-level key
+    {**review_request(), "message_type": MARKER},               # invalid discriminator value
+    {**challenge(), "evidence": [{"artifact_ref": "a", MARKER: 1}]},  # nested unknown key
+    {**review_request(), "sender": MARKER},                     # rejected value
+    {**review_request(), "objective": MARKER * 200},            # oversized text
+    {**review_request(), "artifact_refs": [MARKER + " bad ref"]},      # pattern failure
+    [MARKER],                                                   # not an object
+])
+def test_errors_never_contain_sender_supplied_text(entry, hostile):
+    # Sage's C1 finding: neither values, nor field names, nor tags may appear in an error.
+    with pytest.raises(ContractError) as raised:
+        entry(hostile)
+    assert MARKER not in str(raised.value)
+    assert str(raised.value)  # still says something useful
+
+
+def test_unknown_names_are_reported_generically_and_known_ones_precisely():
+    with pytest.raises(ContractError) as raised:
+        parse_message({**challenge(), MARKER: 1, "evidence": []})
+    text = str(raised.value)
+    assert "<unknown>: unknown field not permitted" in text
+    assert "evidence" in text
 
 
 def test_text_fields_are_bounded():
