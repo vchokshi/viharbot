@@ -362,10 +362,13 @@ def test_payloads_are_not_mutated_by_parsing():
 # --- Phase C1 changes no runtime behavior ----------------------------------------------------
 
 
-def test_no_runtime_module_imports_the_community_package():
+def test_only_the_orchestrator_imports_the_community_package():
+    # C2: the orchestration state holds recorded exchanges and the loop records them behind a
+    # flag. Any other importer changes what community contracts can influence and needs review.
+    allowed = {"orchestration_state.py", "iterative_execution.py"}
     offenders = []
     for path in sorted(SRC.rglob("*.py")):
-        if "community" in path.relative_to(SRC).parts:
+        if "community" in path.relative_to(SRC).parts or path.name in allowed:
             continue
         if re.search(r"^\s*(from|import)\s+[.\w]*community\b", path.read_text(encoding="utf-8"), re.M):
             offenders.append(str(path.relative_to(SRC)))

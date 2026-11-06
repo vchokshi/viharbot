@@ -337,3 +337,22 @@ def validate_reply(
         raise ContractError("reply is not in the same engagement, task and request")
     if reply.sender != original.recipient or reply.recipient != original.sender:
         raise ContractError("reply must come from the original recipient to its sender")
+
+
+class ReviewExchange(_Strict):
+    """A review request and the report that genuinely answers it (checked on construction).
+
+    Stored in per-request orchestration state only. It is memory for one request, not durable
+    collaboration history (that is Phase D).
+    """
+
+    request: ReviewRequest
+    report: ReviewReport
+
+    @model_validator(mode="after")
+    def _report_answers_request(self) -> "ReviewExchange":
+        try:
+            validate_reply(self.request, self.report)
+        except ContractError as exc:
+            raise ValueError(str(exc)) from None
+        return self

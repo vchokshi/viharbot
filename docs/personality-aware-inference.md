@@ -133,7 +133,7 @@ The prompt becomes, in order: identity prompt, persona section, precedence claus
 * **Same trust boundary.** The persona comes from the identity chosen by the approved binding, never from the request. A request cannot select a persona.
 * **Fails closed.** A missing or invalid persona raises `InferenceConfigError` and the service's existing sanitized 502. There is no fallback persona.
 * **No change to model or contracts.** Alias precedence, structured output models and REST/SSE contracts are untouched.
-* **Draft personas.** The shipped personas are `draft`. The flag is the explicit opt-in; logs add `persona_id`, `persona_version` and `persona_status` (identifiers only, never text) so a run is attributable.
+* **Draft personas.** The shipped personas are `draft`. The flag is the explicit opt-in; logs add `persona_id`, `persona_version` and `persona_status` (identifiers only, never text) so a run is attributable. (Correction: these fields were in `log_extra()` but were missing from the JSON formatter's field whitelist in `observability.py`, so they were dropped from real log output until Epic #157 C2 added them and a formatter-level test.)
 * **Scope.** Only services that use `effective_inference` (the six pipeline services and Pixel). Charlie's planner, Sage and Sage's code review compose their own prompts and are not persona-aware.
 * **Not measured.** Tests prove ordering, precedence and contract preservation with a mocked model. Whether a persona actually changes real output quality or voice is not validated; that needs the separate, optional evaluation suite (proposed B2).
 
