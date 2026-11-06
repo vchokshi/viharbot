@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .config import _MODEL
+from .config import APPROVED_MODEL_IDS
 
 MAX_RESPONSE_CHARS = 2_000  # more than any valid opening; a runaway reply is cut before validation
 
@@ -22,8 +22,8 @@ class ModelUnavailable(RuntimeError):
 class BedrockOpeningModel:
     def __init__(self, client: Any, model_id: str, max_tokens: int = 150,
                  temperature: float = 0.3) -> None:
-        if not _MODEL.fullmatch(model_id):
-            raise ValueError("only an in-region meta.llama model is approved")
+        if model_id not in APPROVED_MODEL_IDS:
+            raise ValueError("model is not on the approved allowlist (ADR-011)")
         if not 20 <= max_tokens <= 400 or not 0.0 <= temperature <= 1.0:
             raise ValueError("token cap or temperature out of range")
         self._client, self._model_id = client, model_id

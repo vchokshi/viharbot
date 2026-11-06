@@ -16,11 +16,12 @@ _TABLE = re.compile(r"^viharbot-kepler-[a-z0-9-]{1,40}$")
 _SECRET = re.compile(r"^viharbot/kepler/[a-z0-9-]{1,60}$")
 _TOPIC = re.compile(r"^arn:aws:sns:[a-z0-9-]+:\d{12}:viharbot-kepler-[a-z0-9-]{1,40}$")
 _REGION = re.compile(r"^[a-z]{2}-[a-z]+-\d$")
-# The one approved family: an in-region, on-demand Meta Llama model, e.g.
-# meta.llama3-1-8b-instruct-v1:0. Cross-region profiles ("us.", "global.") and every other provider
-# are refused, so a typo cannot route contributor text through other regions or to an unapproved
-# model (in particular never an Anthropic one). The IAM role allows exactly one such model ARN too.
-_MODEL = re.compile(r"^meta\.llama[a-z0-9-]{1,40}-v\d+:\d+$")
+# ADR-011: an explicit allowlist of model IDs, failing closed. Exactly one model today, in-region and
+# on-demand. A cross-region profile ("us.", "global."), another Llama, another provider, and in
+# particular any Anthropic model, are all refused, so a typo cannot route contributor text through
+# other regions or to an unapproved model. The runtime role's IAM allow names the same single ARN
+# (deploy/agentcore/kepler/iam/runtime-policy.json); the two must stay in sync, and a test checks it.
+APPROVED_MODEL_IDS = frozenset({"meta.llama3-1-8b-instruct-v1:0"})
 # Kepler never touches this repository, in any role.
 FORBIDDEN_REPOSITORIES = frozenset({"vchokshi/viharbot-onboarding-instructor"})
 
@@ -48,8 +49,8 @@ class StewardConfig:
     model_max_tokens: int = 150
 
     def __post_init__(self) -> None:
-        if self.model_id is not None and not _MODEL.fullmatch(self.model_id):
-            raise ConfigError("model must be an in-region meta.llama… model id (no profile prefix)")
+        if self.model_id is not None and self.model_id not in APPROVED_MODEL_IDS:
+            raise ConfigError("model is not on the approved allowlist (ADR-011)")
         if not 20 <= self.model_max_tokens <= 400:
             raise ConfigError("model_max_tokens must be between 20 and 400")
         if not _REPO.fullmatch(self.repo) or self.repo.casefold() in {

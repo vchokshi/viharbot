@@ -184,8 +184,12 @@ def test_the_client_sends_one_small_toolless_request_to_the_pinned_model():
     "anthropic.claude-3-haiku-20240307-v1:0", "us.anthropic.claude-sonnet-5", "us.meta.llama3-3-70b-instruct-v1:0",
     "global.meta.llama3-1-8b-instruct-v1:0", "openai.gpt-5.4", "amazon.nova-micro-v1:0", "meta.llama", "",
     "meta.llama3-1-8b-instruct-v1:0; anthropic.claude", "../meta.llama3-1-8b-instruct-v1:0",
+    # other Llama models used to match a pattern; ADR-011 is an explicit allowlist of one ID
+    "meta.llama3-3-70b-instruct-v1:0", "meta.llama3-1-70b-instruct-v1:0", "meta.llama3-70b-instruct-v1:0",
+    "meta.llama4-scout-17b-instruct-v1:0", "meta.llama3-1-8b-instruct-v1:0:128k",
+    " meta.llama3-1-8b-instruct-v1:0", "meta.llama3-1-8b-instruct-v1:0 ", "META.LLAMA3-1-8B-INSTRUCT-V1:0",
 ])
-def test_only_an_in_region_meta_llama_model_can_be_configured_or_built(model_id):
+def test_only_the_one_allowlisted_model_can_be_configured_or_built(model_id):
     with pytest.raises(ValueError):
         BedrockOpeningModel(FakeBedrock(), model_id)
     with pytest.raises(ConfigError):
@@ -193,6 +197,30 @@ def test_only_an_in_region_meta_llama_model_can_be_configured_or_built(model_id)
                       reader_secret_id="viharbot/kepler/github-app-reader",
                       state_table="viharbot-kepler-state", audit_table="viharbot-kepler-audit",
                       alert_topic_arn=TOPIC, model_id=model_id or "x")
+
+
+def test_the_allowlist_is_exactly_the_one_model_in_adr_011():
+    from viharbot.steward.config import APPROVED_MODEL_IDS
+    assert APPROVED_MODEL_IDS == frozenset({"meta.llama3-1-8b-instruct-v1:0"})
+    assert not any(m.startswith(("anthropic.", "us.", "global.")) for m in APPROVED_MODEL_IDS)
+
+
+def test_the_code_allowlist_matches_the_model_in_the_iam_policy():
+    """ADR-011: the allowlist in code and the IAM allow must stay in sync. Skipped on a branch whose
+    policy file has not yet been updated to the Bedrock allowlist."""
+    from pathlib import Path
+
+    from viharbot.steward.config import APPROVED_MODEL_IDS
+    path = Path(__file__).resolve().parent.parent / "deploy/agentcore/kepler/iam/runtime-policy.json"
+    if not path.exists():
+        pytest.skip("the IAM policy is not in this environment")
+    statements = {s["Sid"]: s for s in json.loads(path.read_text())["Statement"]}
+    allow = statements.get("InvokeAllowlistedNonAnthropicModelOnly")
+    if allow is None:
+        pytest.skip("this branch's runtime policy predates the Bedrock allowlist (PR #208)")
+    resources = allow["Resource"] if isinstance(allow["Resource"], list) else [allow["Resource"]]
+    allowed_ids = {r.rsplit("foundation-model/", 1)[1] for r in resources}
+    assert allowed_ids == set(APPROVED_MODEL_IDS)
 
 
 def test_the_model_is_opt_in_and_the_token_cap_is_bounded():
