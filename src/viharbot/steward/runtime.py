@@ -91,7 +91,7 @@ class AwsWiring:
                     "publisher": SnsPublisher(aws.sns_client(region), cfg.alert_topic_arn),
                     "metrics": CloudWatchMetrics(aws.cloudwatch_client(region)),
                     "clock": self._clock,
-                    # Opt-in: with no model id configured the drafts are the plain template.
+                    # On by default; only an explicit KEPLER_MODEL_ID=off leaves the plain template.
                     "drafter": (BedrockOpeningModel(aws.bedrock_runtime_client(region), cfg.model_id,
                                                     cfg.model_max_tokens)
                                 if cfg.model_id else None),

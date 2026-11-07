@@ -223,10 +223,19 @@ def test_the_code_allowlist_matches_the_model_in_the_iam_policy():
     assert allowed_ids == set(APPROVED_MODEL_IDS)
 
 
-def test_the_model_is_opt_in_and_the_token_cap_is_bounded():
-    assert from_env({"KEPLER_ALERT_TOPIC_ARN": TOPIC}).model_id is None
-    cfg = from_env({"KEPLER_ALERT_TOPIC_ARN": TOPIC, "KEPLER_MODEL_ID": "meta.llama3-1-8b-instruct-v1:0"})
-    assert cfg.model_id == "meta.llama3-1-8b-instruct-v1:0" and cfg.model_max_tokens == 150
+def test_the_approved_model_is_the_default_and_only_an_explicit_off_disables_it():
+    base = {"KEPLER_ALERT_TOPIC_ARN": TOPIC}
+    approved = "meta.llama3-1-8b-instruct-v1:0"
+    assert from_env(base).model_id == approved
+    assert from_env({**base, "KEPLER_MODEL_ID": ""}).model_id == approved  # empty is not "off"
+    assert from_env({**base, "KEPLER_MODEL_ID": approved}).model_id == approved
+    for off in ("off", "OFF", "none", "disabled"):
+        assert from_env({**base, "KEPLER_MODEL_ID": off}).model_id is None
+    for refused in ("anthropic.claude-3-haiku-20240307-v1:0", "us.meta.llama3-1-8b-instruct-v1:0", "x"):
+        with pytest.raises(ConfigError):
+            from_env({**base, "KEPLER_MODEL_ID": refused})
+    assert from_env(base).model_max_tokens == 150
+    assert good_config().model_id == approved
     for tokens in ("5", "5000"):
         with pytest.raises(ConfigError):
             from_env({"KEPLER_ALERT_TOPIC_ARN": TOPIC, "KEPLER_MODEL_MAX_TOKENS": tokens})
@@ -356,7 +365,7 @@ def test_a_hostile_pr_title_cannot_reach_the_audit_log_the_state_the_email_or_a_
         assert needle not in everything, needle
 
 
-def test_the_runtime_builds_the_model_only_when_configured(monkeypatch):
+def test_the_runtime_builds_the_model_by_default_and_not_when_switched_off(monkeypatch):
     from viharbot.steward import aws, runtime
     built = []
     monkeypatch.setattr(aws, "secrets_client", lambda r: object())
@@ -364,9 +373,9 @@ def test_the_runtime_builds_the_model_only_when_configured(monkeypatch):
     monkeypatch.setattr(aws, "sns_client", lambda r: object())
     monkeypatch.setattr(aws, "cloudwatch_client", lambda r: object())
     monkeypatch.setattr(aws, "bedrock_runtime_client", lambda r: built.append(r) or FakeBedrock())
-    off = runtime.AwsWiring(good_config()).deps()
+    off = runtime.AwsWiring(good_config(model_id=None)).deps()
     assert off["drafter"] is None and built == []
-    on = runtime.AwsWiring(good_config(model_id="meta.llama3-1-8b-instruct-v1:0")).deps()
+    on = runtime.AwsWiring(good_config()).deps()
     assert on["drafter"].model_id == "meta.llama3-1-8b-instruct-v1:0" and built == ["us-west-2"]
 
 
