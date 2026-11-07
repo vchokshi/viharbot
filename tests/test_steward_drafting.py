@@ -478,6 +478,20 @@ def test_repeated_timeouts_never_stack_model_calls_and_late_results_are_discarde
     assert generate_opening(other, FACTS, timeout_seconds=5).text == GOOD and len(other.calls) == 1
 
 
+def test_a_worker_that_cannot_start_frees_the_slot_so_later_drafts_still_work(monkeypatch):
+    import threading
+
+    def cannot_start(self):
+        raise RuntimeError("can't start new thread")
+
+    monkeypatch.setattr(threading.Thread, "start", cannot_start)
+    failed = generate_opening(FakeModel(), FACTS, timeout_seconds=1)
+    assert failed.text is None and failed.reason == "model_error"
+    monkeypatch.undo()
+    assert wait_until_idle(1)  # nothing is running, so the slot must be free
+    assert generate_opening(FakeModel(), FACTS, timeout_seconds=5).text == GOOD
+
+
 def test_the_lint_is_a_regression_aid_not_a_semantic_guarantee():
     # Documented limitation: an indirect commitment with no time words or listed phrase passes the
     # lint, so a human must read every sentence added to the table (see personalize.py).

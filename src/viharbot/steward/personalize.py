@@ -193,8 +193,14 @@ def _call_within(seconds: float, fn):
         finally:
             _IN_FLIGHT.release()  # the slot frees only when the call really ends
 
-    worker = threading.Thread(target=run, name="kepler-draft-model", daemon=True)
-    worker.start()
+    try:
+        worker = threading.Thread(target=run, name="kepler-draft-model", daemon=True)
+        worker.start()
+    except BaseException:
+        # The worker never ran, so its `finally` never will: free the slot here, once, or every
+        # later draft would report "busy" with nothing running.
+        _IN_FLIGHT.release()
+        raise
     worker.join(seconds)
     if worker.is_alive():
         raise TimeoutError("the model call took too long")
