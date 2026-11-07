@@ -71,6 +71,7 @@ class AwsWiring:
                 from . import aws
                 from .alerts import SnsPublisher
                 from .audit import AuditLog
+                from .bedrock import BedrockOpeningModel
                 from .github_auth import InstallationTokens, load_secret_from_aws
                 from .metrics import CloudWatchMetrics
                 from .state import ObservationState
@@ -90,6 +91,10 @@ class AwsWiring:
                     "publisher": SnsPublisher(aws.sns_client(region), cfg.alert_topic_arn),
                     "metrics": CloudWatchMetrics(aws.cloudwatch_client(region)),
                     "clock": self._clock,
+                    # Opt-in: with no model id configured the drafts are the plain template.
+                    "drafter": (BedrockOpeningModel(aws.bedrock_runtime_client(region), cfg.model_id,
+                                                    cfg.model_max_tokens)
+                                if cfg.model_id else None),
                 }
             return self._deps
 

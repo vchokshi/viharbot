@@ -16,6 +16,12 @@ _TABLE = re.compile(r"^viharbot-kepler-[a-z0-9-]{1,40}$")
 _SECRET = re.compile(r"^viharbot/kepler/[a-z0-9-]{1,60}$")
 _TOPIC = re.compile(r"^arn:aws:sns:[a-z0-9-]+:\d{12}:viharbot-kepler-[a-z0-9-]{1,40}$")
 _REGION = re.compile(r"^[a-z]{2}-[a-z]+-\d$")
+# ADR-011: an explicit allowlist of model IDs, failing closed. Exactly one model today, in-region and
+# on-demand. A cross-region profile ("us.", "global."), another Llama, another provider, and in
+# particular any Anthropic model, are all refused, so a typo cannot route contributor text through
+# other regions or to an unapproved model. The runtime role's IAM allow names the same single ARN
+# (deploy/agentcore/kepler/iam/runtime-policy.json); the two must stay in sync, and a test checks it.
+APPROVED_MODEL_IDS = frozenset({"meta.llama3-1-8b-instruct-v1:0"})
 # Kepler never touches this repository, in any role.
 FORBIDDEN_REPOSITORIES = frozenset({"vchokshi/viharbot-onboarding-instructor"})
 
@@ -39,10 +45,17 @@ class StewardConfig:
     dedup_ttl_days: int = 30
     pending_retry_minutes: int = 30
     max_alert_attempts: int = 2  # claims per alert in total: the first, plus one retry
+    # Opt-in. None means no model is ever called and drafts are the plain fixed template.
+    model_id: str | None = None
+    model_max_tokens: int = 150
 
     def __post_init__(self) -> None:
         if not 1 <= self.max_alert_attempts <= 5:
             raise ConfigError("max_alert_attempts must be between 1 and 5")
+        if self.model_id is not None and self.model_id not in APPROVED_MODEL_IDS:
+            raise ConfigError("model is not on the approved allowlist (ADR-011)")
+        if not 20 <= self.model_max_tokens <= 400:
+            raise ConfigError("model_max_tokens must be between 20 and 400")
         if not _REPO.fullmatch(self.repo) or self.repo.casefold() in {
                 r.casefold() for r in FORBIDDEN_REPOSITORIES}:
             raise ConfigError("repository must be owner/name and not a forbidden repository")
@@ -101,4 +114,6 @@ def from_env(environ: Mapping[str, str]) -> StewardConfig:
         dedup_ttl_days=number("KEPLER_DEDUP_TTL_DAYS", 30),
         pending_retry_minutes=number("KEPLER_PENDING_RETRY_MINUTES", 30),
         max_alert_attempts=number("KEPLER_MAX_ALERT_ATTEMPTS", 2),
+        model_id=environ.get("KEPLER_MODEL_ID", "").strip() or None,
+        model_max_tokens=number("KEPLER_MODEL_MAX_TOKENS", 150),
     )

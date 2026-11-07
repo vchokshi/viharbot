@@ -65,6 +65,7 @@ def draft_followup(
     reminder_after_hours: int = REMINDER_AFTER_HOURS,
     maintainer_login: str | None = None,
     posting: Literal["maintainer", "agent"] = "maintainer",
+    opening: str | None = None,
 ) -> DraftDecision:
     if not cla.record_readable:
         return DraftDecision("record_unreadable")
@@ -96,9 +97,11 @@ def draft_followup(
     greeting = f"Hi @{safe_login(assessment.author_login)}" if safe_login(
         assessment.author_login) else "Hi there"
     if kind == "welcome":
-        lines = [f"{greeting}, welcome to ViharBot, and thank you for the contribution!",
-                 _introduction(maintainer, posting),
-                 "Before this can be considered for merge, a few things are needed:"]
+        lines = [f"{greeting}, welcome to ViharBot, and thank you for the contribution!"]
+        if opening:  # a validated model-written sentence; see personalize.py. Welcome only.
+            lines.append(opening)
+        lines += [_introduction(maintainer, posting),
+                  "Before this can be considered for merge, a few things are needed:"]
     else:
         lines = [f"{greeting}, a gentle reminder about the open items on this pull request. "
                  f"(This is Kepler, ViharBot's AI agent. {_who_posts(maintainer, posting)})"]
