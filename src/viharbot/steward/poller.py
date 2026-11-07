@@ -173,6 +173,8 @@ def run_poll(
         gh = BudgetedClient(make_client(token), work_deadline, clock)
         files, pinned = fetch_cla_files(gh, config.repo, config.base_branch)
         founders, _ = gate.founders_from(files.base_registry)
+        # Drafts name the maintainer who posts them. Only an unambiguous founder is named.
+        maintainer = next(iter(founders.values())) if len(founders) == 1 else None
         numbers = [only_pr] if only_pr else list_first_time_pulls(gh, config.repo, set(founders))
         numbers = numbers[: config.max_pulls]
         resolver = gate.github_resolver(gh)
@@ -191,7 +193,7 @@ def run_poll(
                 now = clock()
                 assessment, cla = assess(snapshot, files, resolver, now, config.reminder_after_hours)
                 decision = draft_followup(assessment, cla, now, config.repo,
-                                          config.reminder_after_hours)
+                                          config.reminder_after_hours, maintainer)
             except (StateUnavailable, AuditUnavailable):
                 raise
             except DeadlineExceeded:  # the budget ran out mid-read: stop, do not count it as a PR bug

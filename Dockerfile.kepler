@@ -1,0 +1,51 @@
+# syntax=docker/dockerfile:1
+# Kepler steward image for Amazon Bedrock AgentCore Runtime: linux/arm64, serves on port 8080.
+#
+# Deliberately minimal. The steward makes no model call, so this image has no LiteLLM, Strands,
+# OpenAI or Anthropic SDK: only the four dependencies in requirements-kepler.txt. Only the
+# steward's own source, the request-size limiter and the two CLA-gate files are copied in (the
+# allowlist is Dockerfile.kepler.dockerignore), so this image cannot pick up .env, credentials,
+# .git, docs or another agent's code. It runs as an unprivileged user and holds no secret: the
+# GitHub App credentials are read from AWS Secrets Manager at run time.
+#
+# AgentCore authenticates callers before a request reaches the container, and this service has no
+# authentication of its own. Never publish its port beyond AgentCore; a local run binds loopback.
+#
+# Build:  docker buildx build --platform linux/arm64 -f Dockerfile.kepler -t viharbot-kepler:local --load .
+FROM python:3.12-slim-bookworm AS build
+
+# AgentCore Runtime runs linux/arm64 only. Fail the build loudly on any other target instead of
+# producing an image that cannot run there (or silently emulating on the wrong host).
+ARG TARGETARCH
+RUN test "${TARGETARCH}" = "arm64" || { echo "Dockerfile.kepler must be built with --platform linux/arm64" >&2; exit 1; }
+
+WORKDIR /build
+COPY requirements-kepler.txt ./
+RUN python -m pip install --no-cache-dir --prefix=/install -r requirements-kepler.txt
+
+FROM python:3.12-slim-bookworm AS runtime
+
+ARG TARGETARCH
+RUN test "${TARGETARCH}" = "arm64" || { echo "Dockerfile.kepler must be built with --platform linux/arm64" >&2; exit 1; }
+RUN addgroup --system --gid 1001 appgroup \
+    && adduser --system --uid 1001 --ingroup appgroup --no-create-home appuser
+
+WORKDIR /app
+COPY --from=build /install /usr/local
+COPY src/viharbot/__init__.py ./src/viharbot/__init__.py
+COPY src/viharbot/body_limit.py ./src/viharbot/body_limit.py
+COPY src/viharbot/steward ./src/viharbot/steward
+# The CLA gate is the single source of the CLA rules. Its fingerprint is recorded in every verdict.
+COPY .github/scripts/cla_gate.py .github/scripts/contributor_registry.py ./gate/
+
+ENV PYTHONPATH=/app/src \
+    KEPLER_CLA_GATE_DIR=/app/gate \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PORT=8080
+
+USER 1001:1001
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/ping', timeout=3)"]
+CMD ["sh", "-c", "exec uvicorn --factory viharbot.steward.runtime:create_app_from_env --host 0.0.0.0 --port \"$PORT\""]

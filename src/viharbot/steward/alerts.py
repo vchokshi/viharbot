@@ -8,13 +8,11 @@ nothing is posted anywhere: the founder decides what to do with a draft.
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 from .drafts import DraftDecision
-from .model import Observation, PullAssessment
+from .model import Observation, PullAssessment, safe_login
 
-_LOGIN = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$")
 MAX_SUBJECT = 100
 MAX_BODY = 20_000  # far under SNS's 256 KB limit
 _NO_DRAFT = {
@@ -30,7 +28,7 @@ class AlertUnavailable(RuntimeError):
 
 
 def _login(login: str) -> str:
-    return login if _LOGIN.fullmatch(login or "") else "(unusual login)"
+    return safe_login(login) or "(unusual login)"
 
 
 def format_alert(assessment: PullAssessment, new: list[Observation],
