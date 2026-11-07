@@ -40,7 +40,18 @@ Archie never starts curriculum work on its own. `src/viharbot/learning/assignmen
 
 **Limitation:** the founder login is asserted by whoever runs the local CLI; it is not authenticated. The control is that only this module creates assignments and no webhook, event handler or agent path imports it. Stronger identity proof (for example a signed assignment) is future work.
 
-Still proposed for the rest of epic #139: restricted instructor-repo access (#141), Kepler/Sage evidence ingestion (#142), curriculum authoring and quality checks (#143), the Ada handoff and publication gate (#144, #151), audit trail and end-to-end tests (#145), and student PR feedback (#154).
+## Restricted instructor-repository access (epic #139, issue #141; implemented)
+
+`src/viharbot/learning/instructor_access.py` is the only code that reads `vchokshi/viharbot-onboarding-instructor`. It is a library; nothing in the web app, execution bindings, Ada or Kepler imports it (a test proves it).
+
+- **Read-only, own token.** GET requests only, using `ARCHIE_INSTRUCTOR_READ_TOKEN` (a fine-grained, read-only contents token, separate from the proposal-writing `ARCHIE_INSTRUCTOR_TOKEN`). It refuses any other repository. This change creates no token.
+- **Assignment required.** Every read and listing names an active founder assignment (#140); cancelled, completed or unknown ones are refused before any network call.
+- **Allowlist and hard deny.** Readable only under `knowledge/`, `curriculum/`, `lessons/`, `rubrics/`, `answer-keys/`, `defects/`, `assessments/`. Traversal, hidden files, odd characters and long paths are denied. Private acknowledgment records, credentials, tokens and key files are never readable, even with confidential access on.
+- **Confidential is opt-in.** Rubrics, answer keys, defect catalogs, assessments and grading notes need `allow_confidential=True`; listings omit them otherwise. Their text is fingerprinted (line hashes, in memory only) so `ConfidentialIndex.assert_trainee_safe` rejects trainee-bound text that repeats it. Matching is on whole normalised lines of 24+ characters: it catches copying, not paraphrase, so human review (#144) is still required.
+- **Logs and reprs carry no content or paths:** only a path hash, sensitivity, duration and exception class.
+- **Not yet done:** wiring the reader into evidence ingestion (#142) or any model prompt, and enabling confidential access in a runtime. No model is called here.
+
+Still proposed for the rest of epic #139: Kepler/Sage evidence ingestion (#142), curriculum authoring and quality checks (#143), the Ada handoff and publication gate (#144, #151), audit trail and end-to-end tests (#145), and student PR feedback (#154).
 
 ### Not yet done in Phase 2
 

@@ -145,6 +145,16 @@ class AssignmentStore:
                 return assignment
         return None
 
+    def require_active(self, assignment_id: str) -> Assignment:
+        """The named assignment if it is still `assigned`; otherwise NotAssigned."""
+        try:
+            assignment = self.get(assignment_id)
+        except KeyError:
+            assignment = None
+        if assignment is None or assignment.state is not AssignmentState.ASSIGNED:
+            raise NotAssigned("no active founder assignment with that id")
+        return assignment
+
     def require(self, repository: str, pull_request: int) -> Assignment:
         assignment = self.authorizing(repository, pull_request)
         if assignment is None:
