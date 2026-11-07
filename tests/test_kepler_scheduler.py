@@ -164,7 +164,8 @@ def test_the_deployer_may_create_the_schedule_and_pass_this_role_to_scheduler():
 def test_the_script_is_a_dry_run_unless_apply_is_set_and_changes_nothing_before_that():
     text = SCRIPT.read_text()
     guard = text.index('"${APPLY:-no}" != "yes"')
-    for risky in ("sts assume-role", "iam create-role", "iam put-role-policy", "scheduler create-schedule"):
+    for risky in ("sts assume-role", "iam create-role", "iam put-role-policy", "scheduler create-schedule",
+                  "scheduler update-schedule"):
         for line_no, line in enumerate(text.splitlines()):
             if risky in line and not line.lstrip().startswith(("#", "echo")):
                 assert text.index(line) > guard, (risky, line_no)
