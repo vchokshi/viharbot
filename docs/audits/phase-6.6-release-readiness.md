@@ -9,10 +9,11 @@
 
 The offline baseline is in place and green on one commit: the blocking defects (#19, #20, #21, #22) and the streaming-contract conformance work (#53) are merged, evidenced and closed, and the offline suite, Docker suite, security scans and CodeQL all pass on `main`. The owner approved a live smoke test (3 requests, $5 ceiling), and it ran on 2026-11-06 (section 3a): 2 successful full runs and 1 deliberate failure, each ending in exactly one terminal event in strict sequence, with a latency baseline for all of them. What keeps this from being signed off:
 
-1. **Cost is estimated, not measured.** The supplied key can call only LLM routes, so its spend could not be read. The estimate is far below the ceiling, but the owner should confirm actual spend in the gateway.
-2. **The browser SSE timeline was driven by a scripted client, not a real browser** (none was available). The page is tested only in a Node fake DOM.
-3. **Open findings from the live run** (section 5): an alias that does not exist for this key, a planner that repeated a call three times, and a thin timeout margin on Sage.
-4. **Owner decisions** in section 6, and closing #23 and the milestone, which is the owner's call. The milestone assignment is done.
+The measured spend for all three runs was **$0.0956**, against the $5 ceiling (reported by the owner from the gateway's usage view; the supplied key could not read its own spend, so I could not verify the figure independently).
+
+1. **The browser SSE timeline was driven by a scripted client, not a real browser** (none was available). The page is tested only in a Node fake DOM.
+2. **Open findings from the live run** (section 5): an alias that does not exist for this key, a planner that repeated a call three times, and a thin timeout margin on Sage.
+3. **Owner decisions** in section 6, and closing #23 and the milestone, which is the owner's call. The milestone assignment is done.
 
 ## 2. Candidate commit and evidence
 
@@ -46,7 +47,7 @@ The 3 skipped tests are the opt-in live LiteLLM checks (`RUN_LITELLM_INTEGRATION
 | Browser distinguishes completed, failed, interrupted | **Done** in the Node fake DOM | **No real browser has been run** |
 | `POST /api/chat` backward compatibility | **Done** | Unchanged; covered by the suite |
 | Live six-service workflow and browser SSE timeline (opt-in, billable) | **Done, with caveats** | 3 runs on 2026-11-06 (section 3a). Driven by a scripted SSE client; **no real browser** |
-| Latency, timeout, error and inference-cost baseline | **Latency, timeout and error: done. Cost: estimated only** | Section 3a. The key could not read its own spend |
+| Latency, timeout, error and inference-cost baseline | **Done** | Section 3a. Spend **$0.0956** for the three runs (owner-reported from the gateway) |
 | Record tested commit, limitations, rollback | This document | Needs owner review |
 | Milestone `6.6` assignment and closure | **Assigned; not closed** | #19 to #23 and #53 are on milestone `6.6` (5 closed, #23 open). The milestone closes last, by the owner |
 | Staging verification | **Not applicable** | Nothing was deployed. `deploy_on_push` stays disabled |
@@ -74,7 +75,7 @@ The 3 skipped tests are the opt-in live LiteLLM checks (`RUN_LITELLM_INTEGRATION
 
 **Latency baseline (3 requests; not statistically meaningful).** Time to first byte 13 to 44 ms. Planner call 2.3 to 6.5 s (median 2.7 s over 13 calls). Agent call 0.1 to 61 s, the longest being Sage. A full multi-agent run took 137 s, about 57 percent of the default 240 s request budget. No timeout, deadline expiry, planner failure or rejected delegation occurred.
 
-**Cost estimate (not measured).** The key can call only LLM routes, so the gateway would not report its spend. Only Sage logs token counts: 3,403 input and 2,624 output tokens, about $0.03 at its listed price. If every one of the 11 agent calls had used three times that volume at the most expensive listed price, the total would still be under $2; the 13 planner calls use the cheapest model and add a few cents at most. The realistic figure is probably well under $1 for all three runs, against the $5 ceiling. **Confirm in the gateway's usage view.**
+**Cost: $0.0956 for the three runs, about 1.9 percent of the $5 ceiling** (about $0.03 per request on average). The figure comes from the gateway's usage view, as reported by the owner; the key used for the test could only call LLM routes, so I could not read it myself. It agrees with the estimate made beforehand: Sage, the only service that logs tokens, used 3,403 input and 2,624 output tokens (about $0.03 at its listed price), and a conservative bound on the whole test was under $2. It covers three requests with 11 agent calls and 13 planner calls and says nothing about sustained or concurrent load. Only the total was available, so there is no per-run or per-agent cost breakdown.
 
 ## 4. Child issues
 
@@ -111,7 +112,7 @@ What each changed, in one line: #19 the test image now runs the whole offline su
 ## 6. Items needing the owner
 
 1. **Possible past billable call (verify).** Before #21 was fixed, host test runs on a machine with a local `.env` loaded a real planner key, and the live planner path logged `orchestration planner call failed`. It could not be determined whether a request actually reached the gateway. Checking gateway usage for the affected period would settle it.
-2. **Confirm the smoke-test spend.** The live test ran (section 3a) but its cost is an estimate; read the actual spend for the key in the gateway's usage view and record it here.
+2. **Smoke-test spend: done.** $0.0956 for the three runs, recorded in section 3a.
 3. **Rotate the smoke-test key.** It was supplied in the working session. It was never written to a file, log, commit or pull request (checked), but it is in the session transcript.
 4. **Alias decision.** Settle whether `gpt-5.4-mini` (the Compose default) or `openal/gpt-5.4-mini` is correct for Privacy Review and Synthesis, and fix whichever is wrong.
 5. **A real-browser run.** The SSE timeline was driven by a scripted client. A person (or a browser tool) watching the live page for one run would close that gap.
@@ -125,6 +126,6 @@ Every Phase 6.6 change is a merged pull request and can be reverted independentl
 
 ## 8. Not verified
 
-Actual inference spend (estimated only); a real browser; a proxy in front of the stream; concurrent live streams; deadline expiry, planner failure and timeouts under live inference; slide generation (disabled for the smoke test); DigitalOcean staging or AWS (neither was deployed or touched); Python 3.12 on a developer machine (covered by CI only); badge rendering; the effect of the merges after #199.
+The spend figure independently (it is the owner's reading of the gateway; the test key could not read its own spend); per-run cost; a real browser; a proxy in front of the stream; concurrent live streams; deadline expiry, planner failure and timeouts under live inference; slide generation (disabled for the smoke test); DigitalOcean staging or AWS (neither was deployed or touched); Python 3.12 on a developer machine (covered by CI only); badge rendering; the effect of the merges after #199.
 
 *Sources: pull requests #192, #194, #196, #199 and their descriptions; the CI runs linked above; `docs/live-observability.md`; `docs/continuous-integration.md`; `docs/development-status.md`.*
