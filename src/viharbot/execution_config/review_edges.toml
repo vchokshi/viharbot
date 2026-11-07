@@ -1,0 +1,22 @@
+# Declared peer-review edges (Epic #157, Phase C2).
+#
+# An edge says: when the review capability runs on a fresh result of the artifact capability, that
+# run counts as an independent peer review of that result. It names capabilities, never agents or
+# services; the reviewer and the author are looked up from the approved execution bindings, so
+# changing a binding cannot silently create a self-review (the loader rejects it).
+#
+# An edge grants no access. The review still runs only if the existing orchestration policy
+# authorizes the delegation (binding, dependencies, freshness, repeat limit, execution, decision
+# and time budgets). Editing this file is the only way to change which reviews are recognized.
+
+[[edge]]
+artifact_capability = "research"
+review_capability = "fact_check"
+
+[[edge]]
+artifact_capability = "research"
+review_capability = "source_quality"
+
+[[edge]]
+artifact_capability = "research"
+review_capability = "security_assessment"
