@@ -381,6 +381,56 @@ def test_a_first_contact_draft_asks_for_everything_with_the_exact_statement():
     assert "never been reviewed" not in decision.body
 
 
+def welcome(**kwargs):
+    snap = snapshot(comments=())
+    assessment, cla = run(snap)
+    return draft_followup(assessment, cla, NOW, REPO, **kwargs).body
+
+
+def test_the_first_message_says_it_is_an_ai_agent_and_introduces_itself():
+    body = welcome(maintainer_login="vchokshi")
+    assert "I'm Kepler, an AI agent, not a person" in body
+    assert "first of ViharBot's agents you'll interact with, and there are more" in body
+    assert "welcome first-time contributors and help with the contribution paperwork" in body
+    assert "can't change code, merge anything, or decide whether your contribution is accepted" in body
+    assert "If you'd rather talk to a person" in body
+    assert body.index("I'm Kepler") < body.index("Before this can be considered for merge")
+
+
+def test_it_says_truthfully_who_posts_the_message():
+    drafted = welcome(maintainer_login="vchokshi")  # today: the maintainer posts the draft
+    assert "drafted by me and reviewed and posted by @vchokshi" in drafted
+    assert "posted by me" not in drafted.replace("reviewed and posted by", "")
+    later = welcome(maintainer_login="vchokshi", posting="agent")  # a later, authorized phase
+    assert "approved by @vchokshi and posted by me" in later and "drafted by me" not in later
+    assert "the project maintainer" in welcome()  # no unambiguous maintainer: stay generic
+
+
+def test_a_maintainer_login_is_validated_before_it_is_written_into_a_message():
+    for hostile in ("evil\n@everyone", "x y", "a" * 60, "<script>", "", None):
+        body = welcome(maintainer_login=hostile)
+        assert "the project maintainer" in body and "@everyone" not in body and "<script>" not in body
+
+
+def test_a_reminder_stays_identifiable_as_an_agent_without_repeating_the_introduction():
+    later = NOW + datetime.timedelta(hours=REMINDER_AFTER_HOURS + 1)
+    assessment, cla = run()
+    decision = draft_followup(assessment, cla, later, REPO, maintainer_login="vchokshi")
+    assert decision.kind == "reminder"
+    assert "This is Kepler, ViharBot's AI agent" in decision.body
+    assert "drafted by me and reviewed and posted by @vchokshi" in decision.body
+    assert "A quick introduction" not in decision.body  # the introduction is made once
+
+
+def test_the_poll_names_the_registered_founder_as_the_maintainer():
+    from viharbot.steward.alerts import format_alert
+    snap = snapshot(comments=(), mergeable_state="clean")
+    assessment, cla = run(snap)
+    decision = draft_followup(assessment, cla, NOW, REPO, maintainer_login="vchokshi")
+    _, email = format_alert(assessment, list(assessment.observations), decision)
+    assert "DRAFT message (NOT posted" in email and "I'm Kepler, an AI agent" in email
+
+
 def test_a_reminder_after_the_window_lists_only_what_is_outstanding_and_does_not_claim_new_asks():
     later = NOW + datetime.timedelta(hours=REMINDER_AFTER_HOURS + 1)
     assessment, cla = run()

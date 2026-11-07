@@ -2,10 +2,18 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import asdict, dataclass
 
 DONE, OUTSTANDING, NEEDS_HUMAN, INFO = "done", "outstanding", "needs_human", "info"
 STATUSES = (DONE, OUTSTANDING, NEEDS_HUMAN, INFO)
+_LOGIN = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$")
+
+
+def safe_login(login: str | None) -> str | None:
+    """A GitHub login only if it has GitHub's own shape (letters, digits, hyphens), else None.
+    Used wherever a login is placed in an email or a draft, so nothing else can slip in."""
+    return login if isinstance(login, str) and _LOGIN.fullmatch(login) else None
 
 
 @dataclass(frozen=True)
