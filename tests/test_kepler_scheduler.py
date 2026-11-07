@@ -101,15 +101,35 @@ def test_only_the_scheduler_role_can_be_the_target_role(role):
         bs.build("recurring", RUNTIME, role)
 
 
-def test_the_role_can_only_be_assumed_by_scheduler_for_kepler_schedules_in_this_account():
+def test_the_role_can_only_be_assumed_by_scheduler_from_the_default_group_in_this_account():
     trust = json.loads((IAM / "scheduler-trust.json").read_text())
     (statement,) = trust["Statement"]
     assert statement["Principal"] == {"Service": "scheduler.amazonaws.com"}
     assert statement["Action"] == "sts:AssumeRole" and statement["Effect"] == "Allow"
-    conditions = statement["Condition"]
-    assert conditions["StringEquals"] == {"aws:SourceAccount": "ACCOUNT_ID"}
-    assert conditions["ArnLike"]["aws:SourceArn"] == \
-        "arn:aws:scheduler:us-west-2:ACCOUNT_ID:schedule/default/viharbot-kepler-*"
+    # One condition block holding both keys. Scheduler checks the role during CreateSchedule, before
+    # the schedule exists, and presents the schedule GROUP's ARN, so a condition on
+    # schedule/default/viharbot-kepler-* can never match: CreateSchedule was refused live with
+    # "must allow AWS EventBridge Scheduler to assume the role". The group ARN is the narrowest form.
+    assert statement["Condition"] == {"StringEquals": {
+        "aws:SourceAccount": "ACCOUNT_ID",
+        "aws:SourceArn": "arn:aws:scheduler:us-west-2:ACCOUNT_ID:schedule-group/default"}}
+    assert "ArnLike" not in statement["Condition"]
+
+
+def test_no_iam_policy_file_has_duplicate_json_keys():
+    # A duplicate key (for example two StringEquals blocks) is silently collapsed to the last one by
+    # every JSON reader, which would drop a condition. No test of the parsed value can see that.
+    from collections import Counter
+
+    def refuse_duplicates(pairs):
+        duplicated = [key for key, count in Counter(key for key, _ in pairs).items() if count > 1]
+        assert not duplicated, f"duplicate JSON keys: {duplicated}"
+        return dict(pairs)
+
+    files = sorted(IAM.glob("*.json"))
+    assert len(files) >= 6
+    for path in files:
+        json.loads(path.read_text(), object_pairs_hook=refuse_duplicates)
 
 
 def test_the_role_can_do_one_thing_invoke_the_one_runtime_and_stays_inside_the_boundary():

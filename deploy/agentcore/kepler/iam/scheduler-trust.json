@@ -2,13 +2,15 @@
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "SchedulerAssumesTheSchedulerRoleForKeplerSchedulesOnly",
+      "Sid": "SchedulerAssumesTheSchedulerRoleFromTheDefaultScheduleGroupOnly",
       "Effect": "Allow",
       "Principal": { "Service": "scheduler.amazonaws.com" },
       "Action": "sts:AssumeRole",
       "Condition": {
-        "StringEquals": { "aws:SourceAccount": "ACCOUNT_ID" },
-        "ArnLike": { "aws:SourceArn": "arn:aws:scheduler:us-west-2:ACCOUNT_ID:schedule/default/viharbot-kepler-*" }
+        "StringEquals": {
+          "aws:SourceAccount": "ACCOUNT_ID",
+          "aws:SourceArn": "arn:aws:scheduler:us-west-2:ACCOUNT_ID:schedule-group/default"
+        }
       }
     }
   ]
