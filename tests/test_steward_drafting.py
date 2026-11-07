@@ -27,6 +27,7 @@ from viharbot.steward.personalize import (
     clean_title,
     generate_opening,
     lint_opening,
+    wait_until_idle,
 )
 
 FACTS = OpeningFacts("MohamadKanso", 179, "Reject a malformed request hash", ("src/a.py", "docs/b.md"))
@@ -435,6 +436,7 @@ def test_a_hung_model_call_is_abandoned_at_the_wall_clock_cap_and_the_plain_draf
     outcome = generate_opening(model, FACTS, timeout_seconds=0.3)
     took = time.monotonic() - begun
     model.release.set()  # let the abandoned thread finish
+    assert wait_until_idle(5)
     assert outcome.text is None and outcome.reason == "timeout" and took < 2.0
     # a fast call under the same cap still works, and so does an error under it
     assert generate_opening(FakeModel(), FACTS, timeout_seconds=5).text == GOOD
@@ -451,10 +453,36 @@ def test_a_hung_model_never_holds_up_the_poll_or_stops_the_email(monkeypatch):
     result = poll(stack, model)
     took = time.monotonic() - begun
     model.release.set()
+    assert wait_until_idle(5)
     assert took < 5.0 and result.status == "ok" and result.alerts_sent == 1
     assert GOOD not in stack.sns.messages[0]["Message"]  # the plain template went out
     (event,) = [e for e in audit_events(stack) if e["event"] == "draft_model"]
     assert event["status"] == "rejected" and event["error_code"] == "timeout"
+
+
+def test_repeated_timeouts_never_stack_model_calls_and_late_results_are_discarded():
+    import threading
+    hung = BlockingModel()
+    first = generate_opening(hung, FACTS, timeout_seconds=0.2)
+    assert first.reason == "timeout" and hung.started.is_set()
+    # while the abandoned call is still alive, no further call is started: the draft is plain
+    started_threads = threading.active_count()
+    other = FakeModel()
+    for _ in range(5):
+        again = generate_opening(other, FACTS, timeout_seconds=0.2)
+        assert again.text is None and again.reason == "busy"
+    assert other.calls == [] and threading.active_count() == started_threads
+    # when the hung call finally ends, its late answer is discarded and the slot frees up
+    hung.release.set()
+    assert wait_until_idle(5)
+    assert generate_opening(other, FACTS, timeout_seconds=5).text == GOOD and len(other.calls) == 1
+
+
+def test_the_lint_is_a_regression_aid_not_a_semantic_guarantee():
+    # Documented limitation: an indirect commitment with no time words or listed phrase passes the
+    # lint, so a human must read every sentence added to the table (see personalize.py).
+    assert lint_opening("We expect to merge your contribution.") is None
+    assert lint_opening("We expect to merge your contribution next week.") is not None
 
 
 @pytest.mark.parametrize("reply", ["'docs", "docs?", "**docs**", "docs docs", "[docs]", "docs:", "d o c s"])

@@ -5,10 +5,13 @@ This is the only place a model is involved, and it is boxed in on purpose:
 * The model writes NO text that a contributor reads. It picks one category key (docs, bugfix, tests
   and so on) for the pull request, and the opening is the approved sentence stored under that key.
   The AI introduction, the CLA statement, every request and the closing are fixed text as well.
-* Because the contributor only ever sees approved sentences, the guarantee "no promise about review,
-  merging, timing or acceptance, no request, no legal advice, no link, no claim about licensing" is a
-  property of the table below, checked when this module is imported and by a test, not a hope about
-  what a model might write. Free model prose is never accepted.
+* Because the contributor only ever sees approved sentences, "no promise about review, merging,
+  timing or acceptance, no request, no legal advice, no link, no claim about licensing" rests on a
+  person reading and approving every sentence in the table below, not on a hope about what a model
+  might write. Free model prose is never accepted. `lint_opening` runs on the table when this module
+  is imported and in tests, but it is a regression aid, not a semantic guarantee: it catches known
+  patterns and can miss an indirect commitment (for example "We expect to merge your contribution."
+  passes it). A new opening needs human review in the pull request that adds it.
 * What reaches the model is minimal and sanitized: a cleaned pull request title and a few cleaned file
   paths, inside a `<data>` block the prompt declares untrusted. No login, comment, body, profile text
   or email address is sent.
@@ -176,6 +179,10 @@ def _call_within(seconds: float, fn):
     killed: its daemon thread finishes (or hits its own socket timeouts) in the background and its
     result is discarded. This is what bounds the wall-clock time a draft can add to a poll,
     including retries and reading the response, which socket timeouts alone do not."""
+    if not _IN_FLIGHT.acquire(blocking=False):
+        # An earlier call that was abandoned at its cap has not finished yet. Starting another
+        # would stack threads, connections and billable requests, so this draft uses the template.
+        raise _Busy("an earlier model call is still running")
     box: dict = {}
 
     def run() -> None:
@@ -183,6 +190,8 @@ def _call_within(seconds: float, fn):
             box["value"] = fn()
         except BaseException as exc:  # handed back to the caller, never lost in the thread
             box["error"] = exc
+        finally:
+            _IN_FLIGHT.release()  # the slot frees only when the call really ends
 
     worker = threading.Thread(target=run, name="kepler-draft-model", daemon=True)
     worker.start()
@@ -192,6 +201,24 @@ def _call_within(seconds: float, fn):
     if "error" in box:
         raise box["error"]
     return box["value"]
+
+
+class _Busy(RuntimeError):
+    """A previous model call is still outstanding."""
+
+
+# At most ONE model call is in flight per process. A call abandoned at its wall-clock cap keeps the
+# slot until it ends (bounded by the client's socket timeouts and attempts), and later drafts use the
+# plain template meanwhile, so repeated timeouts cannot pile up threads or overlapping requests.
+_IN_FLIGHT = threading.Semaphore(1)
+
+
+def wait_until_idle(seconds: float) -> bool:
+    """True once no model call is in flight (waits up to `seconds`). Used by tests and shutdown."""
+    if _IN_FLIGHT.acquire(timeout=seconds):
+        _IN_FLIGHT.release()
+        return True
+    return False
 
 
 def generate_opening(model: OpeningModel, facts: OpeningFacts,
@@ -207,6 +234,8 @@ def generate_opening(model: OpeningModel, facts: OpeningFacts,
         else:
             raw = _call_within(timeout_seconds,
                                lambda: model.complete(SYSTEM_PROMPT, build_user_prompt(facts)))
+    except _Busy:
+        return OpeningResult(None, "busy")
     except TimeoutError:
         return OpeningResult(None, "timeout")
     except Exception:  # a model problem must never reach the poll
