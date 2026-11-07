@@ -3,20 +3,29 @@ the orchestration stay testable offline and a reviewer can see exactly where AWS
 
 from __future__ import annotations
 
-# Short timeouts and few retries so a hung AWS call cannot hold a poll past its deadline: each call
-# is bounded to roughly (connect + read) x attempts, about 20 seconds at worst.
+# Short timeouts and few attempts so a hung AWS call cannot hold a poll past its deadline.
+# TOTAL attempts, first try included: botocore's `max_attempts` counts retries AFTER the first try,
+# so it is not used here. Each call is bounded to (connect + read) x TOTAL_ATTEMPTS, so 20 seconds
+# at worst for the shared clients and 26 for Bedrock.
 CONNECT_TIMEOUT_SECONDS = 3
 READ_TIMEOUT_SECONDS = 7
-MAX_ATTEMPTS = 2
+TOTAL_ATTEMPTS = 2
+BEDROCK_CONNECT_TIMEOUT_SECONDS = 3
+BEDROCK_READ_TIMEOUT_SECONDS = 10  # the reply is one word; this is generous
+
+
+def _config(connect: int, read: int):
+    from botocore.config import Config
+
+    return Config(connect_timeout=connect, read_timeout=read,
+                  retries={"total_max_attempts": TOTAL_ATTEMPTS, "mode": "standard"})
 
 
 def client(service: str, region: str):
     import boto3  # imported lazily: tests and the pure core never need it
-    from botocore.config import Config
 
-    config = Config(connect_timeout=CONNECT_TIMEOUT_SECONDS, read_timeout=READ_TIMEOUT_SECONDS,
-                    retries={"max_attempts": MAX_ATTEMPTS, "mode": "standard"})
-    return boto3.client(service, region_name=region, config=config)
+    return boto3.client(service, region_name=region,
+                        config=_config(CONNECT_TIMEOUT_SECONDS, READ_TIMEOUT_SECONDS))
 
 
 def secrets_client(region: str):
@@ -36,11 +45,9 @@ def cloudwatch_client(region: str):
 
 
 def bedrock_runtime_client(region: str):
-    """A Bedrock Runtime client with short timeouts and at most one retry: a draft is optional,
-    so a slow or failing model must never hold a poll up."""
+    """A Bedrock Runtime client with short timeouts and two attempts in total (one retry): a draft
+    is optional, so a slow or failing model must never hold a poll up."""
     import boto3
-    from botocore.config import Config
 
-    return boto3.client(
-        "bedrock-runtime", region_name=region,
-        config=Config(connect_timeout=5, read_timeout=20, retries={"max_attempts": 2}))
+    return boto3.client("bedrock-runtime", region_name=region,
+                        config=_config(BEDROCK_CONNECT_TIMEOUT_SECONDS, BEDROCK_READ_TIMEOUT_SECONDS))

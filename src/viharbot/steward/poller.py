@@ -37,12 +37,13 @@ from .config import StewardConfig
 from .drafts import draft_followup
 from .github_auth import AuthError
 from .model import safe_login
-from .personalize import OpeningFacts, clean_paths, clean_title, generate_opening
+from .personalize import OpeningFacts, OpeningResult, clean_paths, clean_title, generate_opening
 from .snapshot import fetch_cla_files, fetch_snapshot, list_first_time_pulls
 from .state import EXHAUSTED, NEW, RETRY, StateUnavailable
 
 logger = logging.getLogger("kepler")
 FINALIZE_RESERVE_SECONDS = 15  # held back from the work budget so a run can still record its end
+MODEL_RESERVE_SECONDS = 30  # the optional model call needs this much time left; worst case is 26 s
 
 
 class DeadlineExceeded(RuntimeError):
@@ -243,7 +244,11 @@ def run_poll(
                     facts = OpeningFacts(login, number, clean_title(snapshot.title),
                                          clean_paths(snapshot.pr.get("files", [])))
                     begun = clock()
-                    outcome = generate_opening(drafter, facts)
+                    if (deadline - begun).total_seconds() < MODEL_RESERVE_SECONDS:
+                        # The draft is optional: with too little time left, send the plain one.
+                        outcome = OpeningResult(None, "no_budget")
+                    else:
+                        outcome = generate_opening(drafter, facts)
                     took = int((clock() - begun).total_seconds() * 1000)
                     used = outcome.text is not None
                     record("draft_model", "ok" if used else "fail", pr=number,
