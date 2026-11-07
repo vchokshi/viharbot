@@ -34,7 +34,7 @@ ROOT = Path(__file__).resolve().parent.parent
 APPROVED_ALIASES = {
     "gpt-6-luna",
     "gpt-6.1-sol",
-    "gpt-5.4-mini",
+    "openai/gpt-5.4-mini",
     "openai/gpt-5.4",
     "gemini/gemini-3.5-flash",
 }
@@ -138,15 +138,15 @@ def test_the_same_variable_has_the_same_alias_everywhere_it_is_set():
 
 
 @pytest.mark.parametrize("alias,expect", [
-    ("gpt-5.4-mini", None),
+    ("openai/gpt-5.4-mini", None),
     ("openai/gpt-5.4", None),
     ("openal/gpt-5.4-mini", "openai"),         # the real typo: lowercase L for I
     ("openal/gpt-5.4", "openai"),
     ("openaI/gpt-5.4", "openai"),              # capital I that looks like l
     ("0penai/gpt-5.4", "openai"),              # zero for o
     ("gemini/gemin1-3.5-flash", "gemini"),     # digit one for i
-    ("gpt-5.4-minl", "gpt-5.4-mini"),          # same trick inside a name
-    ("openai/gpt-5.4-mini", "not an approved"),  # well formed, but not deliberately approved
+    ("openai/gpt-5.4-minl", "openai/gpt-5.4-mini"),  # same trick inside a name
+    ("gpt-5.4-mini", "not an approved"),       # the retired bare name: a stale copy must fail too
     ("opеnai/gpt-5.4", "non-ASCII"),           # Cyrillic е inside "openai"
 ])
 def test_the_detector_catches_look_alike_aliases(alias, expect):

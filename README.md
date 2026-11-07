@@ -77,12 +77,12 @@ Eleven agent identities are defined (the original eight, the education agents Ar
 | Scout | live | fact check | `fact-check` | `gemini/gemini-3.5-flash` |
 | Scout | live | source quality | `source-quality` | `gemini/gemini-3.5-flash` |
 | Cipher | live | security assessment | `security` | `openai/gpt-5.4` |
-| Cipher | live | privacy review | `privacy-review` | `gpt-5.4-mini` |
-| Charlie | live | synthesis | `synthesis` | `gpt-5.4-mini` |
+| Cipher | live | privacy review | `privacy-review` | `openai/gpt-5.4-mini` |
+| Charlie | live | synthesis | `synthesis` | `openai/gpt-5.4-mini` |
 | Charlie | live (opt-in) | planning | in the web container | `gpt-6-luna` (`CHARLIE_PLANNER_MODEL`) |
 | Atlas | planned | none connected | none | none |
 | Sage | live in the dev stack; Charlie may delegate it ([Sage service](docs/sage-service.md)) | philosophical analysis | `sage`, bound | `gpt-6.1-sol` in Compose |
-| Pixel | live, on request (flag) | slide generation | `pixel` | `gpt-5.4-mini` |
+| Pixel | live, on request (flag) | slide generation | `pixel` | `openai/gpt-5.4-mini` |
 | Orbit | support role, not connected | none connected | none | none |
 
 Fact Check reviews only the evidence Research supplied; it does not browse. Each non-trivial verdict must quote that evidence, and the application checks the quote. Source Quality inspects reference strings without fetching them.
