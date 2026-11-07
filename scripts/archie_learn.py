@@ -26,6 +26,7 @@ from pathlib import Path
 from viharbot.learning.assignment import AssignmentStore, NotAssigned, NotFounder, founders_from_env
 from viharbot.learning.github import InstructorProposer, SourceReader
 from viharbot.learning.ingest import process, reconcile
+from viharbot.learning.sage_evidence import DEFAULT_SAGE_AUTHORS
 from viharbot.learning.store import IngestionStore
 from viharbot.observability import configure_logging
 from viharbot.sage_review_github import GitHubClient
@@ -75,7 +76,9 @@ def main(argv: list[str] | None = None) -> int:
     if not token:
         print("ARCHIE_SOURCE_TOKEN is not set", file=sys.stderr)
         return 2
-    reader = SourceReader(GitHubClient(token), source)
+    sage_authors = frozenset(a.strip() for a in os.getenv("ARCHIE_SAGE_COMMENT_AUTHORS", "").split(",")
+                             if a.strip()) or DEFAULT_SAGE_AUTHORS
+    reader = SourceReader(GitHubClient(token), source, sage_authors)
     proposer = None
     if args.propose:
         write_token = os.getenv("ARCHIE_INSTRUCTOR_TOKEN", "")

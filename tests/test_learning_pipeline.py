@@ -36,6 +36,7 @@ class FakeGitHub:
         self.open_prs: list[dict] = []
         self.branch_exists = False
         self.fail_next: str | None = None
+        self.head_sha: str | None = None  # the pull request's final commit, when a test needs it
 
     def __call__(self, method, url, headers, data):
         path = url.removeprefix("https://api.github.com")
@@ -59,7 +60,8 @@ class FakeGitHub:
         if method == "GET" and path == f"/repos/{SRC}/pulls/7":
             return ok({"number": 7, "title": "Add Archie", "body": self.body,
                        "merged_at": "2026-11-03T01:00:00Z" if self.merged else None,
-                       "merge_commit_sha": SHA if self.merged else None, "base": {"ref": "main"}})
+                       "merge_commit_sha": SHA if self.merged else None, "base": {"ref": "main"},
+                       **({"head": {"sha": self.head_sha}} if self.head_sha else {})})
         if method == "GET" and path.startswith(f"/repos/{SRC}/pulls?state=closed"):
             return ok([{"number": 7, "merged_at": "2026-11-03T01:00:00Z", "merge_commit_sha": SHA,
                         "base": {"repo": {"full_name": SRC}}},
