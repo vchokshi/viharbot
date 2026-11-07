@@ -347,7 +347,9 @@ def test_duplicate_and_repeated_entries_are_rejected(config_dir: Path):
 def test_only_the_prompt_composer_imports_personas():
     # Phase B: inference_config is the single, flag-gated consumer. Any other importer is a
     # change to what personas can influence and needs its own review.
-    allowed = {"inference_config.py"}
+    # relationships.py (C3) reads the personas' declared pairings. It is not part of any runtime
+    # path: test_community_relationships proves no module imports it.
+    allowed = {"inference_config.py", "relationships.py"}
     offenders = []
     for path in sorted(SRC.rglob("*.py")):
         if "personas" in path.relative_to(SRC).parts or path.name in allowed:
