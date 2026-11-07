@@ -640,7 +640,9 @@ def test_the_package_has_no_write_path_and_no_model_calls():
     package = ROOT / "src" / "viharbot" / "steward"
     sources = {p.name: p.read_text().lower() for p in package.glob("*.py")}
     for name, text in sources.items():
-        for banned in ("litellm", "openai", "anthropic", "strands", "bedrock", "claude"):
+        # Model SDKs stay out. Bedrock is reached only through a client built in aws.py (the one
+        # boto3 import) and injected into bedrock.py, whose model is pinned by config to meta.llama.
+        for banned in ("litellm", "openai", "anthropic", "strands", "claude"):
             assert f"import {banned}" not in text and f"from {banned}" not in text, (name, banned)
         for risky in ("import requests", "from requests", "http.client", "subprocess", "os.system"):
             assert risky not in text, (name, risky)

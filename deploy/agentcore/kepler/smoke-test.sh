@@ -7,7 +7,7 @@
 set -u
 IMAGE="viharbot-kepler:smoke"
 NAME="kepler-smoke-$$"
-PORT=18080
+PORT="${KEPLER_SMOKE_PORT:-18080}"  # loopback only; set another port if 18080 is taken
 TOPIC="arn:aws:sns:us-west-2:000000000000:viharbot-kepler-alerts"
 WORK=$(mktemp -d)
 cleanup() { docker rm -f "$NAME" >/dev/null 2>&1; rm -rf "$WORK"; }
@@ -38,6 +38,10 @@ docker run --rm --platform linux/arm64 "$IMAGE" >"$WORK/badstart.log" 2>&1; code
 grep -q "KEPLER_ALERT_TOPIC_ARN" "$WORK/badstart.log" && ok "the error names the missing setting" || bad "error message" "$(tail -3 "$WORK/badstart.log")"
 docker run --rm --platform linux/arm64 -e KEPLER_ALERT_TOPIC_ARN="$TOPIC" -e KEPLER_REPOSITORY=vchokshi/viharbot-onboarding-instructor "$IMAGE" >"$WORK/forbidden.log" 2>&1; code=$?
 [ "$code" -ne 0 ] && ok "the instructor repository can never be configured" || bad "forbidden repo" "container started"
+docker run --rm --platform linux/arm64 -e KEPLER_ALERT_TOPIC_ARN="$TOPIC" -e KEPLER_MODEL_ID=anthropic.claude-3-haiku-20240307-v1:0 "$IMAGE" >"$WORK/claude.log" 2>&1; code=$?
+[ "$code" -ne 0 ] && grep -q "approved allowlist" "$WORK/claude.log" && ok "an Anthropic model id is refused at startup" || bad "anthropic model" "container started or no clear message"
+docker run --rm --platform linux/arm64 -e KEPLER_ALERT_TOPIC_ARN="$TOPIC" -e KEPLER_MODEL_ID=meta.llama3-3-70b-instruct-v1:0 "$IMAGE" >"$WORK/other.log" 2>&1; code=$?
+[ "$code" -ne 0 ] && ok "any model id other than the one allowlisted is refused at startup" || bad "other model" "container started"
 
 echo "== run as AgentCore would: no credentials, read-only, no capabilities"
 docker run -d --name "$NAME" --platform linux/arm64 -p "127.0.0.1:$PORT:8080" --read-only --tmpfs /tmp \

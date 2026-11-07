@@ -1,5 +1,6 @@
 # Direct dependencies of the Kepler steward image (Dockerfile.kepler) and nothing else.
-# No LiteLLM, Strands, OpenAI or Anthropic SDK: the steward makes no model call.
+# No LiteLLM, Strands, OpenAI or Anthropic SDK. The one optional model call goes to Amazon Bedrock
+# through boto3 and the runtime IAM role (ADR-011), so it needs no extra package.
 # Transitive dependencies are not pinned here; see "Known limitations" in docs/kepler-steward-aws.md.
 fastapi==0.162.0
 uvicorn==0.54.0
