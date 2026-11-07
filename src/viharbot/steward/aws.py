@@ -3,10 +3,11 @@ the orchestration stay testable offline and a reviewer can see exactly where AWS
 
 from __future__ import annotations
 
-# Short timeouts and few attempts so a hung AWS call cannot hold a poll past its deadline.
-# TOTAL attempts, first try included: botocore's `max_attempts` counts retries AFTER the first try,
-# so it is not used here. Each call is bounded to (connect + read) x TOTAL_ATTEMPTS, so 20 seconds
-# at worst for the shared clients and 26 for Bedrock.
+# Short SOCKET timeouts and few attempts, so a hung AWS call gives up quickly. These are not a
+# wall-clock guarantee: connect and read timeouts do not bound retry delays or a slowly arriving
+# response. TOTAL attempts, first try included: botocore's `max_attempts` counts retries AFTER the
+# first try, so it is not used here. The one optional call, the Bedrock draft, additionally runs
+# under a hard wall-clock cap (`MODEL_CALL_SECONDS` in poller.py); the other calls are required work.
 CONNECT_TIMEOUT_SECONDS = 3
 READ_TIMEOUT_SECONDS = 7
 TOTAL_ATTEMPTS = 2

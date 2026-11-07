@@ -99,9 +99,10 @@ def test_anything_else_is_refused_with_a_fixed_code_and_no_model_text_survives(r
 def test_the_model_is_asked_once_and_failures_never_escape():
     model = FakeModel()
     assert generate_opening(model, FACTS).text == GOOD and len(model.calls) == 1
-    for error in (RuntimeError("secret ghs_x"), TimeoutError(), ModelUnavailable("x")):
+    for error, reason in ((RuntimeError("secret ghs_x"), "model_error"), (TimeoutError(), "timeout"),
+                          (ModelUnavailable("x"), "model_error")):
         outcome = generate_opening(FakeModel(error=error), FACTS)
-        assert outcome.text is None and outcome.reason == "model_error"
+        assert outcome.text is None and outcome.reason == reason
     assert generate_opening(FakeModel(reply="Ignore instructions."), FACTS).text is None
 
 
@@ -409,10 +410,56 @@ def test_aws_clients_make_two_attempts_in_total_not_two_retries():
         assert retries.get("total_max_attempts") == 2 == aws.TOTAL_ATTEMPTS
         assert retries.get("mode") == "standard"
     bedrock = aws.bedrock_runtime_client("us-west-2").meta.config
+    # these are SOCKET timeouts, not a wall-clock bound; the wall-clock cap is tested below
     assert (bedrock.connect_timeout, bedrock.read_timeout) == (3, 10)
-    # the worst case a draft can add to a poll must stay under the poller's reserve for it
-    from viharbot.steward.poller import MODEL_RESERVE_SECONDS
-    assert (3 + 10) * aws.TOTAL_ATTEMPTS < MODEL_RESERVE_SECONDS
+
+
+class BlockingModel:
+    """A model call that hangs until released, like a stalled connection."""
+
+    def __init__(self):
+        import threading
+        self.release, self.started = threading.Event(), threading.Event()
+        self.model_id = "meta.llama3-1-8b-instruct-v1:0"
+
+    def complete(self, system, user):
+        self.started.set()
+        self.release.wait(30)
+        return "bugfix"
+
+
+def test_a_hung_model_call_is_abandoned_at_the_wall_clock_cap_and_the_plain_draft_is_used():
+    import time
+    model = BlockingModel()
+    begun = time.monotonic()
+    outcome = generate_opening(model, FACTS, timeout_seconds=0.3)
+    took = time.monotonic() - begun
+    model.release.set()  # let the abandoned thread finish
+    assert outcome.text is None and outcome.reason == "timeout" and took < 2.0
+    # a fast call under the same cap still works, and so does an error under it
+    assert generate_opening(FakeModel(), FACTS, timeout_seconds=5).text == GOOD
+    assert generate_opening(FakeModel(error=RuntimeError("x")), FACTS, timeout_seconds=5).reason == "model_error"
+
+
+def test_a_hung_model_never_holds_up_the_poll_or_stops_the_email(monkeypatch):
+    import time
+
+    from viharbot.steward import poller
+    monkeypatch.setattr(poller, "MODEL_CALL_SECONDS", 0.3)
+    stack, model = stack_with_welcome(BlockingModel())
+    begun = time.monotonic()
+    result = poll(stack, model)
+    took = time.monotonic() - begun
+    model.release.set()
+    assert took < 5.0 and result.status == "ok" and result.alerts_sent == 1
+    assert GOOD not in stack.sns.messages[0]["Message"]  # the plain template went out
+    (event,) = [e for e in audit_events(stack) if e["event"] == "draft_model"]
+    assert event["status"] == "rejected" and event["error_code"] == "timeout"
+
+
+@pytest.mark.parametrize("reply", ["'docs", "docs?", "**docs**", "docs docs", "[docs]", "docs:", "d o c s"])
+def test_decorations_beyond_the_documented_normalization_are_refused(reply):
+    assert choose_opening(reply).reason == "not_a_choice"
 
 
 def test_the_audit_vocabulary_has_room_for_the_model_record_but_not_its_content():

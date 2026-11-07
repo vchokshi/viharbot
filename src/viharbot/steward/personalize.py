@@ -12,14 +12,16 @@ This is the only place a model is involved, and it is boxed in on purpose:
 * What reaches the model is minimal and sanitized: a cleaned pull request title and a few cleaned file
   paths, inside a `<data>` block the prompt declares untrusted. No login, comment, body, profile text
   or email address is sent.
-* The model has no tools and no way to act. Its reply is accepted only if it is exactly one key from
-  the table. Anything else, an error or a slow reply means the draft is the plain template. A model
-  failure never fails a poll.
+* The model has no tools and no way to act. Its reply is accepted only if it names exactly one key
+  from the table (see `choose_opening` for the cosmetic normalization). Anything else, an error, or
+  a call that exceeds its wall-clock cap means the draft is the plain template. A model failure never
+  fails a poll.
 """
 
 from __future__ import annotations
 
 import re
+import threading
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -146,19 +148,67 @@ def build_user_prompt(facts: OpeningFacts) -> str:
 
 
 def choose_opening(reply: object) -> OpeningResult:
-    """Accept only a bare key from the table, and return the approved sentence stored under it."""
+    """Accept a reply that names one key from the table, and return the approved sentence under it.
+
+    The only normalization is cosmetic and exact: surrounding whitespace, one layer of surrounding
+    backticks or quotes, one trailing `.`, `,` or `!`, and letter case are ignored, because a small
+    model often decorates a single word. The result is still a lookup: nothing the model wrote
+    survives except which key it named, so no model prose can reach a draft. Any other reply,
+    including a key inside a sentence, is refused.
+    """
     if not isinstance(reply, str) or not reply.strip():
         return OpeningResult(None, "empty")
-    key = reply.strip().strip("`'\".,!").casefold()
-    if len(reply.strip()) > MAX_CHOICE_CHARS or key not in OPENINGS:
+    text = reply.strip()
+    if len(text) > MAX_CHOICE_CHARS:
+        return OpeningResult(None, "not_a_choice")
+    if text[-1] in ".,!":
+        text = text[:-1]
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in "`'\"":
+        text = text[1:-1]
+    key = text.casefold()
+    if key not in OPENINGS:
         return OpeningResult(None, "not_a_choice")
     return OpeningResult(OPENINGS[key], "ok")
 
 
-def generate_opening(model: OpeningModel, facts: OpeningFacts) -> OpeningResult:
-    """Ask the model once. Any failure, or a reply that is not exactly a key, means no opening."""
+def _call_within(seconds: float, fn):
+    """Run `fn` and wait at most `seconds` of real time. On timeout the call is ABANDONED, not
+    killed: its daemon thread finishes (or hits its own socket timeouts) in the background and its
+    result is discarded. This is what bounds the wall-clock time a draft can add to a poll,
+    including retries and reading the response, which socket timeouts alone do not."""
+    box: dict = {}
+
+    def run() -> None:
+        try:
+            box["value"] = fn()
+        except BaseException as exc:  # handed back to the caller, never lost in the thread
+            box["error"] = exc
+
+    worker = threading.Thread(target=run, name="kepler-draft-model", daemon=True)
+    worker.start()
+    worker.join(seconds)
+    if worker.is_alive():
+        raise TimeoutError("the model call took too long")
+    if "error" in box:
+        raise box["error"]
+    return box["value"]
+
+
+def generate_opening(model: OpeningModel, facts: OpeningFacts,
+                     timeout_seconds: float | None = None) -> OpeningResult:
+    """Ask the model once. Any failure, a timeout, or a reply that names no key means no opening.
+
+    With `timeout_seconds` the whole call is hard-capped in wall-clock time; without it the call is
+    direct (used by tests with a fake model).
+    """
     try:
-        raw = model.complete(SYSTEM_PROMPT, build_user_prompt(facts))
+        if timeout_seconds is None:
+            raw = model.complete(SYSTEM_PROMPT, build_user_prompt(facts))
+        else:
+            raw = _call_within(timeout_seconds,
+                               lambda: model.complete(SYSTEM_PROMPT, build_user_prompt(facts)))
+    except TimeoutError:
+        return OpeningResult(None, "timeout")
     except Exception:  # a model problem must never reach the poll
         return OpeningResult(None, "model_error")
     return choose_opening(raw)
