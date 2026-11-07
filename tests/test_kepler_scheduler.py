@@ -73,7 +73,9 @@ def test_the_request_is_valid_against_the_aws_sdk_service_model(mode):
 def test_the_runtime_accepts_exactly_the_payload_the_schedule_sends(encoding):
     from viharbot.steward.runtime import Invocation
     sent = json.loads(bs.build("recurring", RUNTIME, ROLE, payload_encoding=encoding)["Target"]["Input"])
-    assert sent["AgentRuntimeArn"] == RUNTIME and set(sent) == {"AgentRuntimeArn", "Payload"}
+    assert sent["AgentRuntimeArn"] == RUNTIME and set(sent) == {"AgentRuntimeArn", "ContentType", "Payload"}
+    # without a JSON content type the deployed container answered 422 to a valid payload (observed live)
+    assert sent["ContentType"] == "application/json"
     raw = sent["Payload"] if encoding == "plain" else base64.b64decode(sent["Payload"]).decode()
     invocation = Invocation.model_validate(json.loads(raw))
     # a scheduled poll must return at once: Scheduler waits synchronously and gives up on slow calls
