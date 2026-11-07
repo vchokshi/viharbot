@@ -61,6 +61,17 @@ class JsonFormatter(logging.Formatter):
             "target",
             "capability",
             "personality_mode",
+            # Epic #157: persona attribution (Phase B) and peer-review records (Phase C2).
+            # Identifiers, counts and fixed codes only; never persona text or review content.
+            "persona_id",
+            "persona_version",
+            "persona_status",
+            "peer_reviews",
+            "peer_review_material_findings",
+            "review_author",
+            "review_reviewer",
+            "review_outcome",
+            "review_findings",
             "planner_identity",
             "recommended_workflow",
             "approved_workflow",

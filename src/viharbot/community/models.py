@@ -18,7 +18,7 @@ Requiring one makes an unsupported challenge unrepresentable; it does not prove 
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Annotated, Literal, Union
+from typing import Annotated, ClassVar, Literal, Union
 
 from pydantic import (
     BaseModel,
@@ -122,7 +122,12 @@ class _Message(_Strict):
     @field_validator("recipient")
     @classmethod
     def _recipient_known(cls, value: str) -> str:
-        return _registered(value)
+        return value if value == APPLICATION_SENDER else _registered(value)
+
+    # The application sends review requests and receives their reports (the return route for a
+    # request it originated). It sends and receives nothing else, and it never disagrees.
+    application_may_send: ClassVar[bool] = False
+    application_may_receive: ClassVar[bool] = False
 
     @model_validator(mode="after")
     def _envelope_rules(self) -> "_Message":
@@ -130,12 +135,17 @@ class _Message(_Strict):
             raise ValueError("sender and recipient must differ")
         if self.in_reply_to == self.message_id:
             raise ValueError("a message cannot reply to itself")
+        if self.sender == APPLICATION_SENDER and not self.application_may_send:
+            raise ValueError("the application cannot send this message type")
+        if self.recipient == APPLICATION_SENDER and not self.application_may_receive:
+            raise ValueError("the application cannot receive this message type")
         return self
 
 
 class ReviewRequest(_Message):
     """Ask `recipient` to independently review work by `author` (delegation contract, 5.3)."""
 
+    application_may_send: ClassVar[bool] = True
     message_type: Literal["review_request"] = "review_request"
     author: Ref  # whose work is reviewed; the reviewer must be someone else
     artifact_refs: Annotated[tuple[Ref, ...], Field(min_length=1, max_length=10)]
@@ -174,6 +184,7 @@ class Finding(_Strict):
 
 
 class ReviewReport(_Message):
+    application_may_receive: ClassVar[bool] = True
     message_type: Literal["review_report"] = "review_report"
     outcome: ReviewOutcome
     findings: Annotated[tuple[Finding, ...], Field(max_length=20)] = ()
@@ -206,13 +217,6 @@ class Challenge(_Message):
     evidence: Evidence
     potential_consequence: Text
     proposed_resolution: Text
-
-    @field_validator("sender")
-    @classmethod
-    def _only_agents_challenge(cls, value: str) -> str:
-        if value == APPLICATION_SENDER:
-            raise ValueError("only an agent identity can raise a challenge")
-        return value
 
 
 class ChallengeResolution(_Message):
@@ -247,12 +251,48 @@ _adapter: TypeAdapter[CommunityMessage] = TypeAdapter(CommunityMessage)
 AnyMessage = ReviewRequest | ReviewReport | Challenge | ChallengeResolution
 
 
+def _known_names() -> frozenset[str]:
+    """Every field name and message type the contracts define. Anything else in an error
+    location came from the sender and is replaced, because it may carry sensitive text."""
+    names: set[str] = {member.value for member in MessageType}
+    for model in (ReviewRequest, ReviewReport, Challenge, ChallengeResolution, Finding, EvidenceRef):
+        names.update(model.model_fields)
+    return frozenset(names)
+
+
+_KNOWN_NAMES = _known_names()
+# Fixed text per pydantic error type. Pydantic's own messages can quote the rejected input
+# (for example an invalid discriminator tag), so only our own validators' text is passed through.
+_GENERIC = {
+    "missing": "field required",
+    "extra_forbidden": "unknown field not permitted",
+    "union_tag_invalid": "unknown message type",
+    "union_tag_not_found": "message type missing",
+    "json_invalid": "not valid JSON",
+    "too_short": "too few items",
+    "too_long": "too many items",
+    "string_too_short": "text is empty or too short",
+    "string_too_long": "text is too long",
+    "string_pattern_mismatch": "value has an invalid format",
+    "literal_error": "value is not allowed",
+    "enum": "value is not allowed",
+}
+
+
 def _describe(error: ValidationError) -> str:
-    # Field paths and messages only; never echo the rejected values.
-    return "; ".join(
-        f"{'.'.join(str(part) for part in item['loc']) or 'document'}: {item['msg']}"
-        for item in error.errors(include_input=False, include_url=False)
-    )
+    """Field paths and fixed messages only. Never echoes rejected values or sender-chosen names."""
+    parts = []
+    for item in error.errors(include_input=False, include_url=False):
+        where = ".".join(
+            str(part) if isinstance(part, int) or part in _KNOWN_NAMES else "<unknown>"
+            for part in item["loc"]
+        ) or "document"
+        if item["type"] == "value_error":  # raised by this module's validators: static text
+            message = str(item["msg"]).removeprefix("Value error, ")
+        else:
+            message = _GENERIC.get(item["type"], f"invalid value ({item['type']})")
+        parts.append(f"{where}: {message}")
+    return "; ".join(parts)
 
 
 def parse_message(payload: object) -> AnyMessage:
@@ -297,3 +337,22 @@ def validate_reply(
         raise ContractError("reply is not in the same engagement, task and request")
     if reply.sender != original.recipient or reply.recipient != original.sender:
         raise ContractError("reply must come from the original recipient to its sender")
+
+
+class ReviewExchange(_Strict):
+    """A review request and the report that genuinely answers it (checked on construction).
+
+    Stored in per-request orchestration state only. It is memory for one request, not durable
+    collaboration history (that is Phase D).
+    """
+
+    request: ReviewRequest
+    report: ReviewReport
+
+    @model_validator(mode="after")
+    def _report_answers_request(self) -> "ReviewExchange":
+        try:
+            validate_reply(self.request, self.report)
+        except ContractError as exc:
+            raise ValueError(str(exc)) from None
+        return self

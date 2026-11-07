@@ -14,6 +14,7 @@ from typing import Callable, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .community.models import ReviewExchange
 from .contracts import AgentResponse
 from .identity import Capability
 from .schemas import (
@@ -215,6 +216,9 @@ class OrchestrationState(BaseModel):
     iteration: int = 0  # delegated executions started
     decision_number: int = 0  # planning decisions requested
     completed_steps: list[StepResult] = Field(default_factory=list)
+    # Validated peer-review exchanges recorded this request (Epic #157 C2). Empty unless the
+    # peer-review flag is on. In-memory only, bounded, never exposed through any API.
+    reviews: list[ReviewExchange] = Field(default_factory=list)
     pending_gaps: list[str] = Field(default_factory=list)
     decision_history: list[DecisionRecord] = Field(default_factory=list)
     execution_budget: ExecutionBudget = Field(default_factory=ExecutionBudget)
