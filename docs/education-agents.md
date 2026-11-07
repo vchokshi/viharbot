@@ -52,7 +52,17 @@ Archie never starts curriculum work on its own. `src/viharbot/learning/assignmen
 - **Logs and reprs carry no content or paths:** only a path hash, sensitivity, duration and exception class.
 - **Not yet done:** wiring the reader into evidence ingestion (#142) or any model prompt, and enabling confidential access in a runtime. No model is called here.
 
-Still proposed for the rest of epic #139: Kepler/Sage evidence ingestion (#142), curriculum authoring and quality checks (#143), the Ada handoff and publication gate (#144, #151), audit trail and end-to-end tests (#145), and student PR feedback (#154).
+## Sage review evidence (epic #139, issue #142, slice 1 of 3; implemented)
+
+`src/viharbot/learning/sage_evidence.py` reads Sage's advisory review of the source pull request and records it in the learning artifact. Deterministic: no model call, no extra GitHub call (it uses the comments `SourceReader` already fetches, plus the pull request's head SHA).
+
+- **Trust is the comment's author, not its markers.** The hidden markers are plain text anyone can paste, so a comment counts as Sage's only if a GitHub **Bot** account on the list wrote it (`ARCHIE_SAGE_COMMENT_AUTHORS`, default `github-actions[bot]`). Anything else, forged markers included, stays ordinary untrusted discussion. Limitation: every workflow in the source repository posts as that bot, so this shows "a workflow here wrote it", not "the Sage workflow wrote it".
+- **What is kept:** reviewed commit, completeness, recommendation, comment URL and up to 40 findings (severity, category, basis, cited location, description capped at 600 characters), with the formatter's escaping undone so the text is readable data.
+- **Currency:** `reviewed_head_current` says whether the review covered the pull request's final head; the artifact says so in words when it did not. The newest well-formed Sage comment wins.
+- **Advisory only:** the artifact section is labelled "advisory AI opinion, untrusted", quotes each finding in a fenced block, says that whether a finding was fixed is not determined, and never changes `verification` (only a human merge of the instructor PR does that). The Sage comment is no longer quoted again as generic discussion.
+- **Not yet done in #142:** Kepler handoff artifacts (their format and location are #130, unbuilt), the comparison with governing documents and instructor guidance (slice 3, which needs the #141 reader and a decision on conflict recording), and any model-assisted synthesis through LiteLLM. Nothing here reads the instructor repository.
+
+Still proposed for the rest of epic #139: the remaining #142 slices, curriculum authoring and quality checks (#143), the Ada handoff and publication gate (#144, #151), audit trail and end-to-end tests (#145), and student PR feedback (#154).
 
 ### Not yet done in Phase 2
 

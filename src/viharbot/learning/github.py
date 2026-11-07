@@ -10,12 +10,15 @@ Every response is treated as untrusted data.
 from __future__ import annotations
 
 import base64
+import re
 import tomllib
 from datetime import datetime
 from typing import Any
 
+from ..sage_review_format import MARKER
 from ..sage_review_github import GitHubClient, GitHubError
 from .models import ChangedPath, PRSnapshot
+from .sage_evidence import DEFAULT_SAGE_AUTHORS, is_sage_author, latest_sage_review
 
 MAX_FILES = 300
 MAX_COMMENTS = 20
@@ -33,9 +36,11 @@ def _check(allowed: str, repo: str) -> None:
 
 
 class SourceReader:
-    def __init__(self, client: GitHubClient, repository: str) -> None:
+    def __init__(self, client: GitHubClient, repository: str,
+                 sage_authors: frozenset[str] = DEFAULT_SAGE_AUTHORS) -> None:
         self._client = client
         self._repo = repository
+        self._sage_authors = sage_authors
 
     @property
     def repository(self) -> str:
@@ -64,11 +69,18 @@ class SourceReader:
         commits = self._client.pages(f"/repos/{repo}/pulls/{number}/commits", 100)
         subjects = tuple((c["commit"]["message"].splitlines() or [""])[0][:200] for c in commits)
         comments: list[str] = []
+        issue_comments: list[dict[str, Any]] = []
         for path in (f"/repos/{repo}/pulls/{number}/comments", f"/repos/{repo}/issues/{number}/comments"):
             for c in self._client.pages(path, MAX_COMMENTS):
+                if path.endswith(f"/issues/{number}/comments"):
+                    issue_comments.append(c)
+                if is_sage_author(c, self._sage_authors) and MARKER in (c.get("body") or ""):
+                    continue  # a trusted Sage review is parsed below, not quoted as discussion
                 text = (c.get("body") or "").strip()
                 if text and len(comments) < MAX_COMMENTS:
                     comments.append(text[:MAX_COMMENT_CHARS])
+        head = (pr.get("head") or {}).get("sha")
+        head_sha = head if isinstance(head, str) and re.fullmatch(r"[0-9a-f]{40}", head) else None
         return PRSnapshot(
             repository=repo, number=number, title=(pr.get("title") or "")[:300],
             body=(pr.get("body") or "")[:MAX_BODY_CHARS],
@@ -76,7 +88,8 @@ class SourceReader:
             merge_commit_sha=pr["merge_commit_sha"], base_ref=pr["base"]["ref"], files=files,
             commit_subjects=subjects, discussion=tuple(comments),
             software_version=self._version(repo, pr["merge_commit_sha"]),
-            files_omitted=max(0, len(raw_files) - MAX_FILES),
+            files_omitted=max(0, len(raw_files) - MAX_FILES), head_sha=head_sha,
+            sage_review=latest_sage_review(issue_comments, head_sha, self._sage_authors),
         )
 
     def _version(self, repo: str, sha: str) -> str:
