@@ -3,3 +3,6 @@
 # The current test text no longer matches the rule; this entry only covers the historical commit
 # the full-history scan still reads. Narrow on purpose: one commit, one file, one line.
 9a6fdd8eeeba429ea9cc4d5c56db60e78f6a2677:tests/test_steward_units.py:generic-api-key:63
+# Same reviewed false positive, re-introduced when the test was reworded (the rule matched the
+# field name next to the quoted name). The test has since been restructured so it no longer matches.
+af3c1b8a91a1bc71ac5499e77a48b78c271109e2:tests/test_steward_units.py:generic-api-key:63

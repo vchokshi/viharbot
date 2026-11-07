@@ -1,8 +1,9 @@
 # syntax=docker/dockerfile:1
 # Kepler steward image for Amazon Bedrock AgentCore Runtime: linux/arm64, serves on port 8080.
 #
-# Deliberately minimal. The steward makes no model call, so this image has no LiteLLM, Strands,
-# OpenAI or Anthropic SDK: only the four dependencies in requirements-kepler.txt. Only the
+# Deliberately minimal. The steward's one optional model call goes to Bedrock through boto3 and the
+# runtime IAM role (ADR-011), so this image has no LiteLLM, Strands, OpenAI or Anthropic SDK: only
+# the four dependencies in requirements-kepler.txt. Only the
 # steward's own source, the request-size limiter and the two CLA-gate files are copied in (the
 # allowlist is Dockerfile.kepler.dockerignore), so this image cannot pick up .env, credentials,
 # .git, docs or another agent's code. It runs as an unprivileged user and holds no secret: the
