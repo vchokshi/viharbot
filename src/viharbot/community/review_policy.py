@@ -344,9 +344,21 @@ def _clip(text: object, limit: int) -> str:
     return value if len(value) <= limit else value[: limit - 1] + "…"
 
 
-def _limitations(items: list[str]) -> tuple[str, ...]:
-    extra = tuple(_clip(item, 200) for item in items if str(item).strip())[:7]
-    return (_BASE_LIMITATION, *extra)
+def _limitations(items: list[str], omitted: int = 0) -> tuple[str, ...]:
+    """The base limitation, then a note when findings were omitted, then the reviewer's own."""
+    notes: tuple[str, ...] = ()
+    if omitted:
+        notes = (
+            f"{omitted} lower-priority finding(s) were omitted at the {MAX_FINDINGS}-finding "
+            "limit; findings are listed most severe first.",
+        )
+    room = 8 - 1 - len(notes)
+    extra = tuple(_clip(item, 200) for item in items if str(item).strip())[:room]
+    return (_BASE_LIMITATION, *notes, *extra)
+
+
+# Most severe first. Sorting is stable, so findings of equal severity keep the reviewer's order.
+_SEVERITY_ORDER = (Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM, Severity.LOW, Severity.INFO)
 
 
 def _fact_check_findings(domain: FactCheckReview, ref: str) -> list[Finding]:
@@ -425,7 +437,11 @@ def derive_report(request: ReviewRequest, step: StepResult) -> ReviewReport:
         findings, limits = _security_findings(domain, ref), list(domain.uncertainties)
     else:
         raise ReviewRejected("no_report_mapper")
-    findings = findings[:MAX_FINDINGS]
+    # Prioritize before capping, so a serious finding is never the one that is dropped.
+    findings.sort(key=lambda finding: _SEVERITY_ORDER.index(finding.severity))
+    kept, dropped = findings[:MAX_FINDINGS], findings[MAX_FINDINGS:]
+    findings = kept
+    omitted_material = sum(1 for finding in dropped if finding.severity in MATERIAL_SEVERITIES)
     return ReviewReport(
         message_id=f"report-{request.message_id.removeprefix('review-')}",
         engagement_id=request.engagement_id,
@@ -436,7 +452,9 @@ def derive_report(request: ReviewRequest, step: StepResult) -> ReviewReport:
         in_reply_to=request.message_id,
         outcome=ReviewOutcome.ISSUES_FOUND if findings else ReviewOutcome.NO_ISSUES_FOUND,
         findings=tuple(findings),
-        limitations=_limitations(limits),
+        limitations=_limitations(limits, len(dropped)),
+        omitted_findings=len(dropped),
+        omitted_material_findings=omitted_material,
     )
 
 
@@ -449,8 +467,13 @@ MATERIAL_SEVERITIES = frozenset({Severity.HIGH, Severity.CRITICAL})
 
 
 def material_finding_count(exchanges: list[ReviewExchange]) -> int:
-    """Findings serious enough that Constitution 5.6 expects them disclosed, not buried."""
+    """Findings serious enough that Constitution 5.6 expects them disclosed, not buried.
+
+    Counts the findings a report carries plus any material ones it had to omit, so the total
+    covers the reviewer's whole result.
+    """
     return sum(
-        1 for exchange in exchanges for finding in exchange.report.findings
-        if finding.severity in MATERIAL_SEVERITIES
+        sum(1 for finding in exchange.report.findings if finding.severity in MATERIAL_SEVERITIES)
+        + exchange.report.omitted_material_findings
+        for exchange in exchanges
     )
