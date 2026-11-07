@@ -28,6 +28,32 @@ ViharBot adds two identities that will turn its verified engineering history int
 - **Triggers:** `ingest --pr N` and `reconcile` (the scheduled catch-up). `verify_signature` checks a GitHub webhook signature, but **no webhook endpoint exists yet**; adding one is a separate reviewed change.
 - **Credentials:** `ARCHIE_SOURCE_TOKEN` (read-only on the source repo) and `ARCHIE_INSTRUCTOR_TOKEN` (contents and pull-request write on the instructor repo only). Create them as fine-grained tokens; this change creates none.
 
+## Founder assignment gate (epic #139, issue #140; implemented)
+
+Archie never starts curriculum work on its own. `src/viharbot/learning/assignment.py` adds a **founder assignment**: a topic plus the exact source pull requests (up to 20, one repository) Archie may study.
+
+- **Who can assign:** only logins in `ARCHIE_FOUNDER_LOGINS` can create, cancel or complete an assignment. If the list is empty, nothing can be assigned (fail closed).
+- **What it gates:** `process` raises `NotAssigned` before any network call or store write unless an active assignment covers the pull request; `reconcile` skips every pull request no assignment covers, so with no assignment it does nothing. A commit, merge, Sage review or schedule cannot create a lesson. Publication re-checks the assignment, so a cancel stops the proposal.
+- **States:** `assigned` (work may run), `cancelled`, `completed`. Closing is idempotent and never reopens. Each ingestion record stores the `assignment_id` that authorised it.
+- **CLI:** `scripts/archie_learn.py assign|cancel|complete|assignments`; records live in `ASSIGNMENT_STORE_DIR` (default `data/assignments`, ignored by version control).
+- **Unchanged boundaries:** proposals still go only to the instructor repo as an unmerged pull request for human review; no model call, no auto-publication, no access grants. Ada receives nothing from this path.
+
+**Limitation:** the founder login is asserted by whoever runs the local CLI; it is not authenticated. The control is that only this module creates assignments and no webhook, event handler or agent path imports it. Stronger identity proof (for example a signed assignment) is future work.
+
+## Restricted instructor-repository access (epic #139, issue #141; implemented)
+
+`src/viharbot/learning/instructor_access.py` is the only code that reads `vchokshi/viharbot-onboarding-instructor`. It is a library; nothing in the web app, execution bindings, Ada or Kepler imports it (a test proves it).
+
+- **Read-only, own token.** GET requests only, using `ARCHIE_INSTRUCTOR_READ_TOKEN` (a fine-grained, read-only contents token, separate from the proposal-writing `ARCHIE_INSTRUCTOR_TOKEN`). It refuses any other repository. This change creates no token.
+- **Assignment required.** Every read and listing names an active founder assignment (#140); cancelled, completed or unknown ones are refused before any network call.
+- **Allowlist and hard deny.** Readable only under `knowledge/`, `curriculum/`, `lessons/`, `rubrics/`, `answer-keys/`, `defects/`, `assessments/`. Traversal, hidden files, odd characters and long paths are denied. Private acknowledgment records, credentials, tokens and key files are never readable, even with confidential access on.
+- **Confidential is opt-in.** Rubrics, answer keys, defect catalogs, assessments and grading notes need `allow_confidential=True`; listings omit them otherwise. Their text is fingerprinted (line hashes, in memory only) so `ConfidentialIndex.assert_trainee_safe` rejects trainee-bound text that repeats it. Matching is on whole normalised lines of 24+ characters: it catches copying, not paraphrase, so human review (#144) is still required.
+- **Symlinks are refused.** GitHub's contents API returns a symlink's target content, which would bypass the path rules. A read therefore needs the parent listing to show a regular file at the exact path, and the fetched content to carry the same path and blob sha. Links and symlinked directories are never returned or listed.
+- **Logs and reprs carry no content or paths:** only a path hash, sensitivity, duration and exception class.
+- **Not yet done:** wiring the reader into evidence ingestion (#142) or any model prompt, and enabling confidential access in a runtime. No model is called here.
+
+Still proposed for the rest of epic #139: Kepler/Sage evidence ingestion (#142), curriculum authoring and quality checks (#143), the Ada handoff and publication gate (#144, #151), audit trail and end-to-end tests (#145), and student PR feedback (#154).
+
 ### Not yet done in Phase 2
 
 Model-assisted enrichment (objectives, rationale synthesis) through LiteLLM, emission of the `learning.*` activity events (declared, not emitted), and a webhook endpoint. The instructor repo has no `knowledge/` directory yet; the first proposal creates it. Human review of the artifact format is needed before any are merged.

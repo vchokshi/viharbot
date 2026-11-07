@@ -88,6 +88,7 @@ class IngestionEvent(BaseModel):
     merge_commit_sha: Sha
     state: IngestState
     attempts: int = 0
+    assignment_id: str | None = None  # the founder assignment that authorised this work
     artifact_id: str | None = None
     proposal_url: str | None = None
     error: str | None = None  # an exception class name only, never a message or response body

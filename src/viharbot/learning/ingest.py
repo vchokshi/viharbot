@@ -1,9 +1,10 @@
 """Idempotent, retryable ingestion of merged pull requests.
 
-The trigger is trusted: a verified GitHub webhook, or `reconcile`, which asks the API for merged
-pull requests. Both go through `process`, which keys work by source revision, so reprocessing the
-same revision never creates a second artifact or a second proposal. Failures are recorded and a
-later call retries them. Nothing here merges.
+Nothing here starts on its own: `process` raises `NotAssigned` before any network call unless an
+active founder assignment (see `assignment.py`) covers the pull request, and `reconcile` only
+considers pull requests that assignments cover. Work is keyed by source revision, so reprocessing
+the same revision never creates a second artifact or proposal. Failures are recorded and a later
+call retries them. Nothing here merges.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ import time
 from collections.abc import Callable
 
 from .extract import extract, render_markdown
+from .assignment import AssignmentStore, NotAssigned
 from .github import InstructorProposer, SourceReader
 from .models import IngestionEvent, IngestState
 from .store import IngestionStore, event_key
@@ -33,17 +35,22 @@ def verify_signature(secret: str, body: bytes, header: str | None) -> bool:
 
 
 def process(
-    number: int, reader: SourceReader, store: IngestionStore,
+    number: int, reader: SourceReader, store: IngestionStore, assignments: AssignmentStore,
     proposer: InstructorProposer | None, request_id: str = "-",
     sleep: Callable[[float], None] = time.sleep,
 ) -> IngestionEvent:
-    """Ingest one merged pull request. `proposer=None` extracts and stops (a dry run)."""
+    """Ingest one assigned merged pull request. `proposer=None` extracts and stops (a dry run).
+
+    Raises `NotAssigned` without touching the network if no active assignment covers it.
+    """
+    assignment = assignments.require(reader.repository, number)
     started = time.monotonic()
     snapshot = None
     event = None
     try:
         snapshot = reader.snapshot(number)
         event = store.record(snapshot.repository, number, snapshot.merge_commit_sha)
+        event.assignment_id = assignment.assignment_id
         if event.state is IngestState.PROPOSED:
             return event  # already done for this revision
         # A record stuck in `processing` means an earlier run crashed; this single-writer run retries it.
@@ -56,7 +63,11 @@ def process(
         event.state = IngestState.EXTRACTED
         store.save(event)
         if proposer is not None:
-            path = f"{INSTRUCTOR_DIR}/{artifact.artifact_id}.md"
+            # Re-check the assignment that started this work, not any assignment: cancelling it must
+            # stop publication even if another assignment also covers this pull request.
+            if not assignments.require_active(assignment.assignment_id).covers(reader.repository, number):
+                raise NotAssigned("the authorising assignment no longer covers this pull request")
+            path =f"{INSTRUCTOR_DIR}/{artifact.artifact_id}.md"
             body = (f"Proposed by Archie from {snapshot.repository}#{number}. Status: "
                     f"{artifact.verification.value}. Needs human review before merge; "
                     "nothing is merged automatically.")
@@ -80,15 +91,18 @@ def process(
             **({"error": event.error} if event is not None and event.error else {})})
 
 
-def reconcile(reader: SourceReader, store: IngestionStore, proposer: InstructorProposer | None,
-              limit: int = 30) -> list[IngestionEvent]:
-    """Scheduled catch-up: process merged pull requests not yet proposed, and retry failures."""
+def reconcile(reader: SourceReader, store: IngestionStore, assignments: AssignmentStore,
+              proposer: InstructorProposer | None, limit: int = 30) -> list[IngestionEvent]:
+    """Catch-up for assigned work only: process assigned merged pull requests not yet proposed, and
+    retry failures. Unassigned pull requests are skipped, so with no assignment this does nothing."""
     results = []
     for pr in reader.merged_pull_requests(limit):
+        if assignments.authorizing(reader.repository, pr["number"]) is None:
+            continue
         known = store.get(event_key(pr["base"]["repo"]["full_name"], pr["number"], pr["merge_commit_sha"]))
         if known and known.state is IngestState.PROPOSED:
             continue
         if known and known.state is IngestState.EXTRACTED and proposer is None:
             continue
-        results.append(process(pr["number"], reader, store, proposer))
+        results.append(process(pr["number"], reader, store, assignments, proposer))
     return results
