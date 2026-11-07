@@ -44,11 +44,14 @@ class StewardConfig:
     reminder_after_hours: int = 72
     dedup_ttl_days: int = 30
     pending_retry_minutes: int = 30
+    max_alert_attempts: int = 2  # claims per alert in total: the first, plus one retry
     # Opt-in. None means no model is ever called and drafts are the plain fixed template.
     model_id: str | None = None
     model_max_tokens: int = 150
 
     def __post_init__(self) -> None:
+        if not 1 <= self.max_alert_attempts <= 5:
+            raise ConfigError("max_alert_attempts must be between 1 and 5")
         if self.model_id is not None and self.model_id not in APPROVED_MODEL_IDS:
             raise ConfigError("model is not on the approved allowlist (ADR-011)")
         if not 20 <= self.model_max_tokens <= 400:
@@ -110,6 +113,7 @@ def from_env(environ: Mapping[str, str]) -> StewardConfig:
         reminder_after_hours=number("KEPLER_REMINDER_HOURS", 72),
         dedup_ttl_days=number("KEPLER_DEDUP_TTL_DAYS", 30),
         pending_retry_minutes=number("KEPLER_PENDING_RETRY_MINUTES", 30),
+        max_alert_attempts=number("KEPLER_MAX_ALERT_ATTEMPTS", 2),
         model_id=environ.get("KEPLER_MODEL_ID", "").strip() or None,
         model_max_tokens=number("KEPLER_MODEL_MAX_TOKENS", 150),
     )
