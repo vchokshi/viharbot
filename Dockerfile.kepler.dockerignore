@@ -1,0 +1,12 @@
+# Allowlist for Dockerfile.kepler (BuildKit reads <Dockerfile>.dockerignore in preference to
+# .dockerignore). Everything is excluded except what the image copies, so it cannot pick up .env,
+# credentials, .git, docs, tests or another agent's code.
+*
+!requirements-kepler.txt
+!src/viharbot/__init__.py
+!src/viharbot/body_limit.py
+!src/viharbot/steward
+!.github/scripts/cla_gate.py
+!.github/scripts/contributor_registry.py
+**/__pycache__
+**/*.pyc

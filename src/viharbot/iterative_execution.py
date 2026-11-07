@@ -32,6 +32,13 @@ from .execution_bindings import (
 )
 from .identity import Capability
 from .identity_registry import AgentRegistry, default_registry
+from .community.review_policy import (
+    load_review_edges,
+    material_finding_count,
+    peer_review_enabled,
+    plan_review,
+    record_review,
+)
 from .live_hooks import NO_REPORTER, CancelToken, LiveReporter, OrchestrationCancelled
 from .orchestration_planner import DecisionContext
 from .orchestration_policy import (
@@ -202,14 +209,30 @@ def run_iterative_pipeline(
     def log(level: int, message: str, **fields: object) -> None:
         _log(level, message, state, clock, deadline, **fields)
 
+    # Peer review (Epic #157 C2): off unless this process's environment turns it on. It only
+    # records validated review exchanges for delegations the existing policy already authorizes;
+    # it never changes what is delegated, and a failure to record is logged and ignored.
+    review_edges = None
+    if peer_review_enabled():
+        try:
+            review_edges = load_review_edges(registry, bindings)
+        except Exception as exc:
+            log(logging.ERROR, "peer review disabled: edge configuration invalid",
+                error=type(exc).__name__)
+
     def complete(kind: str, reason: str, status: str) -> IterativePipelineResult:
         state.status = status  # type: ignore[assignment]
         state.completion_kind = kind  # type: ignore[assignment]
         state.completion_reason = reason
         state.elapsed_ms = round((clock() - started) * 1000, 1)
         pipeline_state, excluded = _final_state(state, activity)
+        review_fields = (
+            {"peer_reviews": len(state.reviews),
+             "peer_review_material_findings": material_finding_count(state.reviews)}
+            if state.reviews else {})
         log(logging.INFO, "orchestration completed", action_status="completed",
-            completion_status=kind, completion_reason=reason, stale_excluded=excluded)
+            completion_status=kind, completion_reason=reason, stale_excluded=excluded,
+            **review_fields)
         return IterativePipelineResult(state=pipeline_state, orchestration=state)
 
     def fail(reason: str):
@@ -366,6 +389,14 @@ def run_iterative_pipeline(
             decision_number=state.decision_number, execution_id=execution_id,
             capability=authorized.capability.value, target_identity=authorized.identity_id,
             service=authorized.service_name, result_version=result_version)
+        review_request = None
+        if review_edges is not None:
+            try:  # a policy outcome or a bug here must never affect the authorized delegation
+                review_request = plan_review(
+                    authorized.capability, state, review_edges, registry, bindings, set(urls),
+                    execution_id, seconds_left=deadline.remaining())
+            except Exception as exc:
+                log(logging.WARNING, "peer review not planned", error=type(exc).__name__)
         state.iteration += 1
         state.add_gap(action.unresolved_question)
         payload = build_payload(authorized.capability, state)
@@ -458,6 +489,18 @@ def run_iterative_pipeline(
                     decision_number=state.decision_number, execution_id=execution_id,
                     capability=authorized.capability.value, superseded_version=step.version - 1,
                     replacement_version=step.version, affected_results=affected)
+        if review_request is not None:
+            try:
+                exchange = record_review(review_request, step)
+            except Exception as exc:
+                log(logging.WARNING, "peer review not recorded", error=type(exc).__name__)
+            else:
+                state.reviews.append(exchange)
+                log(logging.INFO, "peer review recorded", action_status="executed",
+                    review_author=exchange.request.author,
+                    review_reviewer=exchange.request.recipient,
+                    review_outcome=exchange.report.outcome.value,
+                    review_findings=len(exchange.report.findings))
         # "executed" is only claimed here, after a validated, on-time response arrived.
         log(logging.INFO, "delegated execution completed", action_status="executed",
             capability=authorized.capability.value, identity_id=authorized.identity_id,

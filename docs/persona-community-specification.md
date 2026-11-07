@@ -137,7 +137,7 @@ Each phase is one reviewable PR, backward compatible, and ends with founder appr
 |---|---|---|
 | A | Persona schema, eight persona definitions, loader, tests, docs | **Implemented in this PR (draft)** |
 | B | Persona-aware prompt composition; consistent voice; governance precedence tests | **Implemented, flag off** (second flag `VIHARBOT_PERSONA_PROMPT_ENABLED`; see [personality-aware inference](personality-aware-inference.md)) |
-| C | Community interaction contracts, peer review, bounded collaboration, relationship records | **C1 implemented** (contracts only, [community contracts](community-contracts.md), #209); C2 (#210) and C3 (#211) proposed |
+| C | Community interaction contracts, peer review, bounded collaboration, relationship records | **C1, C2 and C3 implemented** ([community contracts](community-contracts.md), #209, #210, #211; C2 is flagged off and records only; C3 is an in-memory history model that nothing records into yet). C2 is partial: challenges (#220) and application-initiated reviews (#221) remain |
 | D | Collaboration history, governed memory interfaces, measurable outcomes | Proposed; needs ADR-009 decision |
 | E | Real collaboration events, agent profile and community UI requirements, avatar metadata | Proposed |
 
@@ -161,8 +161,8 @@ Not created. Titles are proposals for the founder to file under #157. #161 (pers
 | B1 | Persona-aware prompt composition (flagged) | A2, D3 | Off by default; legacy prompt hashes unchanged; persona cannot override task instructions; structured output schemas unchanged |
 | B2 | Persona consistency evaluation suite (optional) | B1 | Separate from CI; explicit metrics and a token and cost cap; never run in unit tests |
 | C1 (#209, done) | Community interaction contracts. Implemented as `ReviewRequest`, `ReviewReport` (with nested `Finding`s), `Challenge`, `ChallengeResolution`. Started before A2 (founder persona review) because the contracts do not depend on persona wording | A2 | Models carry sender, recipient, engagement, task, type, correlation ids; challenges must cite supplied evidence; unknown fields rejected |
-| C2 (#210) | Peer-review edges in orchestration policy | C1 | Declared edges only; consume existing budgets; reviewer differs from author; cancellation and deadline honored |
-| C3 (#211) | Relationship records (no authorization use) | C1 | Versioned; no trust score; a test proves no authorization path reads them |
+| C2 (#210, done in part) | Peer-review edges in orchestration policy. Implemented: declared edges, authorization through the existing `authorize_action`, deterministic report derivation, flagged recording in the loop. **Not yet:** challenges in the loop, application-initiated reviews, a response-level disclosure | C1 | Declared edges only; consume existing budgets; reviewer differs from author; cancellation and deadline honored |
+| C3 (#211, done) | Relationship records (no authorization use). Implemented as an in-memory ledger of outcome counts over persona-configured pairings | C1 | Versioned; no trust score; a test proves no authorization path reads them |
 | D1 | Collaboration history and outcome metrics | C2, ADR-009 | Records carry provenance, scope and retention; metrics defined before use |
 | D2 | Governed update procedure for persona, skills and practices | A2 | Changes only via reviewed PR; agent writes to these files are impossible by construction |
 | E1 | Collaboration SSE events (schema minor version) | C2 | Emitted from real execution only; old clients parse unchanged; docs and fixtures updated |
@@ -176,7 +176,8 @@ Not created. Titles are proposals for the founder to file under #157. #161 (pers
 | A (this PR) | `src/viharbot/personas/{__init__,models,registry}.py`, `personas/definitions/*.toml` (8), `tests/test_persona_registry.py`, `docs/persona-community-specification.md`, `docs/agent-personas.md` | none in `src/` outside the new package |
 | B (done) | `personas/prompt.py`, `tests/test_persona_prompt.py` | `inference_config.py`, `tests/test_persona_registry.py` (import allowlist), `docs/personality-aware-inference.md`, `docs/development-status.md` |
 | C1 (done) | `community/{__init__,models}.py`, `tests/test_community_contracts.py`, `docs/community-contracts.md` | none outside the new package |
-| C2 and C3 | policy, relationship models, tests | `orchestration_policy.py`, `iterative_execution.py`, `orchestration_planner.py` |
+| C2 (done) | `community/review_policy.py`, `execution_config/review_edges.toml`, `tests/test_review_policy.py` | `community/models.py` (Sage's C1 findings, `ReviewExchange`), `orchestration_state.py`, `iterative_execution.py`, `observability.py` (log whitelist), docs |
+| C3 (done) | `community/relationships.py`, `tests/test_community_relationships.py` | `community/models.py` and `community/review_policy.py` (Sage's C2 findings: severity-first cap, omitted counts); none of the authorization modules |
 | D | collaboration record models, tests | memory client once ADR-009 is accepted |
 | E | event models, UI requirements | `live_events.py`, `live_hooks.py`, `docs/live-observability.md`, `static/index.html` |
 

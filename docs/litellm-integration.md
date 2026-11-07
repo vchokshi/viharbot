@@ -6,10 +6,12 @@ LiteLLM is an external project already running at https://litellm.viharchokshi.c
 
 - LITELLM_BASE_URL: defaults to the supplied HTTPS endpoint.
 - LITELLM_API_KEY: proxy key injected into each model-using agent container.
-- RESEARCH_MODEL: gpt-6.1-sol. PRIVACY_MODEL, SYNTHESIS_MODEL, PIXEL_MODEL: gpt-5.4-mini (the gateway lists it without the `openai/` prefix; aliases must match its `/v1/models` list).
+- RESEARCH_MODEL: gpt-6.1-sol. PRIVACY_MODEL, SYNTHESIS_MODEL, PIXEL_MODEL: openai/gpt-5.4-mini (the same `openai/` form as SECURITY_MODEL; the bare name `gpt-5.4-mini` was retired on 2026-11-07 and the alias guard rejects it).
 - SECURITY_MODEL: openai/gpt-5.4.
 - FACT_CHECK_MODEL, SOURCE_QUALITY_MODEL: gemini/gemini-3.5-flash (since PR #13). Other Gemini aliases were tested on 2026-10-27 and are not usable on this account today: gemini-2.5-flash and gemini-2.5-flash-lite return 404 (retired for new users), gemini-3.7-flash and gemini-3.8-flash returned 503 for high demand, and the Pro models returned 429 quota errors.
 - CHARLIE_PLANNER_MODEL: gpt-6-luna in local Compose (never inferred from another alias). Used by the planner in the web container, which runs the live team only when WEB_LITELLM_API_KEY is passed (there is no flag). The Stage spec does not set it.
+
+**Alias spelling is checked in CI.** A gateway model was once published with a lowercase L where the I of `openai` belongs (the two look alike and sit next to each other on the keyboard); it went unnoticed for over a week and fixing it took a working deployment with it. `tests/test_lookalike_guard.py` now fails the build if an alias in Compose, `.env.example` or the Stage spec is not on its approved list (so any misspelling is caught, not only that one), if that misspelling appears anywhere in tracked files, or if a configuration file contains a non-ASCII character (a Unicode look-alike). To add or change an alias, edit `APPROVED_ALIASES` in that test in the same change as the configuration, after confirming the gateway accepts it with a one-token request: `GET /v1/models` was observed not to list an alias the gateway accepted, so it is not proof either way. Type aliases by hand in lowercase; do not copy them from a rendered page, where a look-alike letter would be copied with it.
 
 These are configured defaults. A configured alias does not prove a live request succeeds, and the alias list reflects one account at one time; confirm availability with GET /v1/models and a small real call before relying on an alias.
 

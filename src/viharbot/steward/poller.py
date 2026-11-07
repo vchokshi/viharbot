@@ -36,11 +36,15 @@ from .cla import ClaGateUnavailable, load_gate
 from .config import StewardConfig
 from .drafts import draft_followup
 from .github_auth import AuthError
+from .model import safe_login
+from .personalize import OpeningFacts, OpeningResult, clean_paths, clean_title, generate_opening
 from .snapshot import fetch_cla_files, fetch_snapshot, list_first_time_pulls
 from .state import EXHAUSTED, NEW, RETRY, StateUnavailable
 
 logger = logging.getLogger("kepler")
 FINALIZE_RESERVE_SECONDS = 15  # held back from the work budget so a run can still record its end
+MODEL_RESERVE_SECONDS = 30  # the optional model call is skipped with less than this left to the deadline
+MODEL_CALL_SECONDS = 20  # hard wall-clock cap on the whole call, retries included (then abandoned)
 
 
 class DeadlineExceeded(RuntimeError):
@@ -123,6 +127,7 @@ def run_poll(
     request_id: str = "manual",
     dry_run: bool = False,
     only_pr: int | None = None,
+    drafter: Any = None,
 ) -> PollResult:
     gate = load_gate()
     # Two attempts and a short rate-limit wait bound one in-flight read to roughly 45 seconds.
@@ -137,7 +142,7 @@ def run_poll(
 
     def record(event: str, decision: str = "ok", **fields: Any) -> None:
         line = {"agent": "kepler", "request_id": request_id, "event": event, "decision": decision,
-                "destination": fields.get("destination"), "model_alias": None,
+                "destination": fields.get("destination"), "model_alias": fields.get("model_alias"),
                 "duration_ms": fields.get("duration_ms"), "error_code": fields.get("error_code")}
         (logger.warning if decision == "fail" else logger.info)(json.dumps(line, sort_keys=True))
         if not dry_run:
@@ -173,6 +178,8 @@ def run_poll(
         gh = BudgetedClient(make_client(token), work_deadline, clock)
         files, pinned = fetch_cla_files(gh, config.repo, config.base_branch)
         founders, _ = gate.founders_from(files.base_registry)
+        # Drafts name the maintainer who posts them. Only an unambiguous founder is named.
+        maintainer = next(iter(founders.values())) if len(founders) == 1 else None
         numbers = [only_pr] if only_pr else list_first_time_pulls(gh, config.repo, set(founders))
         numbers = numbers[: config.max_pulls]
         resolver = gate.github_resolver(gh)
@@ -191,7 +198,7 @@ def run_poll(
                 now = clock()
                 assessment, cla = assess(snapshot, files, resolver, now, config.reminder_after_hours)
                 decision = draft_followup(assessment, cla, now, config.repo,
-                                          config.reminder_after_hours)
+                                          config.reminder_after_hours, maintainer)
             except (StateUnavailable, AuditUnavailable):
                 raise
             except DeadlineExceeded:  # the budget ran out mid-read: stop, do not count it as a PR bug
@@ -231,6 +238,32 @@ def run_poll(
             result.new_observations += len(new)
             if not new:
                 continue
+            if drafter is not None and not dry_run and decision.kind == "welcome":
+                # One model call, only when an email is about to go out with a first-contact draft.
+                login = safe_login(assessment.author_login)
+                if login:
+                    facts = OpeningFacts(login, number, clean_title(snapshot.title),
+                                         clean_paths(snapshot.pr.get("files", [])))
+                    begun = clock()
+                    if (deadline - begun).total_seconds() < MODEL_RESERVE_SECONDS:
+                        # The draft is optional: with too little time left, send the plain one.
+                        outcome = OpeningResult(None, "no_budget")
+                    else:
+                        outcome = generate_opening(drafter, facts, MODEL_CALL_SECONDS)
+                    took = int((clock() - begun).total_seconds() * 1000)
+                    used = outcome.text is not None
+                    record("draft_model", "ok" if used else "fail", pr=number,
+                           model_alias=getattr(drafter, "model_id", None),
+                           status="used" if used else "rejected",
+                           error_code=None if used else outcome.reason, duration_ms=took)
+                    try:
+                        metrics.put("DraftsPersonalized" if used else "DraftsFellBack", 1)
+                    except Exception:
+                        pass
+                    if used:
+                        decision = draft_followup(assessment, cla, now, config.repo,
+                                                  config.reminder_after_hours, maintainer,
+                                                  opening=outcome.text)
             try:
                 subject, body = format_alert(assessment, new, decision)
                 if dry_run:

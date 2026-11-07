@@ -120,7 +120,7 @@ Every model call is `build_agent()` in `model_agent.py`: a Strands `Agent` over 
 | Service | Default alias (Compose and Stage template) |
 |---|---|
 | research | `gpt-6.1-sol` (local Compose and the Stage spec) |
-| privacy-review, synthesis, pixel | `gpt-5.4-mini` (the gateway lists it without the `openai/` prefix) |
+| privacy-review, synthesis, pixel | `openai/gpt-5.4-mini` (the same `openai/` form as Security; the bare `gpt-5.4-mini` is retired) |
 | security | `openai/gpt-5.4` |
 | fact-check, source-quality | `gemini/gemini-3.5-flash` |
 | Charlie's planner | `gpt-6-luna` in local Compose; unavailable until a key is passed to the web container (there is no flag) |

@@ -16,6 +16,15 @@ _TABLE = re.compile(r"^viharbot-kepler-[a-z0-9-]{1,40}$")
 _SECRET = re.compile(r"^viharbot/kepler/[a-z0-9-]{1,60}$")
 _TOPIC = re.compile(r"^arn:aws:sns:[a-z0-9-]+:\d{12}:viharbot-kepler-[a-z0-9-]{1,40}$")
 _REGION = re.compile(r"^[a-z]{2}-[a-z]+-\d$")
+# ADR-011: an explicit allowlist of model IDs, failing closed. Exactly one model today, in-region and
+# on-demand. A cross-region profile ("us.", "global."), another Llama, another provider, and in
+# particular any Anthropic model, are all refused, so a typo cannot route contributor text through
+# other regions or to an unapproved model. The runtime role's IAM allow names the same single ARN
+# (deploy/agentcore/kepler/iam/runtime-policy.json); the two must stay in sync, and a test checks it.
+DEFAULT_MODEL_ID = "meta.llama3-1-8b-instruct-v1:0"
+APPROVED_MODEL_IDS = frozenset({DEFAULT_MODEL_ID})
+# The only values of KEPLER_MODEL_ID that turn the model off. Anything else must be approved.
+MODEL_OFF_VALUES = frozenset({"off", "none", "disabled"})
 # Kepler never touches this repository, in any role.
 FORBIDDEN_REPOSITORIES = frozenset({"vchokshi/viharbot-onboarding-instructor"})
 
@@ -39,10 +48,18 @@ class StewardConfig:
     dedup_ttl_days: int = 30
     pending_retry_minutes: int = 30
     max_alert_attempts: int = 2  # claims per alert in total: the first, plus one retry
+    # On by default: first-contact drafts use the one approved model. None (an explicit
+    # KEPLER_MODEL_ID=off) means no model is called and drafts are the plain fixed template.
+    model_id: str | None = DEFAULT_MODEL_ID
+    model_max_tokens: int = 150
 
     def __post_init__(self) -> None:
         if not 1 <= self.max_alert_attempts <= 5:
             raise ConfigError("max_alert_attempts must be between 1 and 5")
+        if self.model_id is not None and self.model_id not in APPROVED_MODEL_IDS:
+            raise ConfigError("model is not on the approved allowlist (ADR-011)")
+        if not 20 <= self.model_max_tokens <= 400:
+            raise ConfigError("model_max_tokens must be between 20 and 400")
         if not _REPO.fullmatch(self.repo) or self.repo.casefold() in {
                 r.casefold() for r in FORBIDDEN_REPOSITORIES}:
             raise ConfigError("repository must be owner/name and not a forbidden repository")
@@ -73,6 +90,15 @@ class StewardConfig:
         return self.repo.split("/", 1)[1]
 
 
+def model_id_from(raw: str) -> str | None:
+    """Unset or empty is the default model; off/none/disabled is the kill switch; anything else is
+    passed through and refused by the config check unless it is on the allowlist."""
+    value = raw.strip()
+    if not value:
+        return DEFAULT_MODEL_ID
+    return None if value.casefold() in MODEL_OFF_VALUES else value
+
+
 def from_env(environ: Mapping[str, str]) -> StewardConfig:
     def need(key: str) -> str:
         value = environ.get(key, "").strip()
@@ -101,4 +127,6 @@ def from_env(environ: Mapping[str, str]) -> StewardConfig:
         dedup_ttl_days=number("KEPLER_DEDUP_TTL_DAYS", 30),
         pending_retry_minutes=number("KEPLER_PENDING_RETRY_MINUTES", 30),
         max_alert_attempts=number("KEPLER_MAX_ALERT_ATTEMPTS", 2),
+        model_id=model_id_from(environ.get("KEPLER_MODEL_ID", "")),
+        model_max_tokens=number("KEPLER_MODEL_MAX_TOKENS", 150),
     )
