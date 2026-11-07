@@ -140,3 +140,47 @@ def test_cli_assign_cancel_and_refusals(monkeypatch, tmp_path, capsys):
     assert cli.main(["cancel", "--as", "intruder", assignment_id]) == 2
     assert cli.main(["cancel", "--as", FOUNDER, assignment_id]) == 0
     assert cli.main(["ingest", "--pr", "7"]) == 2  # cancelled: refused before any network call
+
+
+def test_cancelling_the_authorising_assignment_blocks_publication_despite_an_overlapping_one(tmp_path):
+    """Sage HIGH on #247: publication must be re-checked against the assignment that started the work."""
+    fake, asg = FakeGitHub(), store_for(tmp_path)
+    asg.assign(FOUNDER, "t1", SRC, (7,))
+    asg.assign(FOUNDER, "t2", SRC, (7,))  # a second, still-active assignment covering the same PR
+    authorising = asg.authorizing(SRC, 7)  # the one `process` will capture (the choice is deterministic)
+
+    class Never:
+        def propose(self, *args, **kwargs):
+            raise AssertionError("published after the authorising assignment was cancelled")
+
+    real_extract = ingest.extract
+
+    def extract_then_cancel(snapshot):
+        artifact = real_extract(snapshot)
+        asg.cancel(FOUNDER, authorising.assignment_id)
+        return artifact
+
+    ingest.extract = extract_then_cancel
+    try:
+        event = ingest.process(7, reader(fake), IngestionStore(tmp_path / "learning"), asg, Never())
+    finally:
+        ingest.extract = real_extract
+    assert asg.authorizing(SRC, 7) is not None  # the other assignment is still active
+    assert event.state is IngestState.FAILED and event.error == "NotAssigned"
+    assert event.assignment_id == authorising.assignment_id
+    assert [c for c in fake.calls if c[0] != "GET"] == []
+
+
+def test_cli_reconcile_refusal_exits_cleanly(monkeypatch, tmp_path, capsys):
+    """`reconcile` has no --pr; a NotAssigned mid-run must exit 2, not raise AttributeError."""
+    cli = _cli()
+    monkeypatch.setenv("ASSIGNMENT_STORE_DIR", str(tmp_path / "a"))
+    monkeypatch.setenv("LEARNING_STORE_DIR", str(tmp_path / "l"))
+    monkeypatch.setenv("ARCHIE_SOURCE_TOKEN", "t")
+
+    def cancelled_mid_run(*args, **kwargs):
+        raise NotAssigned("cancelled during the run")
+
+    monkeypatch.setattr(cli, "reconcile", cancelled_mid_run)
+    assert cli.main(["reconcile"]) == 2
+    assert "refused" in capsys.readouterr().err

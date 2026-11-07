@@ -88,7 +88,9 @@ def main(argv: list[str] | None = None) -> int:
         events = ([process(args.pr, reader, store, assignments, proposer)] if args.command == "ingest"
                   else reconcile(reader, store, assignments, proposer, args.limit))
     except NotAssigned:
-        print(f"refused: no active founder assignment covers PR #{args.pr}", file=sys.stderr)
+        # `reconcile` has no --pr; an assignment can be cancelled while it is running.
+        scope = f"PR #{args.pr}" if args.command == "ingest" else "a pull request in this run"
+        print(f"refused: no active founder assignment covers {scope}", file=sys.stderr)
         return 2
     for e in events:
         print(f"PR #{e.pull_request}: {e.state.value}" + (f" ({e.error})" if e.error else "")

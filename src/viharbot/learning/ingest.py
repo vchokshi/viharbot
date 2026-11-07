@@ -16,7 +16,7 @@ import time
 from collections.abc import Callable
 
 from .extract import extract, render_markdown
-from .assignment import AssignmentStore
+from .assignment import AssignmentStore, NotAssigned
 from .github import InstructorProposer, SourceReader
 from .models import IngestionEvent, IngestState
 from .store import IngestionStore, event_key
@@ -63,8 +63,11 @@ def process(
         event.state = IngestState.EXTRACTED
         store.save(event)
         if proposer is not None:
-            assignments.require(reader.repository, number)  # re-check: a cancel stops publication
-            path = f"{INSTRUCTOR_DIR}/{artifact.artifact_id}.md"
+            # Re-check the assignment that started this work, not any assignment: cancelling it must
+            # stop publication even if another assignment also covers this pull request.
+            if not assignments.require_active(assignment.assignment_id).covers(reader.repository, number):
+                raise NotAssigned("the authorising assignment no longer covers this pull request")
+            path =f"{INSTRUCTOR_DIR}/{artifact.artifact_id}.md"
             body = (f"Proposed by Archie from {snapshot.repository}#{number}. Status: "
                     f"{artifact.verification.value}. Needs human review before merge; "
                     "nothing is merged automatically.")
