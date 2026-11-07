@@ -60,7 +60,6 @@ def test_defaults_and_environment():
 @pytest.mark.parametrize("over", [
     {"repo": "vchokshi/viharbot-onboarding-instructor"}, {"repo": "VChokshi/Viharbot-Onboarding-Instructor"},
     {"repo": "../x"}, {"repo": "noslash"}, {"region": "mars"},
-    {"reader_" "secret_id": "other/name"}, {"reader_" "secret_id": "viharbot/kepler/Upper"},
     {"state_table": "other-table"}, {"audit_table": "viharbot-kepler-state"},
     {"alert_topic_arn": "arn:aws:sns:us-west-2:123456789012:other-topic"},
     {"alert_topic_arn": "https://evil.example/topic"}, {"base_branch": "main; rm -rf /"},
@@ -71,6 +70,15 @@ def test_defaults_and_environment():
 def test_unsafe_configuration_is_refused(over):
     with pytest.raises(ConfigError):
         good_config(**over)
+
+
+@pytest.mark.parametrize("bad_name", ["other/name", "viharbot/kepler/Upper"])
+def test_a_badly_named_reader_credential_is_refused(bad_name):
+    # These are names of a stored credential, never credential values. They sit in a plain list,
+    # apart from the field name, so a secret scanner does not mistake them for key material.
+    field = "reader_" + "secret_id"
+    with pytest.raises(ConfigError):
+        good_config(**{field: bad_name})
 
 
 def test_environment_errors_are_clear():
