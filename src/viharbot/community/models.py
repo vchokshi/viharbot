@@ -191,11 +191,19 @@ class ReviewReport(_Message):
     # What was and was not examined (Constitution 5.8: material limitations are documented).
     limitations: Annotated[tuple[Line, ...], Field(min_length=1, max_length=8)]
     reason_unable: Text | None = None
+    # Findings the reviewer returned but the report could not carry (it holds at most 20, most
+    # severe first). Material ones are counted so a disclosure total is never silently low.
+    omitted_findings: Annotated[int, Field(ge=0, le=1000)] = 0
+    omitted_material_findings: Annotated[int, Field(ge=0, le=1000)] = 0
 
     @model_validator(mode="after")
     def _outcome_matches_content(self) -> "ReviewReport":
         if self.in_reply_to is None:
             raise ValueError("a review report must reply to a review request")
+        if self.omitted_material_findings > self.omitted_findings:
+            raise ValueError("omitted material findings cannot exceed omitted findings")
+        if self.omitted_findings and self.outcome is not ReviewOutcome.ISSUES_FOUND:
+            raise ValueError("omitted findings are only allowed with issues_found")
         if self.outcome is ReviewOutcome.ISSUES_FOUND and not self.findings:
             raise ValueError("issues_found requires at least one finding")
         if self.outcome is not ReviewOutcome.ISSUES_FOUND and self.findings:
