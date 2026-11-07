@@ -202,7 +202,7 @@ services:
         scope: RUN_TIME
         type: GENERAL
       - key: PRIVACY_MODEL
-        value: gpt-5.4-mini
+        value: openai/gpt-5.4-mini
         scope: RUN_TIME
         type: GENERAL
       - key: MEMORY_DIR
@@ -232,7 +232,7 @@ services:
         scope: RUN_TIME
         type: GENERAL
       - key: SYNTHESIS_MODEL
-        value: gpt-5.4-mini
+        value: openai/gpt-5.4-mini
         scope: RUN_TIME
         type: GENERAL
       - key: MEMORY_DIR
