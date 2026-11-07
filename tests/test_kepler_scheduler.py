@@ -135,7 +135,8 @@ def test_the_deployer_may_create_the_schedule_and_pass_this_role_to_scheduler():
         assert fnmatch.fnmatchcase(arn, schedules[0]["Resource"])
     passes = [s for s in deployer if s.get("Sid") == "PassOnlyKeplerRolesToTheirServices"][0]
     assert "arn:aws:iam::ACCOUNT_ID:role/viharbot-kepler-scheduler" in passes["Resource"]
-    assert "scheduler.amazonaws.com" in passes["Condition"]["StringEquals"]["iam:PassedToService"]
+    services = set(passes["Condition"]["StringEquals"]["iam:PassedToService"])
+    assert {"scheduler.amazonaws.com"} <= services
 
 
 def test_the_script_is_a_dry_run_unless_apply_is_set_and_changes_nothing_before_that():
@@ -179,7 +180,11 @@ def test_the_dry_run_prints_the_whole_plan_and_makes_no_aws_call_but_the_account
     assert calls == ["sts get-caller-identity --query Account --output text"]
     out = done.stdout
     assert "DRY RUN: nothing was created" in out
-    assert "scheduler.amazonaws.com" in out and "123456789012" in out and "ACCOUNT_ID" not in out
+    # the printed trust policy names Scheduler as the one principal (checked as a parsed field)
+    trust_start = out.index("--- role trust policy") + len("--- role trust policy")
+    trust = json.loads(out[trust_start:out.index("--- role permissions policy")])
+    assert trust["Statement"][0]["Principal"] == {"Service": "scheduler.amazonaws.com"}
+    assert "123456789012" in out and "ACCOUNT_ID" not in out
     assert "bedrock-agentcore:InvokeAgentRuntime" in out and RUNTIME in out and "RUNTIME_ARN" not in out
     assert ('"Name": "viharbot-kepler-poll-test"' if mode == "test" else '"rate(6 hours)"') in out
 
