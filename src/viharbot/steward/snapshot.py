@@ -46,6 +46,7 @@ class PullSnapshot:
     reviews: tuple  # {"login", "id", "state"} only
     ci_runs: tuple  # {"name", "status", "conclusion"} only
     ci_error: bool = False  # CI could not be read, so its state is unknown
+    title: str = ""  # untrusted; only ever used after `personalize.clean_title`
 
 
 def summarize_ci(runs: tuple) -> tuple[str, int]:
@@ -150,6 +151,7 @@ def fetch_snapshot(gh, repo: str, number: int) -> PullSnapshot:
         mergeable_state=mergeable_state,
         created_at=str(meta.get("created_at", "")), updated_at=str(meta.get("updated_at", "")),
         pr=pr, comments=comments, reviews=reviews, ci_runs=runs, ci_error=ci_error,
+        title=str(meta.get("title", ""))[:300],
     )
 
 
