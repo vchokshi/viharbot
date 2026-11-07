@@ -12,6 +12,8 @@ deliberately narrow:
 - **Confidential by default-deny.** Rubrics, answer keys, defect catalogs and assessments are
   readable only when the reader is built with `allow_confidential=True`. Their text is fingerprinted
   into a `ConfidentialIndex` so `assert_trainee_safe` can reject output that repeats it.
+- **Symlinks are refused.** The parent listing must show a regular file at the exact path and the
+  fetched content must carry the same path and blob sha, so a link cannot smuggle in its target.
 - **No content in logs.** Log records carry a path hash, sensitivity and outcome, never text.
 
 Limitation: the leak check matches normalised whole lines of at least `MIN_LINE_CHARS` characters.
@@ -136,9 +138,14 @@ class InstructorReader:
             sensitivity = classify(path)
             if sensitivity is Sensitivity.CONFIDENTIAL and not self._allow_confidential:
                 raise AccessDenied("confidential instructor content is not enabled for this reader")
+            # GitHub resolves an in-repository symlink to its target's content, which would bypass the
+            # path rules above. So first require, from the parent listing, a regular-file entry at
+            # exactly this path, and afterwards that the response is that same entry.
+            entry = self._regular_file_entry(path)
             doc = self._client.request("GET", f"/repos/{self._repo}/contents/{path}")
-            if not isinstance(doc, dict) or doc.get("type") != "file":
-                raise AccessDenied("path is not a single file")
+            if (not isinstance(doc, dict) or doc.get("type") != "file" or doc.get("path") != path
+                    or doc.get("sha") != entry.get("sha")):
+                raise AccessDenied("path is not a single regular file")
             if int(doc.get("size", 0)) > MAX_BYTES:
                 raise AccessDenied("file exceeds the size limit")
             text = base64.b64decode(doc.get("content", "")).decode("utf-8")
@@ -155,6 +162,18 @@ class InstructorReader:
                 "path_hash": path_hash(path), "sensitivity": sensitivity.value,
                 **({"error": outcome} if outcome != "ok" else {})})
 
+    def _regular_file_entry(self, path: str) -> dict:
+        parent = path.rpartition("/")[0]
+        rows = self._client.request("GET", f"/repos/{self._repo}/contents/{parent}")
+        if not isinstance(rows, list):
+            raise AccessDenied("path is not a single regular file")
+        for row in rows:
+            if row.get("path") == path:
+                if row.get("type") != "file":  # symlink, submodule or directory
+                    raise AccessDenied("path is not a single regular file")
+                return row
+        raise AccessDenied("path is not a single regular file")
+
     def list(self, assignment_id: str, directory: str) -> list[str]:
         """Readable file paths directly under an allowlisted directory; others are omitted."""
         self._assignments.require_active(assignment_id)
@@ -168,6 +187,8 @@ class InstructorReader:
                 continue
             try:
                 candidate = check_path(str(row.get("path", "")))
+                if not candidate.startswith(directory + "/"):  # a symlinked directory lists its target
+                    continue
             except AccessDenied:
                 continue
             if classify(candidate) is Sensitivity.CONFIDENTIAL and not self._allow_confidential:

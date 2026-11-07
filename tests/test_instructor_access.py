@@ -22,26 +22,46 @@ KEY_LINE = "The correct answer to question four is the off-by-one in the loop bo
 
 
 class FakeInstructorRepo:
+    """Serves files, directory listings and symlinks the way GitHub's contents API does."""
+
+    TEXT = {"knowledge/pr-case-studies/a.md": "A general case study about identities and review.",
+            "answer-keys/week1.md": f"# Key\n{KEY_LINE}\n"}
+
     def __init__(self) -> None:
         self.calls: list[tuple[str, str]] = []
+        self.links: dict[str, str] = {}  # link path -> target path
+        self.listing_hides_links = False  # listing claims a link is a regular file
+
+    def _file(self, name):
+        body = self.TEXT[name]
+        return {"type": "file", "path": name, "sha": "b" * 40, "size": len(body),
+                "content": base64.b64encode(body.encode()).decode()}
 
     def __call__(self, method, url, headers, data):
         path = url.removeprefix("https://api.github.com")
         self.calls.append((method, path))
         assert "Bearer" in headers["Authorization"]
-        text = {"knowledge/pr-case-studies/a.md": "A general case study about identities and review.",
-                "answer-keys/week1.md": f"# Key\n{KEY_LINE}\n"}
-        for name, body in text.items():
-            if path == f"/repos/{INS}/contents/{name}":
-                return 200, json.dumps({"type": "file", "sha": "b" * 40, "size": len(body),
-                                        "content": base64.b64encode(body.encode()).decode()}).encode()
-        if path == f"/repos/{INS}/contents/knowledge":
-            return 200, json.dumps([
+        prefix = f"/repos/{INS}/contents/"
+        if not path.startswith(prefix):
+            return 404, b""
+        name = path.removeprefix(prefix)
+        ok = lambda obj: (200, json.dumps(obj).encode())  # noqa: E731
+        if name in self.links:  # a request for a link is answered with the TARGET's content
+            return ok(self._file(self.links[name]))
+        if name in self.TEXT:
+            return ok(self._file(name))
+        if name == "knowledge":
+            return ok([
                 {"type": "file", "path": "knowledge/readme.md"},
                 {"type": "file", "path": "knowledge/answer-key-1.md"},
                 {"type": "file", "path": "knowledge/acknowledgments.md"},
-                {"type": "dir", "path": "knowledge/pr-case-studies"}]).encode()
-        return 404, b""
+                {"type": "symlink", "path": "knowledge/link.md"},
+                {"type": "dir", "path": "knowledge/pr-case-studies"}])
+        rows = [{"type": "file", "path": p, "sha": "b" * 40} for p in self.TEXT
+                if p.rpartition("/")[0] == name]
+        rows += [{"type": "file" if self.listing_hides_links else "symlink", "path": p, "sha": "b" * 40}
+                 for p in self.links if p.rpartition("/")[0] == name]
+        return ok(rows) if rows else (404, b"")
 
 
 @pytest.fixture
@@ -170,3 +190,39 @@ def test_ada_kepler_and_the_web_app_cannot_reach_instructor_access():
 
 def test_check_path_accepts_only_allowlisted_clean_paths():
     assert check_path("knowledge/pr-case-studies/a.md") == "knowledge/pr-case-studies/a.md"
+
+
+LINK = "knowledge/pr-case-studies/looks-general.md"
+
+
+def test_symlink_to_a_confidential_target_is_refused_and_never_fetched(setup):
+    setup[2].links[LINK] = "answer-keys/week1.md"
+    r = reader(setup)
+    with pytest.raises(AccessDenied):
+        r.read(setup[1], LINK)
+    assert not [c for c in setup[2].calls if c[1].endswith("looks-general.md")]  # content never requested
+    assert r.index.leaks(KEY_LINE) is False
+
+
+def test_symlink_is_refused_even_when_confidential_access_is_enabled(setup):
+    setup[2].links[LINK] = "answer-keys/week1.md"
+    with pytest.raises(AccessDenied):
+        reader(setup, allow_confidential=True).read(setup[1], LINK)
+
+
+def test_a_listing_that_hides_the_link_is_still_caught_by_the_response_check(setup):
+    setup[2].links[LINK] = "answer-keys/week1.md"
+    setup[2].listing_hides_links = True
+    with pytest.raises(AccessDenied):  # the response carries the target's path, not the requested one
+        reader(setup, allow_confidential=True).read(setup[1], LINK)
+
+
+def test_symlink_entries_are_not_listed(setup):
+    assert "knowledge/link.md" not in reader(setup, allow_confidential=True).list(setup[1], "knowledge")
+
+
+def test_missing_and_directory_paths_are_refused(setup):
+    with pytest.raises(AccessDenied):
+        reader(setup).read(setup[1], "knowledge/pr-case-studies/missing.md")
+    with pytest.raises(AccessDenied):
+        reader(setup).read(setup[1], "knowledge/pr-case-studies")
