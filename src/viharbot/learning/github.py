@@ -37,6 +37,10 @@ class SourceReader:
         self._client = client
         self._repo = repository
 
+    @property
+    def repository(self) -> str:
+        return self._repo
+
     def merged_pull_requests(self, limit: int = 30) -> list[dict[str, Any]]:
         """Recently closed pull requests that were merged, newest first."""
         rows = self._client.request(

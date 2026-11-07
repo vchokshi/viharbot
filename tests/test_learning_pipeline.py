@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from viharbot.learning import ingest
+from viharbot.learning.assignment import AssignmentStore
 from viharbot.learning.extract import NOT_STATED, extract, render_markdown
 from viharbot.learning.github import InstructorProposer, RepositoryNotAllowed, SourceReader
 from viharbot.learning.models import IngestState, Verification
@@ -88,6 +89,17 @@ def fake():
     return FakeGitHub()
 
 
+FOUNDER = "vchokshi"
+
+
+@pytest.fixture
+def asg(tmp_path):
+    """An assignment store with PR 7 assigned by the founder."""
+    store = AssignmentStore(tmp_path / "assignments", frozenset({FOUNDER}))
+    store.assign(FOUNDER, "agent identity", SRC, (7,))
+    return store
+
+
 def reader(fake):
     return SourceReader(GitHubClient("tok", fake), SRC)
 
@@ -150,12 +162,12 @@ def test_rendered_markdown_has_front_matter(fake):
         assert key in md
 
 
-def test_reprocessing_the_same_revision_creates_nothing_twice(fake, tmp_path):
+def test_reprocessing_the_same_revision_creates_nothing_twice(fake, tmp_path, asg):
     store = IngestionStore(tmp_path)
-    first = ingest.process(7, reader(fake), store, proposer(fake))
+    first = ingest.process(7, reader(fake), store, asg, proposer(fake))
     assert first.state is IngestState.PROPOSED and first.proposal_url.endswith("/pull/1")
     writes = [c for c in fake.calls if c[0] in {"PUT", "POST"}]
-    again = ingest.process(7, reader(fake), store, proposer(fake))
+    again = ingest.process(7, reader(fake), store, asg, proposer(fake))
     assert again.state is IngestState.PROPOSED and again.proposal_url == first.proposal_url
     assert [c for c in fake.calls if c[0] in {"PUT", "POST"}] == writes
     assert len(store.list()) == 1
@@ -173,36 +185,36 @@ def test_leftover_branch_from_an_earlier_attempt_is_tolerated(fake):
     assert not [c for c in fake.calls if c[0] == "PUT"]  # file already on the branch
 
 
-def test_failed_event_is_recorded_without_secrets_and_retried(fake, tmp_path):
+def test_failed_event_is_recorded_without_secrets_and_retried(fake, tmp_path, asg):
     store = IngestionStore(tmp_path)
     fake.fail_next = f"/repos/{INS}/pulls?state=open"
-    failed = ingest.process(7, reader(fake), store, proposer(fake))
+    failed = ingest.process(7, reader(fake), store, asg, proposer(fake))
     assert failed.state is IngestState.FAILED and failed.error == "GitHubError"
     assert "secret-token" not in (tmp_path / f"{failed.event_key}.json").read_text()
-    retried = ingest.process(7, reader(fake), store, proposer(fake))
+    retried = ingest.process(7, reader(fake), store, asg, proposer(fake))
     assert retried.state is IngestState.PROPOSED and retried.attempts == 2
 
 
-def test_attempts_are_capped(fake, tmp_path):
+def test_attempts_are_capped(fake, tmp_path, asg):
     store = IngestionStore(tmp_path)
     event = store.record(SRC, 7, SHA)
     event.state, event.attempts = IngestState.FAILED, ingest.MAX_ATTEMPTS
     store.save(event)
-    assert ingest.process(7, reader(fake), store, proposer(fake)).state is IngestState.FAILED
+    assert ingest.process(7, reader(fake), store, asg, proposer(fake)).state is IngestState.FAILED
     assert not [c for c in fake.calls if c[0] in {"PUT", "POST"}]
 
 
-def test_dry_run_extracts_and_never_writes(fake, tmp_path):
-    event = ingest.process(7, reader(fake), IngestionStore(tmp_path), None)
+def test_dry_run_extracts_and_never_writes(fake, tmp_path, asg):
+    event = ingest.process(7, reader(fake), IngestionStore(tmp_path), asg, None)
     assert event.state is IngestState.EXTRACTED
     assert all(c[0] == "GET" for c in fake.calls)
 
 
-def test_reconcile_processes_only_merged_pull_requests(fake, tmp_path):
+def test_reconcile_processes_only_merged_pull_requests(fake, tmp_path, asg):
     store = IngestionStore(tmp_path)
-    results = ingest.reconcile(reader(fake), store, proposer(fake))
+    results = ingest.reconcile(reader(fake), store, asg, proposer(fake))
     assert [e.pull_request for e in results] == [7]
-    assert ingest.reconcile(reader(fake), store, proposer(fake)) == []  # already proposed
+    assert ingest.reconcile(reader(fake), store, asg, proposer(fake)) == []  # already proposed
 
 
 def test_each_class_refuses_the_other_repository(fake):
@@ -233,13 +245,13 @@ def test_webhook_signature_verification(secret, header, ok):
     assert ingest.verify_signature(secret, b"{}", header) is ok
 
 
-def test_pipeline_makes_no_network_or_model_call(monkeypatch, fake, tmp_path):
+def test_pipeline_makes_no_network_or_model_call(monkeypatch, fake, tmp_path, asg):
     def blocked(*a, **k):
         raise AssertionError("network access attempted")
 
     monkeypatch.setattr(socket, "socket", blocked)
     monkeypatch.setattr(socket, "getaddrinfo", blocked)
-    assert ingest.process(7, reader(fake), IngestionStore(tmp_path), proposer(fake)).state is IngestState.PROPOSED
+    assert ingest.process(7, reader(fake), IngestionStore(tmp_path), asg, proposer(fake)).state is IngestState.PROPOSED
 
 
 def test_learning_package_is_not_imported_by_the_web_app_or_bindings():
