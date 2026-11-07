@@ -12,7 +12,7 @@ import re
 from datetime import date
 
 from ..identity_registry import default_registry
-from .models import Claim, LearningArtifact, PRSnapshot, Verification
+from .models import Claim, LearningArtifact, PRSnapshot, SageEvidence, Verification
 
 NOT_STATED = "Not stated in the evidence."
 AREAS: tuple[tuple[str, str], ...] = (
@@ -124,6 +124,7 @@ def extract(snapshot: PRSnapshot, today: date | None = None) -> LearningArtifact
         curriculum_placement=f"Track 8: ViharBot Engineering History (candidate; {topics[0]})",
         claims=claims, evidence_complete=complete,
         discussion_excerpts=tuple(_quote(d, 400) for d in snapshot.discussion[:5]),
+        sage_review=snapshot.sage_review,
     )
 
 
@@ -151,5 +152,29 @@ def render_markdown(a: LearningArtifact) -> str:
         lines += ["## Discussion excerpts (untrusted)", ""]
         for d in a.discussion_excerpts:
             lines += ["```text", d, "```", ""]
+    if a.sage_review is not None:
+        lines += _render_sage(a.sage_review)
     lines += ["## Source references", *(f"- {r}" for r in a.source_references), ""]
     return "\n".join(lines)
+
+
+def _render_sage(r: SageEvidence) -> list[str]:
+    """Sage's review as labelled, quoted data. It is an AI opinion; nothing here says it was fixed."""
+    current = {True: "yes", False: "NO: the pull request changed after this review", None: "unknown"}
+    lines = [
+        "## Sage review evidence (advisory AI opinion, untrusted)", "",
+        f"*Reviewed commit: `{r.reviewed_sha[:12]}`. Matches the pull request's final head: "
+        f"{current[r.reviewed_head_current]}. Completeness: {r.completeness}. Recommendation: "
+        f"{r.recommendation}. Source: {r.comment_url or 'comment URL not retrieved'}.*", "",
+        "Findings are Sage's own labels and were not independently verified by Archie. Whether each "
+        "was later fixed is not determined here.", "",
+    ]
+    for f in r.findings:
+        where = f" at {f.location}" if f.location else ""
+        lines += [f"### {f.severity.upper()}: {f.category}{where}", f"*Basis: {f.basis}.*", "",
+                  "```text", f.description.replace("```", "'''"), "```", ""]
+    if not r.findings:
+        lines += ["*No findings were recorded.*", ""]
+    if r.findings_omitted:
+        lines += [f"*{r.findings_omitted} further finding(s) omitted by the size limit.*", ""]
+    return lines

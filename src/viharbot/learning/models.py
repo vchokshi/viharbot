@@ -20,6 +20,30 @@ class ChangedPath(BaseModel):
     deletions: int = 0
 
 
+class SageFinding(BaseModel):
+    """One finding from Sage's advisory comment. An AI opinion, not a verified fact."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    severity: str  # critical | high | medium | low | info, as Sage labelled it
+    category: str
+    basis: str  # e.g. "verified observation" or "reasoned interpretation"
+    location: str | None = None  # "path:line" as Sage cited it; not re-verified here
+    description: str
+
+
+class SageEvidence(BaseModel):
+    """What Sage said about a pull request, with where it came from. Untrusted data."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    reviewed_sha: Sha
+    reviewed_head_current: bool | None  # None when the PR head SHA was not retrieved
+    completeness: str  # complete | incomplete | failed | skipped | stale
+    recommendation: str
+    findings: tuple[SageFinding, ...] = ()
+    comment_url: str | None = None
+    findings_omitted: int = 0  # > 0 means more findings existed than were kept
+
+
 class PRSnapshot(BaseModel):
     """What was retrieved. Patches are deliberately not kept; only paths and counts are."""
 
@@ -36,6 +60,8 @@ class PRSnapshot(BaseModel):
     discussion: tuple[str, ...] = ()  # review and issue comments, untrusted
     software_version: str = "unknown"
     files_omitted: int = 0  # > 0 means the evidence is incomplete
+    head_sha: Sha | None = None  # the PR's last commit, used to tell whether a Sage review is current
+    sage_review: SageEvidence | None = None  # from a trusted Sage author only; see sage_evidence.py
 
 
 class Verification(StrEnum):
@@ -70,6 +96,7 @@ class LearningArtifact(BaseModel):
     claims: tuple[Claim, ...]
     evidence_complete: bool
     discussion_excerpts: tuple[str, ...] = ()
+    sage_review: SageEvidence | None = None
 
 
 class IngestState(StrEnum):
@@ -88,6 +115,7 @@ class IngestionEvent(BaseModel):
     merge_commit_sha: Sha
     state: IngestState
     attempts: int = 0
+    assignment_id: str | None = None  # the founder assignment that authorised this work
     artifact_id: str | None = None
     proposal_url: str | None = None
     error: str | None = None  # an exception class name only, never a message or response body
