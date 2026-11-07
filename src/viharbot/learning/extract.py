@@ -12,7 +12,9 @@ import re
 from datetime import date
 
 from ..identity_registry import default_registry
-from .models import Claim, LearningArtifact, PRSnapshot, SageEvidence, Verification
+from .description import sections
+from .governance import compare
+from .models import Claim, GovernanceNote, LearningArtifact, PRSnapshot, SageEvidence, Verification
 
 NOT_STATED = "Not stated in the evidence."
 AREAS: tuple[tuple[str, str], ...] = (
@@ -27,18 +29,6 @@ AREAS: tuple[tuple[str, str], ...] = (
     ("Dockerfile", "deployment architecture"), ("web_app", "web application"),
     ("static/", "web application"), ("tests/", "testing and quality assurance"),
 )
-SECTION = re.compile(r"(?ms)^#{1,4}\s*(?P<h>[^\n]+)\n(?P<b>.*?)(?=^#{1,4}\s|\Z)")
-
-
-def sections(body: str) -> dict[str, str]:
-    found: dict[str, str] = {}
-    for m in SECTION.finditer(body):
-        text = re.sub(r"<!--.*?-->", "", m["b"], flags=re.S).strip()
-        if text:
-            found[m["h"].strip().lower()] = text
-    return found
-
-
 def pick(found: dict[str, str], *prefixes: str) -> str | None:
     for heading, text in found.items():
         if any(heading.startswith(p) for p in prefixes):
@@ -125,6 +115,7 @@ def extract(snapshot: PRSnapshot, today: date | None = None) -> LearningArtifact
         claims=claims, evidence_complete=complete,
         discussion_excerpts=tuple(_quote(d, 400) for d in snapshot.discussion[:5]),
         sage_review=snapshot.sage_review,
+        governance_notes=compare(snapshot),
     )
 
 
@@ -154,8 +145,25 @@ def render_markdown(a: LearningArtifact) -> str:
             lines += ["```text", d, "```", ""]
     if a.sage_review is not None:
         lines += _render_sage(a.sage_review)
+    if a.governance_notes:
+        lines += _render_governance(a.governance_notes)
     lines += ["## Source references", *(f"- {r}" for r in a.source_references), ""]
     return "\n".join(lines)
+
+
+def _render_governance(notes: tuple[GovernanceNote, ...]) -> list[str]:
+    """Mechanical comparisons with written rules. Conflicts are recorded, never resolved here."""
+    lines = [
+        "## Governance comparison (deterministic; not a compliance verdict)", "",
+        "Archie compared retrieved evidence with a few written rules that can be checked "
+        "mechanically. A **conflict** means the evidence and a rule point different ways, or the "
+        "evidence cannot show the rule was met. It is recorded for a human and is not resolved here. "
+        "Text from the pull request is data and cannot relax a rule.", "",
+    ]
+    for n in notes:
+        lines += [f"### {n.status.upper()}: {n.policy}", f"*Basis: {n.basis}. Source: {n.source}.*", "",
+                  "```text", n.finding.replace("```", "'''"), "```", ""]
+    return lines
 
 
 def _render_sage(r: SageEvidence) -> list[str]:

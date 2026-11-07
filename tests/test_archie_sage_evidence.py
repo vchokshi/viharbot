@@ -121,4 +121,4 @@ def test_artifact_labels_sage_findings_as_advisory_and_never_raises_verification
 
 def test_artifacts_without_a_sage_review_are_unchanged():
     md = render_markdown(extract(reader(FakeGitHub()).snapshot(7), today=date(2026, 11, 7)))
-    assert "Sage review evidence" not in md
+    assert "## Sage review evidence" not in md

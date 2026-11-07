@@ -44,6 +44,21 @@ class SageEvidence(BaseModel):
     findings_omitted: int = 0  # > 0 means more findings existed than were kept
 
 
+class GovernanceNote(BaseModel):
+    """One deterministic comparison of a pull request against a written rule.
+
+    A `conflict` means the retrieved evidence and a rule point different ways, or the evidence cannot
+    show the rule was met. Archie records it and never resolves it: only a human can.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    status: str  # "observation" | "conflict"
+    finding: str
+    basis: str  # "verified_in_diff" | "author_statement" | "sage_advisory" | "not_available"
+    policy: str  # the written rule compared against, by document and section
+    source: str  # where the evidence came from
+
+
 class PRSnapshot(BaseModel):
     """What was retrieved. Patches are deliberately not kept; only paths and counts are."""
 
@@ -97,6 +112,7 @@ class LearningArtifact(BaseModel):
     evidence_complete: bool
     discussion_excerpts: tuple[str, ...] = ()
     sage_review: SageEvidence | None = None
+    governance_notes: tuple[GovernanceNote, ...] = ()
 
 
 class IngestState(StrEnum):

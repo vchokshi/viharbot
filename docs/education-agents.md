@@ -52,7 +52,7 @@ Archie never starts curriculum work on its own. `src/viharbot/learning/assignmen
 - **Logs and reprs carry no content or paths:** only a path hash, sensitivity, duration and exception class.
 - **Not yet done:** wiring the reader into evidence ingestion (#142) or any model prompt, and enabling confidential access in a runtime. No model is called here.
 
-## Sage review evidence (epic #139, issue #142, slice 1 of 3; implemented)
+## Sage review evidence (epic #139, issue #142; implemented)
 
 `src/viharbot/learning/sage_evidence.py` reads Sage's advisory review of the source pull request and records it in the learning artifact. Deterministic: no model call, no extra GitHub call (it uses the comments `SourceReader` already fetches, plus the pull request's head SHA).
 
@@ -60,9 +60,24 @@ Archie never starts curriculum work on its own. `src/viharbot/learning/assignmen
 - **What is kept:** reviewed commit, completeness, recommendation, comment URL and up to 40 findings (severity, category, basis, cited location, description capped at 600 characters), with the formatter's escaping undone so the text is readable data.
 - **Currency:** `reviewed_head_current` says whether the review covered the pull request's final head; the artifact says so in words when it did not. The newest well-formed Sage comment wins.
 - **Advisory only:** the artifact section is labelled "advisory AI opinion, untrusted", quotes each finding in a fenced block, says that whether a finding was fixed is not determined, and never changes `verification` (only a human merge of the instructor PR does that). The Sage comment is no longer quoted again as generic discussion.
-- **Not yet done in #142:** Kepler handoff artifacts (their format and location are #130, unbuilt), the comparison with governing documents and instructor guidance (slice 3, which needs the #141 reader and a decision on conflict recording), and any model-assisted synthesis through LiteLLM. Nothing here reads the instructor repository.
+## Governance comparison (epic #139, issue #142; implemented)
 
-Still proposed for the rest of epic #139: the remaining #142 slices, curriculum authoring and quality checks (#143), the Ada handoff and publication gate (#144, #151), audit trail and end-to-end tests (#145), and student PR feedback (#154).
+`src/viharbot/learning/governance.py` compares each pull request with a few written rules that can be checked mechanically, and adds the result to the artifact as "Governance comparison (deterministic; not a compliance verdict)". No model call, no network call.
+
+- **Founder-review paths.** If the pull request changed a path `AGENTS.md` lists for founder-reviewed merge (files match exactly, directories by prefix), the artifact records a **conflict**: the retrieved evidence does not show whether the founder reviewed the merge. A test fails if `FOUNDER_REVIEW_PATHS` stops matching `AGENTS.md`.
+- **Rationale sections.** The description is checked for a heading for each topic in the change-rationale policy and the pull request template (why, why this way, alternatives, trade-offs, validation, deployment and rollback). A missing section is an observation; no rationale at all is a conflict. Only headings are checked, never quality, and a test keeps the patterns aligned with the template.
+- **Sage advice.** A Sage review that recommended `REQUEST_CHANGES`, reported HIGH or CRITICAL findings, or covered a commit other than the final head is a conflict, because the evidence does not show the findings were addressed. No trusted Sage review is recorded as missing evidence, not as a conflict.
+- **Conflicts are recorded, never resolved.** Each note carries the rule it was compared against and where the evidence came from. Pull request text is data and cannot relax a rule (tested).
+
+**Limitation:** this is a mechanical check of a few rules, not a reading of the governance documents. It cannot say whether a change fits the constitution or architecture, and the rule list is a copy kept honest by tests, not read from `AGENTS.md` at run time.
+
+### Not done in #142
+
+- **Kepler handoff artifacts.** Their format and location are #130, which is not built, and Kepler does not run yet. Archie cannot ingest a format that does not exist. When #130 defines it, ingestion belongs in `SourceReader`'s sibling with the same rules: read-only, one configured repository, untrusted data, trusted author.
+- **Comparison with restricted instructor notes.** This needs `instructor_access.py` (#141) wired into ingestion with an active assignment, and enabling confidential access in a runtime is a founder decision (the reader's own docs list it as not done).
+- **Model-assisted synthesis and comparison** through LiteLLM, which would also need a model alias and prompt-injection tests.
+
+Still proposed for the rest of epic #139: the unbuilt parts of #142 above, curriculum authoring and quality checks (#143), the Ada handoff and publication gate (#144, #151), audit trail and end-to-end tests (#145), and student PR feedback (#154).
 
 ### Not yet done in Phase 2
 
