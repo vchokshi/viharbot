@@ -6,7 +6,9 @@ loopback). It is deliberately standalone: it does not import another agent's cod
 stays independently deployable.
 
 Input is a strict schema with two actions: `poll` (what the schedule sends) and `check` for one
-pull request number ("check now"). Anything else is refused with 422 before any work. An invalid
+pull request number ("check now"), each with an optional `wait` flag (`false` returns 202 at once and
+polls in the background, which is how the schedule calls it). Anything else is refused with 422
+before any work. An invalid
 configuration stops the service from starting, so a misconfigured container is never "healthy".
 The response is counts and codes only: never an email body, a token or contributor text.
 """
@@ -23,7 +25,15 @@ from typing import Any, Literal
 
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, ValidationError, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictBool,
+    StrictInt,
+    ValidationError,
+    model_validator,
+)
 
 from ..body_limit import BodySizeLimitMiddleware
 from .config import StewardConfig, from_env
@@ -39,6 +49,10 @@ class Invocation(BaseModel):
 
     action: Literal["poll", "check"] = "poll"
     pr: StrictInt | None = Field(default=None, ge=1, lt=10**9)
+    # True (the default): run the poll and return its counts. False: start it in the background and
+    # return 202 at once. The schedule uses False; the outcome then shows in the heartbeat metrics,
+    # the audit log and the alert email, not in the response.
+    wait: StrictBool = True
 
     @model_validator(mode="after")
     def _consistent(self) -> Invocation:
@@ -124,9 +138,23 @@ def create_app(config: StewardConfig, runner: Runner | None = None,
     app.state.config = config
     running = threading.Lock()  # one poll at a time per container; the database guards across them
 
+    def run_guarded(invocation: Invocation, request_id: str | None) -> PollResult | None:
+        """Run the poll. A crash is logged and reported to the alarm, never raised or leaked."""
+        try:
+            return runner(invocation, request_id)
+        except Exception:  # never let a surprise leak a message, a token or a trace
+            logger.error(json.dumps({"agent": "kepler", "event": "invocation_crashed",
+                                     "decision": "fail", "error_code": "internal",
+                                     "model_alias": None}, sort_keys=True))
+            if on_internal_failure:
+                on_internal_failure()
+            return None
+
     @app.get("/ping", include_in_schema=False)
     def ping() -> dict[str, str]:
-        return {"status": "Healthy"}
+        # AgentCore keeps a session alive past its idle timeout only while it reports HealthyBusy,
+        # so a poll that is running (in the foreground or the background) must say so.
+        return {"status": "HealthyBusy" if running.locked() else "Healthy"}
 
     @app.post("/invocations", include_in_schema=False)
     def invoke(envelope: dict[str, Any], x_request_id: str | None = Header(default=None)):
@@ -145,17 +173,30 @@ def create_app(config: StewardConfig, runner: Runner | None = None,
 
         if not running.acquire(blocking=False):
             return JSONResponse({"status": "busy"}, status_code=409)
+
+        if not invocation.wait:
+            # Return at once and keep working: the scheduler gives up on a slow call (about 30 s was
+            # observed, not documented) while a poll can take minutes. The lock stays held, so
+            # /ping reports HealthyBusy and a second poll is refused until this one really ends.
+            def background() -> None:
+                try:
+                    run_guarded(invocation, request_id)
+                finally:
+                    running.release()
+
+            try:
+                threading.Thread(target=background, name="kepler-poll", daemon=True).start()
+            except Exception:
+                running.release()  # the poll never started, so nothing else will release the lock
+                return JSONResponse({"status": "failed", "error_code": "internal"}, status_code=500)
+            return JSONResponse({"status": "accepted"}, status_code=202)
+
         try:
-            result = runner(invocation, request_id)
-        except Exception:  # never let a surprise leak a message, a token or a trace to the caller
-            logger.error(json.dumps({"agent": "kepler", "event": "invocation_crashed",
-                                     "decision": "fail", "error_code": "internal",
-                                     "model_alias": None}, sort_keys=True))
-            if on_internal_failure:
-                on_internal_failure()
-            return JSONResponse({"status": "failed", "error_code": "internal"}, status_code=500)
+            result = run_guarded(invocation, request_id)
         finally:
             running.release()
+        if result is None:
+            return JSONResponse({"status": "failed", "error_code": "internal"}, status_code=500)
         return JSONResponse(result.public(), status_code=502 if result.status == "failed" else 200)
 
     return app

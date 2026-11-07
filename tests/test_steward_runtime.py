@@ -161,6 +161,89 @@ def test_only_one_poll_runs_at_a_time_in_a_container():
     assert TestClient(app).post("/invocations", json={}).status_code == 200  # free again
 
 
+def wait_until_ping(c, status, seconds=5.0):
+    import time
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        if c.get("/ping").json()["status"] == status:
+            return True
+        time.sleep(0.01)
+    return False
+
+
+def test_a_no_wait_invocation_returns_202_at_once_and_keeps_polling_in_the_background():
+    started, release, done = threading.Event(), threading.Event(), []
+
+    def slow(invocation, request_id):
+        started.set()
+        release.wait(5)
+        done.append((invocation.wait, request_id))
+        return PollResult(status="ok")
+
+    c = TestClient(create_app(good_config(), slow))
+    response = c.post("/invocations", json={"input": {"action": "poll", "wait": False}, "request_id": "sched-9"})
+    assert response.status_code == 202 and response.json() == {"status": "accepted"}
+    assert started.wait(5) and done == []  # the poll is still running after the response
+    assert c.get("/ping").json() == {"status": "HealthyBusy"}  # keeps the session alive
+    assert c.post("/invocations", json={}).status_code == 409  # a second poll is refused, not queued
+    release.set()
+    assert wait_until_ping(c, "Healthy") and done == [(False, "sched-9")]
+    assert c.post("/invocations", json={}).status_code == 200  # free again
+
+
+def test_ping_reports_busy_during_a_foreground_poll_too():
+    started, release, seen = threading.Event(), threading.Event(), []
+
+    def slow(invocation, request_id):
+        started.set()
+        release.wait(5)
+        return PollResult(status="ok")
+
+    app = create_app(good_config(), slow)
+    worker = threading.Thread(target=lambda: seen.append(TestClient(app).post("/invocations", json={}).status_code))
+    worker.start()
+    assert started.wait(5)
+    assert TestClient(app).get("/ping").json() == {"status": "HealthyBusy"}
+    release.set()
+    worker.join(5)
+    assert seen == [200] and TestClient(app).get("/ping").json() == {"status": "Healthy"}
+
+
+def test_a_background_crash_tells_the_alarm_leaks_nothing_and_frees_the_lock(caplog):
+    seen = []
+    c, _ = client(Recorder(error=RuntimeError("boom ghs_STOLENTOKEN")), on_failure=lambda: seen.append(1))
+    caplog.set_level("DEBUG", logger="kepler")
+    response = c.post("/invocations", json={"wait": False})
+    assert response.status_code == 202
+    assert wait_until_ping(c, "Healthy") and seen == [1]
+    assert "ghs_" not in caplog.text and "boom" not in caplog.text
+    assert c.post("/invocations", json={}).status_code == 500  # the lock was released, and it crashes again
+
+
+def test_a_background_poll_that_cannot_start_frees_the_lock(monkeypatch):
+    c, recorder = client()
+
+    real_start = threading.Thread.start
+
+    def cannot_start(self):
+        if self.name == "kepler-poll":  # only the poll worker; the test client needs its own threads
+            raise RuntimeError("can't start new thread")
+        return real_start(self)
+
+    monkeypatch.setattr(threading.Thread, "start", cannot_start)
+    response = c.post("/invocations", json={"wait": False})
+    assert response.status_code == 500 and response.json() == {"status": "failed", "error_code": "internal"}
+    monkeypatch.undo()
+    assert c.get("/ping").json() == {"status": "Healthy"} and recorder.calls == []
+    assert c.post("/invocations", json={}).status_code == 200
+
+
+@pytest.mark.parametrize("body", [{"wait": "false"}, {"wait": 0}, {"wait": None}, {"wait": "no"}])
+def test_wait_must_be_a_real_boolean(body):
+    c, recorder = client()
+    assert c.post("/invocations", json=body).status_code == 422 and recorder.calls == []
+
+
 def test_there_are_no_docs_or_schema_routes():
     c, _ = client()
     for path in ("/docs", "/redoc", "/openapi.json"):
