@@ -125,15 +125,13 @@ def test_model_preference_matches_identity_and_carries_no_alias():
         assert "model_alias" not in type(persona.model_preference).model_fields
 
 
-def test_avatars_exist_and_are_served_by_the_web_app():
-    images = ROOT / "images"
-    if not images.exists():
-        pytest.skip("images/ is not in this environment")
+def test_avatars_are_on_the_web_app_image_allowlist():
+    # The image files live in the public image store, not in git (docs/image-storage.md), so this
+    # checks the allowlist that the upload script and the /images route both use.
     from viharbot.web_app import TEAM_IMAGES
 
     for persona in default_persona_registry().list():
         avatar = persona.visual_identity.avatar_file
-        assert (images / avatar).is_file(), avatar
         assert avatar in TEAM_IMAGES, avatar
 
 

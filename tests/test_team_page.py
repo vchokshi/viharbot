@@ -151,23 +151,25 @@ def test_the_page_script_registers_the_router_and_uses_no_markup_strings():
     assert "innerHTML" not in script
 
 
-# images: every one the page requests is allowed, exists, and is served; nothing else is
+# images: every one the page requests is allowed and served; nothing else is. The files live in
+# the public image store, not in git, so the route tests use stand-in files.
 def requested_images() -> list[str]:
     return sorted({urllib.parse.unquote(m) for m in re.findall(r'src="/images/([^"]+)"', PAGE)})
 
 
-def test_every_requested_image_is_allowlisted_and_present():
+def test_every_requested_image_is_allowlisted():
     images = requested_images()
     assert "AI Robot Team Portrait Grid.png" in images and len(images) >= 9
     for name in images:
         assert name in web_app.TEAM_IMAGES, name
-        assert (ROOT / "images" / name).is_file(), name
 
 
 @pytest.fixture
-def client(monkeypatch):
+def client(monkeypatch, tmp_path):
+    for name in web_app.TEAM_IMAGES:
+        (tmp_path / name).write_bytes(b"stand-in")
     monkeypatch.setenv("WEB_AUTH_ENABLED", "false")
-    monkeypatch.setenv("WEB_IMAGES_DIR", str(ROOT / "images"))
+    monkeypatch.setenv("WEB_IMAGES_DIR", str(tmp_path))
     return TestClient(web_app.app)
 
 
