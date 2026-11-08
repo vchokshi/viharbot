@@ -244,6 +244,10 @@
         .brand-mark { width: 39px; height: 39px; }
         .brand-name { font-size: 17px; }
         .brand-note, .privacy-label { display: none; }
+        /* The header pills wrap under the brand instead of running off the right edge. */
+        .topbar { flex-wrap: wrap; gap: 8px; }
+        .top-right { flex-wrap: wrap; gap: 6px; min-width: 0; max-width: 100%; }
+        .team-link, .team-status { white-space: nowrap; }
         .team-status { padding: 7px 9px; font-size: 11px; }
         .team-link { padding: 8px 10px; font-size: 12px; }
         .layout { display: flex; min-height: calc(100dvh - 72px); flex-direction: column; gap: 10px; margin-top: 13px; }
@@ -260,6 +264,9 @@
         .agent-more { display: none; }
         .agent-photo, .agent-initial { flex-basis: 34px; width: 34px; height: 34px; border-radius: 11px; }
         .agent-desc { display: block; }
+        /* Show the whole status label: it moves onto its own line rather than being cut off. */
+        .agent-name { display: block; overflow: visible; white-space: normal; text-overflow: clip; }
+        .agent-name small { display: inline-block; margin-top: 3px; white-space: normal; font-size: 9px; }
         .sidebar-foot { display: block; }
         .team-page { margin-top: 13px; padding: 16px; border-radius: 19px; }
         .team-page-head { align-items: flex-start; flex-direction: column; gap: 15px; margin-bottom: 18px; }
