@@ -30,6 +30,12 @@ services:
         value: "true"
         scope: RUN_TIME
         type: GENERAL
+      # Public image store (DigitalOcean Spaces CDN). Not a secret. The web image no longer bundles
+      # images, so this must be set in the same deploy as the image change (docs/image-storage.md).
+      - key: WEB_IMAGES_BASE_URL
+        value: "https://viharbot.sfo3.cdn.digitaloceanspaces.com/images"
+        scope: RUN_TIME
+        type: GENERAL
       - key: WEB_USERNAME
         value: ""
         scope: RUN_TIME

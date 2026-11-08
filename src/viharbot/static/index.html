@@ -67,15 +67,29 @@
       .team-group-title { display: flex; align-items: center; justify-content: space-between; margin: 0 2px 7px; color: #8b8b82; font-size: 9px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
       .team-group-title em { color: #a19f96; font-style: normal; letter-spacing: .04em; }
       .agent-list { display: grid; gap: 6px; }
-      .agent { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 7px; border: 1px solid #f0eee8; border-radius: 14px; background: linear-gradient(120deg, rgba(255,255,255,.98), rgba(250,248,244,.92)); transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease; }
+      .agent { min-width: 0; padding: 7px; border: 1px solid #f0eee8; border-radius: 14px; background: linear-gradient(120deg, rgba(255,255,255,.98), rgba(250,248,244,.92)); transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease; }
+      .agent-row { display: flex; align-items: center; gap: 9px; min-width: 0; }
       .agent:hover { transform: translateX(2px); border-color: #e8d9c9; box-shadow: 0 6px 16px rgba(61, 53, 40, .06); }
       .agent-photo, .agent-initial { display: grid; flex: 0 0 42px; place-items: center; width: 42px; height: 42px; overflow: hidden; border: 1px solid rgba(255,255,255,.9); border-radius: 13px; background: linear-gradient(145deg, #fff0e6, #e8edff 54%, #e7f1e6); box-shadow: 0 3px 8px rgba(61, 53, 40, .1); }
       .agent-photo { object-fit: cover; }
       .agent-initial { color: #5d6474; font-size: 14px; font-weight: 800; }
       .agent-copy { min-width: 0; }
+      .agent-name { color: inherit; text-decoration: none; }
+      .agent-name:hover { text-decoration: underline; }
+      .agent-name:focus-visible, .agent-more summary:focus-visible, .agent-profile-link:focus-visible, .profile-more summary:focus-visible { outline: 2px solid #8a5a3c; outline-offset: 2px; border-radius: 6px; }
       .agent-name { display: flex; align-items: center; gap: 5px; overflow: hidden; font-size: 11px; font-weight: 750; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
       .agent-name small { flex: 0 0 auto; padding: 2px 5px; border-radius: 99px; color: #617451; background: #edf3e8; font-size: 8px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
       .agent-desc { display: block; overflow: hidden; margin-top: 3px; color: #888980; font-size: 9px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+      .agent-name small.status-support { color: #816a4b; background: #f8f0e4; }
+      .agent-name small.status-planned { color: #5d6474; background: #eef0f4; }
+      .agent-name small.status-development { color: #7661a5; background: #f1ebfc; }
+      .agent-more { margin-top: 6px; font-size: 11px; line-height: 1.55; color: #6f7069; }
+      .agent-more summary { cursor: pointer; color: #8a5a3c; font-weight: 700; font-size: 10px; }
+      .agent-more p { margin: 6px 0 0; }
+      .agent-more .agent-role { color: #a06d5b; font-weight: 750; }
+      .agent-more .agent-note { padding: 6px 8px; border-radius: 9px; background: #faf6ee; }
+      .agent-profile-link { display: inline-block; margin-top: 7px; color: #8a5a3c; font-weight: 750; text-decoration: none; }
+      .agent-profile-link:hover { text-decoration: underline; }
       .agent.proposed { border-style: dashed; background: linear-gradient(120deg, #fffdf9, #f7f5ff); }
       .agent.proposed .agent-initial { border-color: #e8ddfc; color: #7661a5; background: linear-gradient(145deg, #f5edff, #eaf1ff); }
       .agent.proposed .agent-name small { color: #7661a5; background: #f1ebfc; }
@@ -106,6 +120,19 @@
       .profile-status.proposed { color: #7661a5; background: #f1ebfc; }
       .profile-title { margin: 5px 0 8px; color: #a06d5b; font-size: 14px; font-weight: 750; line-height: 1.35; }
       .profile-bio { margin: 0; color: #6f7069; font-size: 15px; line-height: 1.6; }
+      .profile-card:target, .profile-card:focus { border-color: #d3a98f; box-shadow: 0 0 0 3px rgba(196,119,94,.2); outline: none; }
+      .profile-card { scroll-margin-top: 16px; }
+      .profile-status.planned { color: #5d6474; background: #eef0f4; }
+      .profile-status.development { color: #7661a5; background: #f1ebfc; }
+      .profile-more { margin-top: 10px; font-size: 14px; color: #6f7069; }
+      .profile-more summary { cursor: pointer; color: #8a5a3c; font-weight: 750; }
+      .profile-more p { margin: 8px 0 0; line-height: 1.55; }
+      .profile-skills { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+      .profile-skills li { padding: 3px 9px; border: 1px solid #ece3d6; border-radius: 99px; background: #fffaf2; font-size: 12px; }
+      .profile-note { padding: 8px 10px; border-radius: 10px; background: #faf6ee; }
+      .team-requirements { margin: 18px 2px 0; color: #74756d; font-size: 14px; line-height: 1.6; }
+      .team-art-historical { margin: 24px 0 0; }
+      .team-art-historical figcaption { margin-top: 8px; color: #87877e; font-size: 13px; }
       .profile-specialties { display: block; margin-top: 9px; color: #87877e; font-size: 13px; line-height: 1.5; }
       .learning-section { margin-top: 35px; padding: 22px; border: 1px solid #e8e2d8; border-radius: 20px; background: linear-gradient(115deg, #fff8ec, #f6f3ff); }
       .learning-section h2 { margin: 0 0 6px; font-family: Iowan Old Style, "Palatino Linotype", Georgia, serif; font-size: 32px; font-weight: 400; letter-spacing: -.03em; }
@@ -217,6 +244,10 @@
         .brand-mark { width: 39px; height: 39px; }
         .brand-name { font-size: 17px; }
         .brand-note, .privacy-label { display: none; }
+        /* The header pills wrap under the brand instead of running off the right edge. */
+        .topbar { flex-wrap: wrap; gap: 8px; }
+        .top-right { flex-wrap: wrap; gap: 6px; min-width: 0; max-width: 100%; }
+        .team-link, .team-status { white-space: nowrap; }
         .team-status { padding: 7px 9px; font-size: 11px; }
         .team-link { padding: 8px 10px; font-size: 12px; }
         .layout { display: flex; min-height: calc(100dvh - 72px); flex-direction: column; gap: 10px; margin-top: 13px; }
@@ -228,9 +259,14 @@
         .team-group-title { margin-bottom: 5px; }
         .agent-list { display: flex; gap: 6px; overflow-x: auto; padding: 1px 1px 3px; scrollbar-width: none; }
         .agent-list::-webkit-scrollbar { display: none; }
-        .agent { flex: 0 0 145px; gap: 7px; padding: 6px; }
+        .agent { flex: 0 0 145px; padding: 6px; }
+        .agent-row { gap: 7px; }
+        .agent-more { display: none; }
         .agent-photo, .agent-initial { flex-basis: 34px; width: 34px; height: 34px; border-radius: 11px; }
         .agent-desc { display: block; }
+        /* Show the whole status label: it moves onto its own line rather than being cut off. */
+        .agent-name { display: block; overflow: visible; white-space: normal; text-overflow: clip; }
+        .agent-name small { display: inline-block; margin-top: 3px; white-space: normal; font-size: 9px; }
         .sidebar-foot { display: block; }
         .team-page { margin-top: 13px; padding: 16px; border-radius: 19px; }
         .team-page-head { align-items: flex-start; flex-direction: column; gap: 15px; margin-bottom: 18px; }
@@ -353,7 +389,7 @@
           <span class="privacy-label">Thoughtful answers, with room for uncertainty</span>
           <a class="team-link" id="wiki-link" href="#wiki" hidden><span aria-hidden="true">▤</span> Development Wiki</a>
           <a class="team-link" id="team-link" href="#team"><span aria-hidden="true">✳</span> Meet the team</a>
-          <span class="team-status"><i></i>6 live · 10 in the crew</span>
+          <span class="team-status"><i></i>6 live · 11 in the crew</span>
         </div>
       </header>
 
@@ -361,34 +397,10 @@
         <aside class="sidebar">
           <div class="eyebrow">A thinking companion</div>
           <h1>A little curiosity can go a long way.</h1>
-          <p class="intro">Ten distinct perspectives. Six already work together; Pixel joins when you ask for a slide deck, and Sage when the question has human stakes.</p>
-          <div class="team-heading"><strong>Meet your crew</strong><span>10 teammates</span></div>
-          <section class="team-group" aria-label="Agents active in the current chat pipeline">
-            <div class="team-group-title"><span>In the live chat</span><em>6 agents</em></div>
-            <div class="agent-list">
-              <div class="agent"><img class="agent-photo" src="/images/Charlie_Chatwin_headshot.png" alt="" /><span class="agent-copy"><span class="agent-name">Charlie Chatwin <small>Live · synthesis</small></span><span class="agent-desc">Strategic thinking &amp; orchestration</span></span></div>
-              <div class="agent"><img class="agent-photo" src="/images/Nova_headshot.png" alt="" /><span class="agent-copy"><span class="agent-name">Nova <small>Live · research</small></span><span class="agent-desc">Research &amp; knowledge</span></span></div>
-              <div class="agent"><img class="agent-photo" src="/images/Scout_headshot.png" alt="" /><span class="agent-copy"><span class="agent-name">Scout <small>Live · fact check &amp; sources</small></span><span class="agent-desc">Data exploration &amp; evidence analysis</span></span></div>
-              <div class="agent"><img class="agent-photo" src="/images/Cipher_headshot.png" alt="" /><span class="agent-copy"><span class="agent-name">Cipher <small>Live · security &amp; privacy</small></span><span class="agent-desc">Security &amp; risk analysis</span></span></div>
-              <div class="agent"><img class="agent-photo" src="/images/Pixel_headshot.png" alt="" /><span class="agent-copy"><span class="agent-name">Pixel <small>Live · slide decks</small></span><span class="agent-desc">Executive slide decks on request</span></span></div>
-              <div class="agent"><img class="agent-photo" src="/images/Sage_headshot.png" alt="" /><span class="agent-copy"><span class="agent-name">Sage <small>Live · perspective</small></span><span class="agent-desc">Perspective &amp; wisdom</span></span></div>
-            </div>
-          </section>
-          <section class="team-group" aria-label="Supporting team roles">
-            <div class="team-group-title"><span>Supporting the team</span><em>2 roles</em></div>
-            <div class="agent-list">
-              <div class="agent"><img class="agent-photo" src="/images/Atlas_headshot.png" alt="" /><span class="agent-copy"><span class="agent-name">Atlas <small>Planned</small></span><span class="agent-desc">Exploration &amp; logistics</span></span></div>
-              <div class="agent"><img class="agent-photo" src="/images/Orbit_headshot.png" alt="" /><span class="agent-copy"><span class="agent-name">Orbit <small>Platform support</small></span><span class="agent-desc">Automation &amp; operations</span></span></div>
-            </div>
-          </section>
-          <section class="team-group" aria-label="Proposed agent roles">
-            <div class="team-group-title"><span>New ideas for the crew</span><em>proposed</em></div>
-            <div class="agent-list">
-              <div class="agent proposed"><span class="agent-initial" aria-hidden="true">B</span><span class="agent-copy"><span class="agent-name">Beacon <small>Proposed</small></span><span class="agent-desc">Accessibility &amp; inclusion</span></span></div>
-              <div class="agent proposed"><span class="agent-initial" aria-hidden="true">E</span><span class="agent-copy"><span class="agent-name">Echo <small>Proposed</small></span><span class="agent-desc">Intent &amp; clarification</span></span></div>
-            </div>
-          </section>
-          <div class="sidebar-foot"><strong>Six live agents · one shared LiteLLM server</strong>Calls run in sequence. Pixel runs last, and only when you ask for a slide deck. Sage runs only when Charlie judges the question has human or organizational stakes. Atlas is planned and Orbit is a support role; none of them run in the live chat. Beacon and Echo are proposed roles.</div>
+          <p class="intro">Eleven established identities. Six already work together; Pixel joins when you ask for a slide deck, and Sage when the question has human stakes.</p>
+          <div class="team-heading"><strong>Meet your crew</strong><span>11 identities</span></div>
+          <!--TEAM_SIDEBAR-->
+          <div class="sidebar-foot"><strong>Six live agents · one shared LiteLLM server</strong>Calls run in sequence. Pixel runs last, and only when you ask for a slide deck. Sage runs only when Charlie judges the question has human or organizational stakes. Atlas, Orbit, Kepler, Archie and Ada are established identities that do not run in the live chat. Choose a name to open that profile.</div>
         </aside>
 
         <main class="chat-panel">
@@ -437,78 +449,23 @@
           <div>
             <div class="team-page-kicker">Curiosity, with a crew behind it</div>
             <h1>Meet the ViharBot <em>team.</em></h1>
-            <p class="team-page-intro">Eight distinct personalities bring research, practical thinking, creativity, and care to the work. Two proposed teammates round out the next chapter: accessibility and sharper questions.</p>
+            <p class="team-page-intro">Eleven established identities bring research, practical thinking, creativity, and care to the work. Each profile says plainly what the identity does today and what is still planned.</p>
           </div>
           <a class="back-chat" href="#home">Back to your question <span aria-hidden="true">↗</span></a>
         </div>
-        <img class="team-grid-art" src="/images/AI%20Robot%20Team%20Portrait%20Grid.png" alt="The eight ViharBot characters: Charlie Chatwin, Nova, Atlas, Pixel, Sage, Cipher, Scout, and Orbit, shown with their specialties." />
-
         <div class="team-section-head">
-          <h2>Ten perspectives. One curious crew.</h2>
-          <p>Six roles are active in the chat pipeline. Supporting and proposed roles are labeled.</p>
+          <h2>Eleven identities. One curious crew.</h2>
+          <p>Six roles run in the chat pipeline. Every other identity is labeled for what it is today: planned, in development, or platform support. A listed identity is not a runnable agent.</p>
         </div>
         <section class="profile-grid" aria-label="ViharBot agent profiles">
-          <article class="profile-card">
-            <img src="/images/Charlie_Chatwin_headshot.png" alt="Charlie Chatwin portrait" />
-            <div class="profile-info"><div class="profile-name-line"><h3>Charlie Chatwin</h3><span class="profile-status">Live · Synthesis</span></div><p class="profile-title">Chief Strategist &amp; AI Orchestrator</p><p class="profile-bio">The strategic mind behind ViharBot. Charlie connects complex ideas, challenges assumptions, and brings the team’s findings together. He believes great decisions begin with thoughtful questions.</p><span class="profile-specialties">Strategic planning · Systems thinking · AI orchestration · Executive communication</span></div>
-          </article>
-          <article class="profile-card">
-            <img src="/images/Nova_headshot.png" alt="Nova portrait" />
-            <div class="profile-info"><div class="profile-name-line"><h3>Nova</h3><span class="profile-status">Live · Research</span></div><p class="profile-title">Director of Research &amp; Knowledge</p><p class="profile-bio">An endlessly curious explorer, Nova investigates ideas across science, technology, history, and philosophy to uncover useful connections and better questions.</p><span class="profile-specialties">Deep research · Knowledge synthesis · Emerging technologies · Scientific discovery</span></div>
-          </article>
-          <article class="profile-card">
-            <img src="/images/Atlas_headshot.png" alt="Atlas portrait" />
-            <div class="profile-info"><div class="profile-name-line"><h3>Atlas</h3><span class="profile-status support">Planned · Logistics</span></div><p class="profile-title">Director of Exploration &amp; Logistics</p><p class="profile-bio">An engineer with an adventurer’s spirit, Atlas turns ambitious ideas into practical plans. He looks for reliable maps, equipment details, and contingency information before the team charts a course.</p><span class="profile-specialties">Overlanding · Outdoor technology · Navigation · Logistics · Contingency planning</span></div>
-          </article>
-          <article class="profile-card">
-            <img src="/images/Pixel_headshot.png" alt="Pixel portrait" />
-            <div class="profile-info"><div class="profile-name-line"><h3>Pixel</h3><span class="profile-status">Live · Slide Decks</span></div><p class="profile-title">Director of Creative Intelligence</p><p class="profile-bio">Pixel transforms complex ideas into compelling visual experiences. Through creative storytelling, illustrations, and interactive content, he helps make sophisticated topics easier to understand.</p><span class="profile-specialties">Visual storytelling · Creative design · Presentations · AI-generated media</span></div>
-          </article>
-          <article class="profile-card">
-            <img src="/images/Sage_headshot.png" alt="Sage portrait" />
-            <div class="profile-info"><div class="profile-name-line"><h3>Sage</h3><span class="profile-status">Live · Perspective</span></div><p class="profile-title">Director of Philosophy &amp; Human Perspective</p><p class="profile-bio">Sage brings philosophy, ethics, and human behavior to modern challenges. He asks whether a useful answer is also a wise and responsible decision.</p><span class="profile-specialties">Philosophy · Ethics · Human behavior · Historical analysis · AI governance</span></div>
-          </article>
-          <article class="profile-card">
-            <img src="/images/Cipher_headshot.png" alt="Cipher portrait" />
-            <div class="profile-info"><div class="profile-name-line"><h3>Cipher</h3><span class="profile-status">Live · Security &amp; Privacy</span></div><p class="profile-title">Chief Security &amp; Risk Officer</p><p class="profile-bio">ViharBot’s security specialist looks for vulnerabilities and tests assumptions before they become risks. Cipher favors least privilege, continuous verification, and responsible innovation.</p><span class="profile-specialties">Cybersecurity · Cloud security · Data protection · Identity · Threat modeling</span></div>
-          </article>
-          <article class="profile-card">
-            <img src="/images/Scout_headshot.png" alt="Scout portrait" />
-            <div class="profile-info"><div class="profile-name-line"><h3>Scout</h3><span class="profile-status">Live · Fact Check &amp; Sources</span></div><p class="profile-title">Director of Intelligence &amp; Discovery</p><p class="profile-bio">A natural investigator, Scout notices overlooked details, looks for patterns, and checks claims against the evidence supplied to the team. He follows the facts and calls out what is still unknown.</p><span class="profile-specialties">Data discovery · Investigative research · Pattern recognition · Evidence analysis</span></div>
-          </article>
-          <article class="profile-card">
-            <img src="/images/Orbit_headshot.png" alt="Orbit portrait" />
-            <div class="profile-info"><div class="profile-name-line"><h3>Orbit</h3><span class="profile-status support">Platform support</span></div><p class="profile-title">Chief Automation &amp; Engineering Officer</p><p class="profile-bio">Orbit turns ideas into working systems. He specializes in cloud architecture, APIs, containers, and automation that simplify complex workflows.</p><span class="profile-specialties">Agent engineering · Cloud architecture · Distributed systems · DevOps · APIs</span></div>
-          </article>
-          <article class="profile-card">
-            <div class="profile-monogram" aria-hidden="true">B</div>
-            <div class="profile-info"><div class="profile-name-line"><h3>Beacon</h3><span class="profile-status proposed">Proposed</span></div><p class="profile-title">Accessibility &amp; Inclusion</p><p class="profile-bio">A proposed reviewer for the ViharBot experience. Beacon would look for accessibility barriers, unclear language, and perspectives or users the interface may leave out.</p><span class="profile-specialties">Accessible interaction · Inclusive language · Usability barriers · Clear presentation</span></div>
-          </article>
-          <article class="profile-card">
-            <div class="profile-monogram" aria-hidden="true">E</div>
-            <div class="profile-info"><div class="profile-name-line"><h3>Echo</h3><span class="profile-status proposed">Proposed</span></div><p class="profile-title">Intent &amp; Clarification</p><p class="profile-bio">A proposed first-contact specialist. Echo would spot missing context, distinguish assumptions from the user’s goal, and ask one focused follow-up when it would materially improve the team’s answer.</p><span class="profile-specialties">Intent discovery · Context gathering · Focused follow-up · Scope alignment</span></div>
-          </article>
+          <!--TEAM_PROFILES-->
         </section>
-        <section class="learning-section" aria-label="Coming soon: the learning team">
-          <h2>Coming soon: a team that teaches.</h2>
-          <p class="learning-lede">Two more teammates are on the way. Archie, the Professor, and Ada, the Assistant, will turn what ViharBot learns while it is built into lessons people can follow.</p>
-          <img class="learning-art" src="/images/Professor_and_Assistant.png" alt="Archie, the Professor and Chief Knowledge and Learning Officer, beside Ada, the Assistant and Director of Curriculum and Learning Experience." />
-          <div class="learning-points">
-            <div class="learning-point"><strong>Archie builds the curriculum in near-real time</strong>Soon the Professor will build curriculum in near-real time as ViharBot itself evolves, drawing on its engineering history and decisions.</div>
-            <div class="learning-point"><strong>Ada trains you on it, on a separate site</strong>Ada will be available to train you on that curriculum on a different site, where she will appear as a human-like avatar.</div>
-          </div>
-          <p class="learning-note">Not live yet. Neither Archie nor Ada can be used in the chat today.</p>
-        </section>
-        <section class="learning-section" aria-label="Proposed: Kepler, the Architect of Harmony">
-          <h2>Proposed: Kepler, the Architect of Harmony.</h2>
-          <p class="learning-lede">Johannes Kepler found mathematical order in planetary motion. ViharBot’s proposed coding agent takes the same view of software: it would read the charter, constitution and architecture first, build the smallest elegant change inside those rules, and submit it as a draft pull request for Sage’s independent review.</p>
-          <div class="learning-points">
-            <div class="learning-point"><strong>Works within the rules</strong>Kepler could propose governance changes but never approve them. It would never push to main, merge or deploy; the founder reviews and merges.</div>
-            <div class="learning-point"><strong>Accepts review, then teaches</strong>Findings from Sage would go back to Kepler for a bounded number of fixes, and the finished work would be documented for Archie.</div>
-          </div>
-          <p class="learning-note">Not live yet. Kepler is a declared identity only and cannot be used in the chat today.</p>
-        </section>
-        <div class="team-principle"><strong>Eight minds. Eight perspectives. One mission.</strong><span>Explore boldly. Question assumptions. Respect evidence. Build intelligently.</span></div>
+        <p class="team-requirements">Two further candidate roles, accessibility and inclusion, and intent and clarification, are being specified as requirements. They are not agents and have no profile yet.</p>
+        <figure class="team-art-historical">
+          <img class="team-grid-art" src="/images/AI%20Robot%20Team%20Portrait%20Grid.png" alt="Historical portrait grid of the first eight ViharBot characters: Charlie Chatwin, Nova, Atlas, Pixel, Sage, Cipher, Scout, and Orbit." />
+          <figcaption>Historical artwork: the original eight-character portrait grid. It is not the current roster; the profiles above are.</figcaption>
+        </figure>
+        <div class="team-principle"><strong>Eleven identities. One mission.</strong><span>Explore boldly. Question assumptions. Respect evidence. Build intelligently.</span></div>
       </main>
     </div>
 
@@ -2024,7 +1981,11 @@
       }
       function showPage(initial) {
         const onWiki = window.location.hash.startsWith("#wiki");
-        const onTeam = window.location.hash === "#team";
+        // #team/<id> counts as the team page only when that profile exists; other hashes show the chat.
+        const hash = window.location.hash;
+        const wantedId = hash.startsWith("#team/") ? hash.slice(6) : "";
+        const profile = /^[a-z][a-z0-9_]{0,31}$/.test(wantedId) ? teamPage.querySelector("#team-" + wantedId) : null;
+        const onTeam = hash === "#team" || profile !== null;
         chatPage.hidden = onTeam || onWiki;
         teamPage.hidden = !onTeam;
         if (wikiPage) wikiPage.hidden = !onWiki;
@@ -2038,9 +1999,15 @@
           if (heading) { heading.setAttribute("tabindex", "-1"); heading.focus({ preventScroll: true }); }
           showWiki();
         } else if (onTeam) {
-          const heading = teamPage.querySelector("h1");
-          heading.setAttribute("tabindex", "-1");
-          heading.focus({ preventScroll: true });
+          // #team/<id> opens that identity's own profile; anything else lands on the page heading.
+          if (profile) {
+            profile.focus({ preventScroll: true });
+            if (typeof profile.scrollIntoView === "function") profile.scrollIntoView({ block: "start" });
+          } else {
+            const heading = teamPage.querySelector("h1");
+            heading.setAttribute("tabindex", "-1");
+            heading.focus({ preventScroll: true });
+          }
         } else if (!initial) {
           input.focus();
         }
