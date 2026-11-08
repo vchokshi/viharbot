@@ -79,6 +79,25 @@ class PRSnapshot(BaseModel):
     sage_review: SageEvidence | None = None  # from a trusted Sage author only; see sage_evidence.py
 
 
+class StudentPRSnapshot(BaseModel):
+    """A pull request as it stands now (open or merged), for student feedback. Read-only; no patches.
+
+    `head_sha` is the exact commit the feedback will be tied to. Text fields are untrusted."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    repository: Repo
+    number: int = Field(ge=1)
+    author_login: str
+    state: str  # "open" | "closed"
+    title: str
+    body: str
+    head_sha: Sha
+    base_ref: str
+    files: tuple[ChangedPath, ...]
+    sage_review: SageEvidence | None = None
+    files_omitted: int = 0
+
+
 class Verification(StrEnum):
     UNVERIFIED = "unverified"  # extracted from one source, no human or second-source check
     EVIDENCE_CHECKED = "evidence_checked"  # every claim maps to a retrieved source

@@ -5,9 +5,15 @@ configured founder list can create or cancel one; with no founder list configure
 assigned (fail closed). The ingestion pipeline refuses any pull request that no active assignment
 covers, so a commit, a merge, a Sage review or a scheduled `reconcile` cannot start a lesson.
 
-Limitation: the founder identity is asserted by whoever runs the local CLI, not cryptographically
-proven. The control is that assignments are created only through this module, by an operator with
-access to the store directory; no webhook, event handler or agent path imports `assign`.
+Two ways to name the founder. A `HumanActor` from `authn.CredentialAuthenticator` proves a token and
+is the only form an API or service may use: build the store with `require_authenticated=True` and a
+bare login string is refused. The legacy bare-login form remains for the local CLI when no token
+hashes are configured; there the identity is asserted by whoever runs it, not proven, and the control
+is access to the store directory. No webhook, event handler or agent path imports `assign`.
+
+Scope names the repository, the exact pull requests and the evidence kinds Archie may use
+(`permitted_evidence`); instructor guidance and Kepler handoffs are off unless the founder grants
+them, and instructor reads are further limited to `instructor_paths`.
 """
 
 from __future__ import annotations
@@ -16,13 +22,15 @@ import hashlib
 import json
 import os
 import re
-import tempfile
 from datetime import datetime, timezone
 from enum import StrEnum
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from .audit import AuditEvent, AuditLog
+from .authn import Actor, HumanActor, Role
+from .fsutil import atomic_write, locked
 from .models import Repo
 
 MAX_PULL_REQUESTS = 20
@@ -35,6 +43,18 @@ class NotFounder(PermissionError):
 
 class NotAssigned(PermissionError):
     """No active founder assignment covers this source revision."""
+
+
+class EvidenceScope(StrEnum):
+    SOURCE_REVISION = "source_revision"
+    SAGE_REVIEW = "sage_review"
+    GOVERNANCE = "governance"
+    KEPLER_HANDOFF = "kepler_handoff"          # off by default; format is issue #130
+    INSTRUCTOR_GUIDANCE = "instructor_guidance"  # off by default; also needs instructor_paths
+
+
+DEFAULT_EVIDENCE = (EvidenceScope.SOURCE_REVISION, EvidenceScope.SAGE_REVIEW, EvidenceScope.GOVERNANCE)
+MAX_INSTRUCTOR_PATHS = 10
 
 
 class AssignmentState(StrEnum):
@@ -54,6 +74,9 @@ class Assignment(BaseModel):
     state: AssignmentState = AssignmentState.ASSIGNED
     closed_by: str | None = None
     closed_at: str | None = None
+    permitted_evidence: tuple[EvidenceScope, ...] = DEFAULT_EVIDENCE
+    instructor_paths: tuple[str, ...] = Field(default=(), max_length=MAX_INSTRUCTOR_PATHS)
+    idempotency_key: str | None = None
 
     @field_validator("pull_requests")
     @classmethod
@@ -61,6 +84,9 @@ class Assignment(BaseModel):
         if any(n < 1 for n in value) or len(set(value)) != len(value):
             raise ValueError("pull requests must be unique positive numbers")
         return value
+
+    def permits(self, scope: EvidenceScope) -> bool:
+        return self.state is AssignmentState.ASSIGNED and scope in self.permitted_evidence
 
     def covers(self, repository: str, pull_request: int) -> bool:
         return (self.state is AssignmentState.ASSIGNED and self.source_repository == repository
@@ -78,15 +104,31 @@ def _now() -> str:
 
 
 class AssignmentStore:
-    def __init__(self, directory: Path, founders: frozenset[str]) -> None:
+    def __init__(self, directory: Path, founders: frozenset[str], *,
+                 require_authenticated: bool = False, audit: AuditLog | None = None) -> None:
         self._dir = directory
         self._founders = frozenset(f.lower() for f in founders)
+        self._require_authenticated = require_authenticated
+        self._audit = audit
         self._dir.mkdir(parents=True, exist_ok=True)
 
-    def _require_founder(self, login: str) -> str:
-        if not self._founders or login.strip().lower() not in self._founders:
-            raise NotFounder("only a configured founder can assign or cancel curriculum work")
-        return login.strip().lower()
+    def _require_founder(self, by: str | Actor) -> str:
+        if isinstance(by, HumanActor):
+            login, proven = by.login, by.role is Role.FOUNDER
+        elif isinstance(by, str) and not self._require_authenticated:
+            login, proven = by.strip().lower(), True  # legacy CLI form: asserted, not proven
+        else:  # an AgentActor, or a bare string where authentication is required
+            login, proven = "", False
+        if not proven or not self._founders or login not in self._founders:
+            self._note(AuditEvent.ASSIGNMENT_REFUSED, login or "unauthenticated", "refused")
+            raise NotFounder("only an authenticated, configured founder can assign or cancel curriculum work")
+        return login
+
+    def _note(self, event: AuditEvent, actor: str, outcome: str = "ok", assignment_id: str | None = None,
+              detail: dict | None = None, key: str | None = None) -> None:
+        if self._audit is not None:
+            self._audit.append(event, actor, outcome, assignment_id=assignment_id, detail=detail,  # type: ignore[arg-type]
+                               key=key)
 
     def _path(self, assignment_id: str) -> Path:
         if not re.fullmatch(r"AS-[0-9a-f]{12}", assignment_id):
@@ -94,10 +136,8 @@ class AssignmentStore:
         return self._dir / f"{assignment_id}.json"
 
     def _save(self, assignment: Assignment) -> None:
-        fd, tmp = tempfile.mkstemp(dir=self._dir, suffix=".tmp")
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(assignment.model_dump(mode="json"), handle, indent=2)
-        os.replace(tmp, self._path(assignment.assignment_id))
+        atomic_write(self._path(assignment.assignment_id),
+                     json.dumps(assignment.model_dump(mode="json"), indent=2))
 
     def get(self, assignment_id: str) -> Assignment | None:
         path = self._path(assignment_id)
@@ -109,33 +149,60 @@ class AssignmentStore:
         return [Assignment.model_validate_json(p.read_text(encoding="utf-8"))
                 for p in sorted(self._dir.glob("AS-*.json"))]
 
-    def assign(self, by: str, topic: str, source_repository: str,
-               pull_requests: tuple[int, ...]) -> Assignment:
+    def assign(self, by: str | Actor, topic: str, source_repository: str,
+               pull_requests: tuple[int, ...], *, permitted_evidence: tuple[EvidenceScope, ...] | None = None,
+               instructor_paths: tuple[str, ...] = (), idempotency_key: str | None = None) -> Assignment:
         who = self._require_founder(by)
-        stamp = _now()
-        digest = hashlib.sha256(f"{who}|{topic}|{source_repository}|{pull_requests}|{stamp}".encode())
-        assignment = Assignment(
-            assignment_id=f"AS-{digest.hexdigest()[:12]}", topic=topic,
-            source_repository=source_repository, pull_requests=pull_requests,
-            assigned_by=who, assigned_at=stamp)
-        self._save(assignment)
+        evidence = tuple(permitted_evidence) if permitted_evidence is not None else DEFAULT_EVIDENCE
+        if instructor_paths and EvidenceScope.INSTRUCTOR_GUIDANCE not in evidence:
+            raise ValueError("instructor paths need the instructor_guidance evidence scope")
+        if EvidenceScope.INSTRUCTOR_GUIDANCE in evidence and not instructor_paths:
+            raise ValueError("instructor_guidance evidence needs explicit instructor paths")
+        with locked(self._dir / ".lock"):
+            if idempotency_key:  # a replayed request returns the original assignment, never a second one
+                digest = hashlib.sha256(f"{who}|{idempotency_key}".encode()).hexdigest()[:12]
+                existing = self.get(f"AS-{digest}")
+                if existing is not None:
+                    same = (existing.topic, existing.source_repository, existing.pull_requests) == (
+                        topic, source_repository, tuple(pull_requests))
+                    if not same:
+                        raise ValueError("idempotency key was already used for a different assignment")
+                    return existing
+            else:
+                stamp_digest = hashlib.sha256(
+                    f"{who}|{topic}|{source_repository}|{pull_requests}|{_now()}|{os.urandom(8).hex()}".encode())
+                digest = stamp_digest.hexdigest()[:12]
+            assignment = Assignment(
+                assignment_id=f"AS-{digest}", topic=topic, source_repository=source_repository,
+                pull_requests=pull_requests, assigned_by=who, assigned_at=_now(),
+                permitted_evidence=evidence, instructor_paths=instructor_paths,
+                idempotency_key=idempotency_key)
+            self._save(assignment)
+        self._note(AuditEvent.ASSIGNMENT_CREATED, who, assignment_id=assignment.assignment_id,
+                   key=f"assign:{assignment.assignment_id}",
+                   detail={"repository": source_repository, "pull_requests": ",".join(map(str, pull_requests)),
+                           "evidence": ",".join(e.value for e in evidence)})
         return assignment
 
-    def _close(self, by: str, assignment_id: str, state: AssignmentState) -> Assignment:
+    def _close(self, by: str | Actor, assignment_id: str, state: AssignmentState) -> Assignment:
         who = self._require_founder(by)
-        assignment = self.get(assignment_id)
-        if assignment is None:
-            raise KeyError("unknown assignment")
-        if assignment.state is not AssignmentState.ASSIGNED:
-            return assignment  # already closed; closing is idempotent and never reopens
-        assignment.state, assignment.closed_by, assignment.closed_at = state, who, _now()
-        self._save(assignment)
+        with locked(self._dir / ".lock"):
+            assignment = self.get(assignment_id)
+            if assignment is None:
+                raise KeyError("unknown assignment")
+            if assignment.state is not AssignmentState.ASSIGNED:
+                return assignment  # already closed; closing is idempotent and never reopens
+            assignment.state, assignment.closed_by, assignment.closed_at = state, who, _now()
+            self._save(assignment)
+        event = (AuditEvent.ASSIGNMENT_CANCELLED if state is AssignmentState.CANCELLED
+                 else AuditEvent.ASSIGNMENT_COMPLETED)
+        self._note(event, who, assignment_id=assignment_id, key=f"close:{assignment_id}")
         return assignment
 
-    def cancel(self, by: str, assignment_id: str) -> Assignment:
+    def cancel(self, by: str | Actor, assignment_id: str) -> Assignment:
         return self._close(by, assignment_id, AssignmentState.CANCELLED)
 
-    def complete(self, by: str, assignment_id: str) -> Assignment:
+    def complete(self, by: str | Actor, assignment_id: str) -> Assignment:
         return self._close(by, assignment_id, AssignmentState.COMPLETED)
 
     def authorizing(self, repository: str, pull_request: int) -> Assignment | None:

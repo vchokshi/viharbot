@@ -17,7 +17,7 @@ from typing import Any
 
 from ..sage_review_format import MARKER
 from ..sage_review_github import GitHubClient, GitHubError
-from .models import ChangedPath, PRSnapshot
+from .models import ChangedPath, PRSnapshot, StudentPRSnapshot
 from .sage_evidence import DEFAULT_SAGE_AUTHORS, is_sage_author, latest_sage_review
 
 MAX_FILES = 300
@@ -91,6 +91,29 @@ class SourceReader:
             files_omitted=max(0, len(raw_files) - MAX_FILES), head_sha=head_sha,
             sage_review=latest_sage_review(issue_comments, head_sha, self._sage_authors),
         )
+
+    def review_snapshot(self, number: int, repo: str | None = None) -> StudentPRSnapshot:
+        """The pull request as it is now, open or merged, with its newest trusted Sage review.
+
+        Read-only. The result names the head commit, so feedback built from it is tied to that exact
+        revision; `sage_review.reviewed_head_current` says whether Sage reviewed that same commit."""
+        repo = repo or self._repo
+        _check(self._repo, repo)
+        pr = self._client.request("GET", f"/repos/{repo}/pulls/{number}")
+        head = (pr.get("head") or {}).get("sha")
+        if not (isinstance(head, str) and re.fullmatch(r"[0-9a-f]{40}", head)):
+            raise GitHubError("pull request head commit is unavailable")
+        raw_files = self._client.pages(f"/repos/{repo}/pulls/{number}/files", MAX_FILES + 1)
+        files = tuple(ChangedPath(path=f["filename"], status=f.get("status", "modified"),
+                                  additions=f.get("additions", 0), deletions=f.get("deletions", 0))
+                      for f in raw_files[:MAX_FILES])
+        issue_comments = self._client.pages(f"/repos/{repo}/issues/{number}/comments", MAX_COMMENTS)
+        return StudentPRSnapshot(
+            repository=repo, number=number, author_login=str((pr.get("user") or {}).get("login", "")),
+            state="open" if pr.get("state") == "open" else "closed", title=(pr.get("title") or "")[:300],
+            body=(pr.get("body") or "")[:MAX_BODY_CHARS], head_sha=head, base_ref=(pr.get("base") or {}).get("ref", ""),
+            files=files, files_omitted=max(0, len(raw_files) - MAX_FILES),
+            sage_review=latest_sage_review(issue_comments, head, self._sage_authors))
 
     def _version(self, repo: str, sha: str) -> str:
         try:
