@@ -37,7 +37,7 @@ _STOP = frozenset(
     "a an the and or but if of to in on at by for with from as is are was were be been being it its this "
     "that these those which who whom what when where why how not no do does did done have has had will "
     "would can could should may might must than then so such into over under about after before".split())
-_ZERO_WIDTH = re.compile(r"[​-‏⁠﻿­]")
+_ZERO_WIDTH = re.compile("[\u200b-\u200f\u2060\ufeff\u00ad]")  # escapes: no literal bidi characters in source
 _NONWORD = re.compile(r"[^0-9a-z]+")
 _SENTENCE = re.compile(r"(?<=[.!?])\s+|\n+")
 _MARKERS = re.compile(
