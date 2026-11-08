@@ -1,6 +1,11 @@
-"""Archie's GitHub learning pipeline (education agents, Phase 2).
+"""Archie's learning pipeline and curriculum workflow (education agents, epic #139).
 
-Reads a merged ViharBot pull request as untrusted data, extracts a provenance-aware learning
-artifact with deterministic code, and can propose it to the instructor repository as a pull
-request. Nothing here merges, deploys, calls a model or is reachable from chat or orchestration.
+Reads merged ViharBot pull requests as untrusted data, extracts provenance-aware learning artifacts
+with deterministic code, and, under an explicit founder assignment, turns that evidence into a lesson
+draft that a human reviews, a founder publishes and Ada can retrieve as a scripted, trainee-safe
+package. A separate path prepares student feedback after a verified Sage review.
+
+Nothing here merges, deploys or is reachable from chat, orchestration or the web app. A model is called
+only if a caller passes a client to `synthesis.synthesize`; the provided client uses the external
+LiteLLM gateway and is off unless `ARCHIE_MODEL_ALIAS` is set. See docs/education-agents.md.
 """

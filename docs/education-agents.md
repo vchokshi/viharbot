@@ -73,15 +73,34 @@ Archie never starts curriculum work on its own. `src/viharbot/learning/assignmen
 
 ### Not done in #142
 
-- **Kepler handoff artifacts.** Their format and location are #130, which is not built, and Kepler does not run yet. Archie cannot ingest a format that does not exist. When #130 defines it, ingestion belongs in `SourceReader`'s sibling with the same rules: read-only, one configured repository, untrusted data, trusted author.
-- **Comparison with restricted instructor notes.** This needs `instructor_access.py` (#141) wired into ingestion with an active assignment, and enabling confidential access in a runtime is a founder decision (the reader's own docs list it as not done).
-- **Model-assisted synthesis and comparison** through LiteLLM, which would also need a model alias and prompt-injection tests.
+- **Kepler handoff artifacts.** Their format and location are #130, which is not built. `evidence.py` holds the adapter contract (`KeplerHandoff`, `KeplerHandoffProvider`); the default provider reports "unavailable" and nothing is invented. See "Archie workflow" below.
+- **Model-assisted comparison of governance documents.** Governance comparison stays the deterministic rule list above.
 
-Still proposed for the rest of epic #139: the unbuilt parts of #142 above, curriculum authoring and quality checks (#143), the Ada handoff and publication gate (#144, #151), audit trail and end-to-end tests (#145), and student PR feedback (#154).
+The rest of epic #139 (#141 wiring, #143, #144, #145, #151, #154) is described in the next section. `docs/archie-workflow-gap-analysis.md` records what existed and what was missing when that work began.
 
 ### Not yet done in Phase 2
 
 Model-assisted enrichment (objectives, rationale synthesis) through LiteLLM, emission of the `learning.*` activity events (declared, not emitted), and a webhook endpoint. The instructor repo has no `knowledge/` directory yet; the first proposal creates it. Human review of the artifact format is needed before any are merged.
+
+## Archie workflow, assignment to Ada (epic #139; implemented as a library, not a service)
+
+Founder assignment → evidence → draft → review → approval → publication → Ada retrieval, with a separate student-feedback workflow. It lives in `src/viharbot/learning/` and is exercised by an offline end-to-end test. **Nothing runs it automatically:** there is no API, webhook, event handler or execution binding, the web app does not import it, and Archie and Ada still have no binding, endpoint or model alias.
+
+**Authorization boundary (`authn.py`).** A "founder" used to be a login string typed at the CLI. A human is now a `HumanActor`, obtainable only by presenting a token whose SHA-256 matches `ARCHIE_FOUNDER_TOKEN_HASHES` or `ARCHIE_REVIEWER_TOKEN_HASHES` (constant-time check, minimum length, lockout after repeated failures). `AssignmentStore(require_authenticated=True)` refuses a bare string, an agent and a reviewer. The CLI requires `ARCHIE_FOUNDER_TOKEN` once hashes are configured; without them the legacy asserted-login mode remains and prints a warning. Limitations: it is a bearer token (no device binding, rotation or transport protection), and the mint guard stops accidental or agent-driven construction, not hostile code already inside the process, so a future API must authenticate each request here. Assignments gained `permitted_evidence` (Kepler and instructor guidance are off unless granted), exact `instructor_paths`, an idempotency key, file locking and audit records.
+
+**Evidence (`evidence.py`).** Refuses unless an active assignment covers that exact repository and pull request. Items are typed `verified_observation`, `author_statement`, `sage_advisory`, `kepler_handoff` or `unsupported`; instructor material is held apart, in memory only. Sage findings are admitted only from a trusted, complete review of the PR's final head; otherwise the limitation is recorded and Sage-derived governance notes are dropped too. Repository text that looks like instructions is flagged and never read by any decision. Instructor reads are limited to the assignment's paths and audited by path hash.
+
+**Lesson draft (`lesson.py`, `synthesis.py`).** `TraineeContent` and `InstructorContent` are separate, versioned types stored in separate files; every substantive statement cites evidence ids and a basis. The deterministic baseline always works. An optional model draft goes through the LiteLLM-only `build_agent` path using `ARCHIE_MODEL_ALIAS` (unset means off; no alias is approved yet). Only trainee-safe evidence is sent, a pre-send scan refuses a prompt that repeats confidential text, and the reply must parse, cite only collected evidence with unchanged basis, and pass the leak checks, otherwise the baseline stands. The model cannot touch instructor content, identity or version.
+
+**Lifecycle and publication (`publication.py`, `ada.py`).** `draft → review_pending → changes_requested / approved → published → revoked`. Archie may create, revise and submit; only an authenticated human who is not the submitter may approve (with a quality-and-confidentiality attestation); only a founder publishes or revokes. Approval is bound to the content digests; editing or tampering after approval clears it. Publication re-reads the stored content, re-verifies digests, re-runs validation and leak checks, and needs the assignment still active. Ada's `AdaGateway` holds only the published store (a test checks that importing `ada.py` loads no instructor, assignment or GitHub code) and returns only a published, unrevoked, integrity-verified, scripted package. No code in the package can merge a pull request.
+
+**Confidentiality (`confidentiality.py`).** `ContentGuard` extends the existing line-fingerprint index with normalisation, word-shingle and sentence-overlap checks, instructor-marker phrases and credential shapes; it keeps hashes only. **It cannot catch a faithful paraphrase with little word overlap, a translation or a summary of an answer key's meaning**, so it is one layer and a human reviewer must still approve everything bound for Ada. The comparison of trainee text against its own instructor half checks copying only, because generic guidance legitimately resembles the lesson it grades.
+
+**Audit (`audit.py`).** An append-only, hash-chained JSON-lines log correlated by assignment, workflow, artifact and source revision, with allowlisted, redacted details (no tokens, instructor text, answer keys or prompts). Retries use dedupe keys. Records also go to the existing `archie-learning` logger. The declared `learning.*` live events remain unemitted; wiring the audit stream to them needs a live-event schema decision and is not done. `workflow.status()` shows state, ids and digests only.
+
+**Student PR feedback (`feedback.py`, #154; contract for #155).** A separate path that imports none of the lesson code and creates no assignment or lesson. Feedback is prepared only for a rostered student (`ARCHIE_STUDENT_LOGINS`) and only from a trusted, complete Sage review of the PR's current head; it quotes Sage's findings as advisory, never says a finding was resolved, and is tied to the reviewed commit. A human who is not the submitter approves, a founder releases (re-checking the live head), a head change marks it stale and removes the package, and `FeedbackGateway` returns it only to the student it was written for.
+
+**Not done.** An HTTP API or CLI for the draft, review and publication steps; GitHub pull-request publication into `viharbot-onboarding` (a human merge would be the signal); real Kepler ingestion (#130); Ada's runtime and acknowledgement tracking (#146, #155); emission of `learning.*` events; instructor-versus-trainee paraphrase detection beyond the lexical checks above; an approved model alias; and any Stage or AWS change.
 
 ## Phase 3: Institutional memory (implemented as interfaces and a local store)
 
@@ -118,7 +137,7 @@ No lesson generation, no model call, no GitHub access, no pull requests for curr
 
 ## What is not implemented
 
-Curriculum generation, learner records, lessons, assessments, emission of the `learning.*`/`curriculum.*`/`lesson.*` events (they are declared, not emitted) and repository credentials. These are phases 4 to 6 of the specification and each needs its own reviewed change.
+A running Archie or Ada (no binding, endpoint or alias), learner records, a published curriculum (no lesson has been published; the workflow above is library code tested offline), assessments, emission of the `learning.*`/`curriculum.*`/`lesson.*` events (they are declared, not emitted) and repository credentials. These are phases 4 to 6 of the specification and each needs its own reviewed change.
 
 ## Findings that shape later phases
 
