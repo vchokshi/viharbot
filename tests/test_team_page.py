@@ -19,16 +19,28 @@ from fastapi.testclient import TestClient
 from viharbot import web_app
 from viharbot.execution_bindings import default_bindings
 from viharbot.identity_registry import default_registry
+from viharbot.team_profiles import render_profiles, render_sidebar, team_profiles
 
 ROOT = Path(__file__).resolve().parent.parent
 INDEX = ROOT / "src" / "viharbot" / "static" / "index.html"
+
+
+def rendered_page() -> str:
+    """The page as the server sends it: the shared profile source fills both placeholders."""
+    profiles = team_profiles()
+    return (INDEX.read_text(encoding="utf-8")
+            .replace(web_app.SIDEBAR_MARKER, render_sidebar(profiles))
+            .replace(web_app.PROFILES_MARKER, render_profiles(profiles)))
+
+
 HARNESS = Path(__file__).resolve().parent / "js" / "run_page.mjs"
-PAGE = INDEX.read_text(encoding="utf-8")
+PAGE = rendered_page()
 NODE = shutil.which("node")
 needs_node = pytest.mark.skipif(NODE is None, reason="Node.js is not installed")
 
 DISPLAY_TO_ID = {"Charlie Chatwin": "charlie", "Nova": "nova", "Atlas": "atlas", "Pixel": "pixel",
-                 "Sage": "sage", "Cipher": "cipher", "Scout": "scout", "Orbit": "orbit"}
+                 "Sage": "sage", "Cipher": "cipher", "Scout": "scout", "Orbit": "orbit",
+                 "Kepler": "kepler", "Professor Archibald": "archie", "Ada": "ada"}
 CAPABILITY_WORD = {"research": "Research", "fact_check": "Fact Check", "source_quality": "Sources",
                    "security_assessment": "Security", "privacy_review": "Privacy",
                    "synthesis": "Synthesis", "slide_generation": "Slide Decks",
@@ -37,15 +49,15 @@ CAPABILITY_WORD = {"research": "Research", "fact_check": "Fact Check", "source_q
 
 def cards() -> dict[str, dict[str, str]]:
     found = {}
-    for block in re.findall(r'<article class="profile-card">(.*?)</article>', PAGE, re.S):
-        name = html.unescape(re.search(r"<h3>(.*?)</h3>", block).group(1))
+    for block in re.findall(r'<article class="profile-card"[^>]*>(.*?)</article>', PAGE, re.S):
+        name = html.unescape(re.search(r"<h3[^>]*>(.*?)</h3>", block).group(1))
         found[name] = {
             "status": html.unescape(re.search(r'<span class="profile-status[^"]*">(.*?)</span>', block).group(1)),
             "title": html.unescape(re.search(r'<p class="profile-title">(.*?)</p>', block).group(1)),
             "bio": html.unescape(re.search(r'<p class="profile-bio">(.*?)</p>', block).group(1)),
-            "specialties": html.unescape(re.search(r'<span class="profile-specialties">(.*?)</span>', block).group(1)),
+            "skills": re.findall(r"<li>(.*?)</li>", block),
             "image": (lambda m: m.groups() if m else (None, None))(
-                re.search(r'<img src="([^"]+)" alt="([^"]*)"', block)),
+                re.search(r'<img class="profile-portrait" src="([^"]+)" alt="([^"]*)"', block)),
         }
     return found
 
@@ -54,24 +66,41 @@ CARDS = cards()
 
 
 # every agent has a complete bio
-def test_every_registered_agent_has_a_profile_card_with_a_bio():
+PORTRAIT_FILE = {"charlie": "Charlie_Chatwin_headshot.png", "kepler": "Kepler, Director of Analytics & Foresight.png",
+                 "archie": "Professor_and_Assistant.png", "ada": "Professor_and_Assistant.png"}
+
+
+def test_every_registered_identity_has_a_profile_card_with_a_bio_and_a_real_portrait():
     registry = default_registry()
+    assert len(CARDS) == 11 == len(registry)
     for display, identity_id in DISPLAY_TO_ID.items():
         assert display in CARDS, display
         card = CARDS[display]
         assert card["title"] == registry.get(identity_id).title  # one source of truth for titles
         assert len(card["bio"]) >= 60 and card["bio"].endswith(".")
-        assert card["specialties"].count("·") >= 2
-        assert card["image"][0] == f"/images/{'Charlie_Chatwin' if identity_id == 'charlie' else display}_headshot.png"
+        assert len(card["skills"]) >= 3
+        expected = PORTRAIT_FILE.get(identity_id, f"{display}_headshot.png")
+        assert urllib.parse.unquote(card["image"][0]) == f"/images/{expected}"
         assert card["image"][1].strip()  # meaningful alt text
 
 
-def test_the_two_proposed_roles_are_labelled_proposed_and_are_not_registered_agents():
-    registry = default_registry()
-    for name in ("Beacon", "Echo"):
-        assert CARDS[name]["status"] == "Proposed" and name.lower() not in registry
-        assert len(CARDS[name]["bio"]) >= 60 and "proposed" in CARDS[name]["bio"].lower()
-    assert len(CARDS) == 10
+def test_no_stale_roster_claims_or_proposed_kepler_coding_agent_remain():
+    for stale in ("Eight distinct personalities", "Eight minds", "Proposed: Kepler", "Beacon", "Echo",
+                  "proposed coding agent", "draft pull request for Sage"):
+        assert stale not in PAGE, stale
+    assert "Historical artwork" in PAGE  # the old eight-character grid is labelled, not the roster
+
+
+def test_kepler_matches_the_steward_mission_and_is_not_called_live():
+    card = CARDS["Kepler"]
+    assert card["status"] == "In development" and "Live" not in card["status"]
+    text = card["bio"].lower()
+    for need in ("first-contributor steward", "agentcore", "cla", "alerts the founder"):
+        assert need in text, need
+    assert "coding" not in text
+    block = re.search(r'<article class="profile-card" id="team-kepler".*?</article>', PAGE, re.S).group(0)
+    assert "does not write code" in block and "does not run in the chat" in block
+    assert default_registry().get("kepler").description.startswith("Governed first-contributor steward")
 
 
 def test_bios_do_not_claim_abilities_the_agents_do_not_have():
@@ -93,15 +122,16 @@ def test_status_chips_match_which_agents_are_actually_live():
         if identity_id in bound:
             assert status.startswith("Live"), (display, status)
             for capability in bound[identity_id]:  # every live role is named
-                assert CAPABILITY_WORD[capability] in status, (display, capability, status)
+                assert CAPABILITY_WORD[capability].lower() in status.lower(), (display, capability, status)
         else:
             assert "Live" not in status, (display, status)  # no live role, so never "Live"
 
 
-def test_the_agents_without_a_live_role_say_planned_or_support():
-    for display in ("Atlas",):
-        assert CARDS[display]["status"].startswith("Planned")
+def test_the_identities_without_a_live_role_say_planned_support_or_in_development():
+    assert CARDS["Atlas"]["status"] == "Planned"
     assert CARDS["Orbit"]["status"] == "Platform support"
+    assert CARDS["Kepler"]["status"] == "In development"
+    assert CARDS["Professor Archibald"]["status"] == "Planned" and CARDS["Ada"]["status"] == "Planned"
 
 
 # the page structure and the link
@@ -121,23 +151,25 @@ def test_the_page_script_registers_the_router_and_uses_no_markup_strings():
     assert "innerHTML" not in script
 
 
-# images: every one the page requests is allowed, exists, and is served; nothing else is
+# images: every one the page requests is allowed and served; nothing else is. The files live in
+# the public image store, not in git, so the route tests use stand-in files.
 def requested_images() -> list[str]:
     return sorted({urllib.parse.unquote(m) for m in re.findall(r'src="/images/([^"]+)"', PAGE)})
 
 
-def test_every_requested_image_is_allowlisted_and_present():
+def test_every_requested_image_is_allowlisted():
     images = requested_images()
     assert "AI Robot Team Portrait Grid.png" in images and len(images) >= 9
     for name in images:
         assert name in web_app.TEAM_IMAGES, name
-        assert (ROOT / "images" / name).is_file(), name
 
 
 @pytest.fixture
-def client(monkeypatch):
+def client(monkeypatch, tmp_path):
+    for name in web_app.TEAM_IMAGES:
+        (tmp_path / name).write_bytes(b"stand-in")
     monkeypatch.setenv("WEB_AUTH_ENABLED", "false")
-    monkeypatch.setenv("WEB_IMAGES_DIR", str(ROOT / "images"))
+    monkeypatch.setenv("WEB_IMAGES_DIR", str(tmp_path))
     return TestClient(web_app.app)
 
 

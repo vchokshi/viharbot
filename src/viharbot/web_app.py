@@ -5,6 +5,7 @@ from __future__ import annotations
 import hmac
 import logging
 import os
+import re
 import time
 from pathlib import Path
 from typing import Literal
@@ -26,6 +27,7 @@ from .chat_models import AgentActivity, ChatRequest, ChatResponse, ChatTurn, Dec
 from .pixel.theme import tokens_css
 from .pixel_execution import fetch_deck, pixel_url, ppt_generation_enabled, run_pixel_stage, wants_deck
 from .team_models import team_models
+from .team_profiles import render_profiles, render_sidebar, team_profiles
 from .live_hooks import CancelToken
 from .orchestration_state import CANONICAL_ORDER
 from .live_stream import StreamPermit, dev_diagnostics_enabled, event_stream
@@ -94,6 +96,27 @@ def health() -> dict[str, str]:
 
 
 TOKENS_MARKER = "/*__PIXEL_TOKENS__*/"
+# The sidebar and the Meet the team profiles come from one source (team_profiles.py).
+SIDEBAR_MARKER = "<!--TEAM_SIDEBAR-->"
+PROFILES_MARKER = "<!--TEAM_PROFILES-->"
+
+
+_IMAGES_BASE_PATTERN = re.compile(r"^https://[A-Za-z0-9.-]+(:\d+)?(/[A-Za-z0-9._~%/-]*)?$")
+
+
+def images_base_url() -> str:
+    """Where the page loads images from, or "" to use this app's own /images route.
+
+    ``WEB_IMAGES_BASE_URL`` is a public https URL (a DigitalOcean Spaces CDN, for example). Anything
+    else (http, credentials, a query or fragment) is refused, so the page cannot be pointed at an
+    unexpected origin by a typo. Images at that URL are public and bypass web auth.
+    """
+    base = os.getenv("WEB_IMAGES_BASE_URL", "").strip().rstrip("/")
+    if not base:
+        return ""
+    if not _IMAGES_BASE_PATTERN.fullmatch(base):
+        raise RuntimeError("WEB_IMAGES_BASE_URL must be a plain https URL with no credentials, query or fragment")
+    return base
 
 
 @app.get("/", include_in_schema=False)
@@ -101,6 +124,12 @@ def home(_: None = Depends(require_web_access)) -> HTMLResponse:
     """The chat page with Pixel's design tokens inlined, so it stays one self-contained file."""
     static_dir = Path(os.getenv("WEB_STATIC_DIR", Path(__file__).with_name("static")))
     page = (static_dir / "index.html").read_text(encoding="utf-8")
+    profiles = team_profiles()
+    page = page.replace(SIDEBAR_MARKER, render_sidebar(profiles))
+    page = page.replace(PROFILES_MARKER, render_profiles(profiles))
+    base = images_base_url()
+    if base:  # every image the page names, in markup and in its script, comes from the public store
+        page = page.replace("/images/", base + "/")
     return HTMLResponse(page.replace(TOKENS_MARKER, tokens_css()))
 
 
@@ -225,6 +254,7 @@ TEAM_IMAGES = {
     "Orbit_headshot.png",
     "AI Robot Team Portrait Grid.png",
     "Professor_and_Assistant.png",
+    "Kepler, Director of Analytics & Foresight.png",
     "model-openai.svg",
     "model-gemini.svg",
 }

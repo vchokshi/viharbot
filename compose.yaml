@@ -3,11 +3,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.web
-    volumes:
-      - ./images:/app/images:ro
     environment:
       PORT: 8080
       WEB_STATIC_DIR: /app/static
+      # Images live in the public Spaces store, not in the repository or the image.
+      WEB_IMAGES_BASE_URL: ${WEB_IMAGES_BASE_URL:-https://viharbot.sfo3.cdn.digitaloceanspaces.com/images}
       WEB_AUTH_ENABLED: ${WEB_AUTH_ENABLED:-0}
       WEB_USERNAME: ${WEB_USERNAME:-}
       WEB_PASSWORD: ${WEB_PASSWORD:-}

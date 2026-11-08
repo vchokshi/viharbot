@@ -170,7 +170,7 @@ Pushing to `main` updates source only; nothing deploys automatically.
 
 ## Security boundaries
 
-* All web routes except `/health` use the same shared Basic Auth when enabled (`/`, `/images/*`, `/api/chat`, `/api/chat/stream`, `/api/development/*`). It is not per-user identity.
+* All web routes except `/health` use the same shared Basic Auth when enabled (`/`, `/images/*` when served locally, `/api/chat`, `/api/chat/stream`, `/api/development/*`); images loaded from `WEB_IMAGES_BASE_URL` are public and bypass it (docs/image-storage.md). It is not per-user identity.
 * Agent services rely on the private network. The four specialist services can verify signed service assertions, but only when `VIHARBOT_SERVICE_AUTH` is set, and nothing sets it by default. Research, Security, Pixel and Sage verify nothing. Do not publish agent ports. Extending authentication is deferred for Stage ([#235](https://github.com/vchokshi/viharbot/issues/235)).
 * The browser never receives an agent key. Logs hold agent, request ID, destination, alias, duration and error type, never prompts, findings or keys.
 * Model output is untrusted: the page renders it with `textContent`, and Markdown answers produce no links or HTML.
