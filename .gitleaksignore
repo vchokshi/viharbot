@@ -13,3 +13,6 @@ af3c1b8a91a1bc71ac5499e77a48b78c271109e2:tests/test_steward_units.py:generic-api
 # Same reviewed fixture, in the intermediate commit that first split the string; the test now builds it with
 # a join so no `name = value` text remains in source. Covers only that historical commit.
 650128e4ee9ddb1d16ca0d13d49781e2e351af13:tests/test_archie_confidentiality.py:generic-api-key:86
+# Same reviewed fixture again (join form, still matched on its entropy). The test now uses a low-entropy
+# value. Covers only that historical commit.
+1b5cc931ef1e014c87023a2c23a6fbf93821f5cf:tests/test_archie_confidentiality.py:generic-api-key:86
