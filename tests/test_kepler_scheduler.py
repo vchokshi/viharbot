@@ -73,7 +73,9 @@ def test_the_request_is_valid_against_the_aws_sdk_service_model(mode):
 def test_the_runtime_accepts_exactly_the_payload_the_schedule_sends(encoding):
     from viharbot.steward.runtime import Invocation
     sent = json.loads(bs.build("recurring", RUNTIME, ROLE, payload_encoding=encoding)["Target"]["Input"])
-    assert sent["AgentRuntimeArn"] == RUNTIME and set(sent) == {"AgentRuntimeArn", "Payload"}
+    assert sent["AgentRuntimeArn"] == RUNTIME and set(sent) == {"AgentRuntimeArn", "ContentType", "Payload"}
+    # without a JSON content type the deployed container answered 422 to a valid payload (observed live)
+    assert sent["ContentType"] == "application/json"
     raw = sent["Payload"] if encoding == "plain" else base64.b64decode(sent["Payload"]).decode()
     invocation = Invocation.model_validate(json.loads(raw))
     # a scheduled poll must return at once: Scheduler waits synchronously and gives up on slow calls
@@ -99,15 +101,35 @@ def test_only_the_scheduler_role_can_be_the_target_role(role):
         bs.build("recurring", RUNTIME, role)
 
 
-def test_the_role_can_only_be_assumed_by_scheduler_for_kepler_schedules_in_this_account():
+def test_the_role_can_only_be_assumed_by_scheduler_from_the_default_group_in_this_account():
     trust = json.loads((IAM / "scheduler-trust.json").read_text())
     (statement,) = trust["Statement"]
     assert statement["Principal"] == {"Service": "scheduler.amazonaws.com"}
     assert statement["Action"] == "sts:AssumeRole" and statement["Effect"] == "Allow"
-    conditions = statement["Condition"]
-    assert conditions["StringEquals"] == {"aws:SourceAccount": "ACCOUNT_ID"}
-    assert conditions["ArnLike"]["aws:SourceArn"] == \
-        "arn:aws:scheduler:us-west-2:ACCOUNT_ID:schedule/default/viharbot-kepler-*"
+    # One condition block holding both keys. Scheduler checks the role during CreateSchedule, before
+    # the schedule exists, and presents the schedule GROUP's ARN, so a condition on
+    # schedule/default/viharbot-kepler-* can never match: CreateSchedule was refused live with
+    # "must allow AWS EventBridge Scheduler to assume the role". The group ARN is the narrowest form.
+    assert statement["Condition"] == {"StringEquals": {
+        "aws:SourceAccount": "ACCOUNT_ID",
+        "aws:SourceArn": "arn:aws:scheduler:us-west-2:ACCOUNT_ID:schedule-group/default"}}
+    assert "ArnLike" not in statement["Condition"]
+
+
+def test_no_iam_policy_file_has_duplicate_json_keys():
+    # A duplicate key (for example two StringEquals blocks) is silently collapsed to the last one by
+    # every JSON reader, which would drop a condition. No test of the parsed value can see that.
+    from collections import Counter
+
+    def refuse_duplicates(pairs):
+        duplicated = [key for key, count in Counter(key for key, _ in pairs).items() if count > 1]
+        assert not duplicated, f"duplicate JSON keys: {duplicated}"
+        return dict(pairs)
+
+    files = sorted(IAM.glob("*.json"))
+    assert len(files) >= 6
+    for path in files:
+        json.loads(path.read_text(), object_pairs_hook=refuse_duplicates)
 
 
 def test_the_role_can_do_one_thing_invoke_the_one_runtime_and_stays_inside_the_boundary():
@@ -142,7 +164,8 @@ def test_the_deployer_may_create_the_schedule_and_pass_this_role_to_scheduler():
 def test_the_script_is_a_dry_run_unless_apply_is_set_and_changes_nothing_before_that():
     text = SCRIPT.read_text()
     guard = text.index('"${APPLY:-no}" != "yes"')
-    for risky in ("sts assume-role", "iam create-role", "iam put-role-policy", "scheduler create-schedule"):
+    for risky in ("sts assume-role", "iam create-role", "iam put-role-policy", "scheduler create-schedule",
+                  "scheduler update-schedule"):
         for line_no, line in enumerate(text.splitlines()):
             if risky in line and not line.lstrip().startswith(("#", "echo")):
                 assert text.index(line) > guard, (risky, line_no)

@@ -28,6 +28,19 @@
       "Condition": { "StringEquals": { "aws:ResourceTag/project": "viharbot", "aws:ResourceTag/agent": "kepler" } }
     },
     {
+      "Sid": "AgentCoreWorkloadIdentityForTheKeplerRuntimeOnly",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock-agentcore:CreateWorkloadIdentity",
+        "bedrock-agentcore:GetWorkloadIdentity",
+        "bedrock-agentcore:DeleteWorkloadIdentity"
+      ],
+      "Resource": [
+        "arn:aws:bedrock-agentcore:us-west-2:ACCOUNT_ID:workload-identity-directory/default",
+        "arn:aws:bedrock-agentcore:us-west-2:ACCOUNT_ID:workload-identity-directory/default/workload-identity/viharbot_kepler-*"
+      ]
+    },
+    {
       "Sid": "AgentCoreListAndRead",
       "Effect": "Allow",
       "Action": ["bedrock-agentcore:ListAgentRuntimes", "bedrock-agentcore:ListAgentRuntimeEndpoints", "bedrock-agentcore:ListTagsForResource"],

@@ -62,8 +62,10 @@ def build(mode: str, runtime_arn: str, role_arn: str, *, payload_encoding: str =
             # Retries off: a retry could start a duplicate poll, and the next scheduled run is the
             # retry. Dedup would absorb a duplicate, but a failed run should be seen, not repeated.
             "RetryPolicy": {"MaximumRetryAttempts": 0, "MaximumEventAgeInSeconds": 60},
-            "Input": json.dumps({"AgentRuntimeArn": runtime_arn, "Payload": payload},
-                                separators=(",", ":")),
+            # ContentType is required in practice: a live call without it was refused with 422
+            # because the container's web framework does not parse a body that is not declared JSON.
+            "Input": json.dumps({"AgentRuntimeArn": runtime_arn, "ContentType": "application/json",
+                                 "Payload": payload}, separators=(",", ":")),
         },
     }
     if mode == "recurring":

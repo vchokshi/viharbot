@@ -17,7 +17,9 @@
 #      does not exist, trusted only by EventBridge Scheduler for viharbot-kepler-* schedules
 #   2. gives it one permission: bedrock-agentcore:InvokeAgentRuntime on that one runtime
 #   3. creates the schedule (`test`: one run in 3 minutes that deletes itself; `recurring`:
-#      rate(6 hours), created DISABLED unless ENABLE=yes)
+#      rate(6 hours), created DISABLED unless ENABLE=yes). If the schedule already exists, it is
+#      UPDATED to the printed request instead, which is how a disabled `recurring` schedule is
+#      switched on: re-run with ENABLE=yes and the live schedule becomes exactly what was reviewed.
 # Nothing here runs a model, holds a secret or reads GitHub. The run it triggers does that, with the
 # runtime's own role. Record the outcome in docs/aws-lab-change-record.md.
 #
@@ -80,7 +82,16 @@ fi
 step "2. permissions: invoke this one runtime" aws iam put-role-policy --role-name "$ROLE_NAME" \
   --policy-name invoke-kepler-runtime --policy-document "file://$WORK/policy.json"
 echo "== waiting 15 s for IAM to propagate"; sleep 15
-step "3. schedule ($MODE)" aws scheduler create-schedule --cli-input-json "file://$WORK/schedule.json" \
-  --query 'ScheduleArn' --output text
+SCHEDULE_NAME=$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["Name"])' "$WORK/schedule.json")
+if aws scheduler get-schedule --name "$SCHEDULE_NAME" --group-name default >/dev/null 2>&1; then
+  # It already exists (for example the recurring schedule created DISABLED): this is how it is switched
+  # on. UpdateSchedule replaces the whole definition with the one printed above, so the live schedule
+  # ends up exactly as reviewed, with only the State changed when ENABLE=yes.
+  step "3. schedule $SCHEDULE_NAME exists: update it to the request above" \
+    aws scheduler update-schedule --cli-input-json "file://$WORK/schedule.json" --query 'ScheduleArn' --output text
+else
+  step "3. schedule ($MODE)" aws scheduler create-schedule --cli-input-json "file://$WORK/schedule.json" \
+    --query 'ScheduleArn' --output text
+fi
 echo "Done. Record it in docs/aws-lab-change-record.md. For 'test', watch the runtime logs and the"
 echo "ViharBot/Kepler PollCompleted metric a few minutes after the scheduled time."
