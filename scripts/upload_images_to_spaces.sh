@@ -2,7 +2,7 @@
 # Upload the website images to a DigitalOcean Space. A DRY RUN unless APPLY=yes.
 #
 #   SPACES_BUCKET=viharbot-assets SPACES_REGION=nyc3 \
-#   AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... \
+#   SPACES_ACCESS_KEY=... SPACES_SECRET_KEY=... \
 #   scripts/upload_images_to_spaces.sh /path/to/images            # lists what would upload
 #   APPLY=yes ... scripts/upload_images_to_spaces.sh /path/to/images
 #
@@ -17,6 +17,12 @@ BUCKET="${SPACES_BUCKET:?set SPACES_BUCKET}"
 REGION="${SPACES_REGION:?set SPACES_REGION (for example nyc3)}"
 ENDPOINT="https://${REGION}.digitaloceanspaces.com"
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
+
+# Spaces keys use their own names so they never clash with real AWS credentials in your shell.
+# They are mapped to the names the aws CLI expects for this script's process only.
+export AWS_ACCESS_KEY_ID="${SPACES_ACCESS_KEY:?set SPACES_ACCESS_KEY}"
+export AWS_SECRET_ACCESS_KEY="${SPACES_SECRET_KEY:?set SPACES_SECRET_KEY}"
+unset AWS_PROFILE AWS_SESSION_TOKEN
 
 command -v aws >/dev/null || { echo "The aws CLI is required (it speaks the S3 API Spaces uses)." >&2; exit 2; }
 

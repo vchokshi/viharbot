@@ -12,7 +12,7 @@ Status: **code ready; no Space has been created and nothing is uploaded or deplo
 
 1. In DigitalOcean, create a Space (choose region) and enable its CDN. Note the bucket name, region and CDN endpoint.
 2. Create a Spaces access key (control panel, Spaces Object Storage, Access Keys). It is separate from the API token. Keep it out of the repository.
-3. Dry-run the upload from a checkout that still has the images: `SPACES_BUCKET=... SPACES_REGION=... scripts/upload_images_to_spaces.sh /path/to/images`. Check the list, then re-run with `APPLY=yes`.
+3. Dry-run the upload from a checkout that still has the images: `SPACES_BUCKET=... SPACES_REGION=... (plus SPACES_ACCESS_KEY and SPACES_SECRET_KEY in your shell) scripts/upload_images_to_spaces.sh /path/to/images`. Check the list, then re-run with `APPLY=yes`.
 4. Set `WEB_IMAGES_BASE_URL` on the web service (for example `https://<bucket>.<region>.cdn.digitaloceanspaces.com/images`). On DigitalOcean App Platform that is an environment variable on the web component, applied only after the usual Stage promotion approval.
 
 Cost: a Space has a flat monthly base price that includes storage and transfer allowances. Check current pricing before creating one.
