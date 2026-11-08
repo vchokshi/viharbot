@@ -83,7 +83,7 @@ def test_instructor_marker_phrases_are_flagged_even_with_no_index_loaded(text):
 
 @pytest.mark.parametrize("text", [
     "token ghp_" + "a" * 30, "github_pat_" + "b" * 30, "AKIA" + "C" * 16, "Authorization: Bearer " + "d" * 30,
-    "-----BEGIN " + "RSA PRIVATE KEY-----", "api_" + "key = abcdefgh12345678", "sk-" + "e" * 30])
+    "-----BEGIN " + "RSA PRIVATE KEY-----", "=".join(("api_key", "abcdefgh12345678")), "sk-" + "e" * 30])
 def test_credential_shapes_are_flagged(text):
     assert "credential" in kinds(ContentGuard(), text)
 

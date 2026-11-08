@@ -10,3 +10,6 @@ af3c1b8a91a1bc71ac5499e77a48b78c271109e2:tests/test_steward_units.py:generic-api
 # guard flags credential shapes. It is a fixture, not a credential. The current test builds the string at
 # runtime; this entry only covers the historical commit the full-history scan still reads.
 73970bf34dfa203bb7d2203041605045dbfead15:tests/test_archie_confidentiality.py:generic-api-key:86
+# Same reviewed fixture, in the intermediate commit that first split the string; the test now builds it with
+# a join so no `name = value` text remains in source. Covers only that historical commit.
+650128e4ee9ddb1d16ca0d13d49781e2e351af13:tests/test_archie_confidentiality.py:generic-api-key:86
