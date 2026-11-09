@@ -1,6 +1,6 @@
 # Kepler: governed coding agent
 
-Status: **proposed**. Epic [#125](https://github.com/vchokshi/viharbot/issues/125). This page covers the part implemented by [#126](https://github.com/vchokshi/viharbot/issues/126): Kepler's identity and governance loading. Kepler does not run, has no repository, GitHub or execution access, and nothing in the application executes the `software_engineering` capability. The container, assignment workflow, Sage cycle limit, Archie handoff and final PR gate are separate issues (#127 to #131) and are not implemented.
+Status: **proposed**. Epic [#125](https://github.com/vchokshi/viharbot/issues/125). This page covers the part implemented by [#126](https://github.com/vchokshi/viharbot/issues/126): Kepler's identity and governance loading. Kepler does not run, has no repository, GitHub or execution access, and nothing in the application executes the `software_engineering` capability. The container, assignment workflow, Sage cycle limit and final PR gate are separate issues (#127 to #131; the former Archie handoff was removed by #293 and will be redesigned later) and are not implemented.
 
 ## Identity
 
