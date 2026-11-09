@@ -40,7 +40,7 @@ needs_node = pytest.mark.skipif(NODE is None, reason="Node.js is not installed")
 
 DISPLAY_TO_ID = {"Charlie Chatwin": "charlie", "Nova": "nova", "Atlas": "atlas", "Pixel": "pixel",
                  "Sage": "sage", "Cipher": "cipher", "Scout": "scout", "Orbit": "orbit",
-                 "Kepler": "kepler", "Professor Archibald": "archie", "Ada": "ada"}
+                 "Kepler": "kepler"}
 CAPABILITY_WORD = {"research": "Research", "fact_check": "Fact Check", "source_quality": "Sources",
                    "security_assessment": "Security", "privacy_review": "Privacy",
                    "synthesis": "Synthesis", "slide_generation": "Slide Decks",
@@ -66,13 +66,12 @@ CARDS = cards()
 
 
 # every agent has a complete bio
-PORTRAIT_FILE = {"charlie": "Charlie_Chatwin_headshot.png", "kepler": "Kepler, Director of Analytics & Foresight.png",
-                 "archie": "Professor_and_Assistant.png", "ada": "Professor_and_Assistant.png"}
+PORTRAIT_FILE = {"charlie": "Charlie_Chatwin_headshot.png", "kepler": "Kepler, Director of Analytics & Foresight.png"}
 
 
 def test_every_registered_identity_has_a_profile_card_with_a_bio_and_a_real_portrait():
     registry = default_registry()
-    assert len(CARDS) == 11 == len(registry)
+    assert len(CARDS) == 9 == len(registry)
     for display, identity_id in DISPLAY_TO_ID.items():
         assert display in CARDS, display
         card = CARDS[display]
@@ -131,7 +130,6 @@ def test_the_identities_without_a_live_role_say_planned_support_or_in_developmen
     assert CARDS["Atlas"]["status"] == "Planned"
     assert CARDS["Orbit"]["status"] == "Platform support"
     assert CARDS["Kepler"]["status"] == "In development"
-    assert CARDS["Professor Archibald"]["status"] == "Planned" and CARDS["Ada"]["status"] == "Planned"
 
 
 # the page structure and the link

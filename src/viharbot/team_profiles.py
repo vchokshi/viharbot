@@ -39,13 +39,11 @@ NOT_LIVE_STATUS = {
     "atlas": ("planned", "Planned"),
     "orbit": ("support", "Platform support"),
     "kepler": ("development", "In development"),
-    "archie": ("planned", "Planned"),
-    "ada": ("planned", "Planned"),
 }
 
 # Roster order on the page: live chat roles first, then everyone else.
 ORDER = ("charlie", "nova", "scout", "cipher", "pixel", "sage",
-         "atlas", "orbit", "kepler", "archie", "ada")
+         "atlas", "orbit", "kepler")
 
 
 @dataclass(frozen=True)
@@ -56,7 +54,6 @@ class Portrait:
 
 
 KEPLER_PORTRAIT = "Kepler, Director of Analytics & Foresight.png"
-SHARED_LEARNING_PORTRAIT = "Professor_and_Assistant.png"
 
 PORTRAITS = {
     "charlie": Portrait("Charlie_Chatwin_headshot.png", "Charlie Chatwin portrait"),
@@ -69,10 +66,6 @@ PORTRAITS = {
     "orbit": Portrait("Orbit_headshot.png", "Orbit portrait"),
     "kepler": Portrait(KEPLER_PORTRAIT, "Kepler portrait: a robed robot beside a telescope and "
                                         "an orbit chart, wearing a First-Contributor Steward badge"),
-    "archie": Portrait(SHARED_LEARNING_PORTRAIT, "Archie, the Professor, from the shared "
-                                                 "portrait of Archie and Ada", "0% 20%"),
-    "ada": Portrait(SHARED_LEARNING_PORTRAIT, "Ada, the Assistant, from the shared "
-                                              "portrait of Archie and Ada", "100% 20%"),
 }
 
 # Proposed public copy (reviewed by the founder before it is final). ``short`` is the one-line
@@ -139,19 +132,6 @@ COPY = {
         "Kepler does not write code, push branches, merge, deploy, change permissions or post "
         "contributor-facing messages without approval, and it does not run in the chat. Its "
         "offline components are built; that is not a live service. See issue #198."),
-    "archie": (
-        "Engineering history and teaching",
-        "Archie is the team's patient technical historian and educator. He turns verified "
-        "engineering decisions into clear explanations and future teaching material, connecting "
-        "how systems work with why they were built that way.",
-        "Archie's instructional role is planned. It is not evidence of active repository or "
-        "memory access."),
-    "ada": (
-        "Curriculum and learning journeys",
-        "Ada turns approved technical knowledge into practical learning journeys. Energetic and "
-        "organized, she designs lessons, exercises and assessments that help learners "
-        "demonstrate understanding by doing.",
-        "Ada's role is planned. Student-record and execution access are not granted."),
 }
 
 

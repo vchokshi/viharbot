@@ -85,10 +85,6 @@ def test_established_identities_are_unchanged_and_match_the_epic_table():
     for agent_id, (name, title, _) in EPIC_TABLE.items():
         assert agents.get(agent_id).name == name
         assert agents.get(agent_id).title == title
-    # The education identities remain, untouched and without a Phase A persona.
-    assert {"archie", "ada"} <= {i.id for i in agents.list()}
-    assert "archie" not in default_persona_registry()
-    assert "ada" not in default_persona_registry()
 
 
 def test_epic_core_identity_words_are_present_without_replacing_identity_traits():

@@ -66,4 +66,4 @@ Loading is deterministic (ordered by agent id) and makes no network, LiteLLM, AW
 
 ## Not implemented
 
-Peer review, relationship records, collaboration memory, collaboration events and profile UI are proposals (phases C to E). The persona is not applied to Charlie's planner, Sage or Sage's code review. Personas for `archie` and `ada` are not included.
+Peer review, relationship records, collaboration memory, collaboration events and profile UI are proposals (phases C to E). The persona is not applied to Charlie's planner, Sage or Sage's code review.

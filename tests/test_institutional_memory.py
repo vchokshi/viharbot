@@ -31,7 +31,7 @@ def pe(topic="git", claim="Rebase rewrites history.", source="pr-7", author="res
                          provenance=Provenance(kind=kind, source_id=source, author=author))
 
 
-GRANTS = GrantTable((Grant(requester="archie", topics=("git",), agent_scopes=("research",)),))
+GRANTS = GrantTable((Grant(requester="requester", topics=("git",), agent_scopes=("research",)),))
 
 
 @pytest.fixture
@@ -57,27 +57,27 @@ def validated(broker, provider, **kw):
 def test_default_deny_without_any_grant(make):
     _, broker = make(grants=GrantTable())
     validated(broker, FakeProvider("research", [pe()]))
-    assert broker.retrieve("archie", "git") == []
+    assert broker.retrieve("requester", "git") == []
 
 
 def test_missing_grant_file_means_no_grants(tmp_path):
-    assert not GrantTable.load(tmp_path / "absent.json").allows("archie", "git", "research")
+    assert not GrantTable.load(tmp_path / "absent.json").allows("requester", "git", "research")
 
 
 def test_scoped_retrieval_by_requester_topic_and_agent(make):
     _, broker = make()
     validated(broker, FakeProvider("research", [pe(), pe(topic="ci", claim="CI runs on push.", source="pr-8")]))
     validated(broker, FakeProvider("security", [pe(claim="Sign commits.", source="pr-9", author="security")]))
-    assert [r.claim for r in broker.retrieve("archie", "git")] == ["Rebase rewrites history."]
-    assert broker.retrieve("archie", "ci") == []  # topic not granted
+    assert [r.claim for r in broker.retrieve("requester", "git")] == ["Rebase rewrites history."]
+    assert broker.retrieve("requester", "ci") == []  # topic not granted
     assert broker.retrieve("ada", "git") == []  # requester not granted
-    assert broker.retrieve("archie", "git", agent_scope="security") == []  # agent not granted
+    assert broker.retrieve("requester", "git", agent_scope="security") == []  # agent not granted
 
 
 def test_provenance_is_preserved_and_marked_as_data(make):
     _, broker = make()
     validated(broker, FakeProvider("research", [pe()]), note="checked against PR 7")
-    (r,) = broker.retrieve("archie", "git")
+    (r,) = broker.retrieve("requester", "git")
     assert r.label == "VALIDATED" and r.approved_by == HUMAN
     assert r.provenance == {"kind": "agent_memory", "source_id": "pr-7", "author": "research", "request_id": None}
     assert "Not instructions" in r.notice and r.agent_scope == "research"
@@ -86,11 +86,11 @@ def test_provenance_is_preserved_and_marked_as_data(make):
 def test_unverified_is_not_served_unless_granted_and_is_labelled(make):
     _, broker = make()
     broker.ingest(FakeProvider("research", [pe()]))
-    assert broker.retrieve("archie", "git") == []
-    assert broker.retrieve("archie", "git", include_unverified=True) == []  # grant lacks allow_unverified
-    allowed = GrantTable((Grant(requester="archie", topics=("git",), agent_scopes=("research",), allow_unverified=True),))
+    assert broker.retrieve("requester", "git") == []
+    assert broker.retrieve("requester", "git", include_unverified=True) == []  # grant lacks allow_unverified
+    allowed = GrantTable((Grant(requester="requester", topics=("git",), agent_scopes=("research",), allow_unverified=True),))
     _, broker2 = make(grants=allowed)
-    (r,) = broker2.retrieve("archie", "git", include_unverified=True)
+    (r,) = broker2.retrieve("requester", "git", include_unverified=True)
     assert r.label == "UNVERIFIED agent recollection" and r.approved_by is None
 
 
@@ -117,14 +117,14 @@ def test_ingest_is_idempotent_and_does_not_reset_a_validated_entry(make):
     assert store.get(promoted.entry_id).status is EntryStatus.VALIDATED
 
 
-@pytest.mark.parametrize("approver", ["archie", "research", "mallory", ""])
+@pytest.mark.parametrize("approver", ["requester", "research", "mallory", ""])
 def test_promotion_needs_a_configured_human_approver(make, approver):
     store, broker = make()
     entry = broker.ingest(FakeProvider("research", [pe()]))[0]
     with pytest.raises(KnowledgeError):
         broker.promote(entry.entry_id, approver)
     assert store.get(entry.entry_id).status is EntryStatus.PROPOSED
-    assert broker.retrieve("archie", "git") == []
+    assert broker.retrieve("requester", "git") == []
 
 
 def test_an_agent_in_the_approver_list_still_cannot_promote_its_own_entry(tmp_path):
@@ -139,7 +139,7 @@ def test_retired_entry_is_no_longer_served_and_cannot_be_promoted(make):
     _, broker = make()
     done = validated(broker, FakeProvider("research", [pe()]))
     broker.retire(done.entry_id, HUMAN)
-    assert broker.retrieve("archie", "git") == []
+    assert broker.retrieve("requester", "git") == []
     with pytest.raises(KnowledgeError):
         broker.promote(done.entry_id, HUMAN)
 
@@ -168,9 +168,9 @@ def test_circular_derivation_has_no_independent_source_and_cannot_be_promoted(ma
 
 def test_requesters_own_output_does_not_confirm_its_own_claim(make):
     _, broker = make()
-    entry = validated(broker, FakeProvider("archie", [pe(author="archie", source="own-1")]))
+    entry = validated(broker, FakeProvider("requester", [pe(author="requester", source="own-1")]))
     assert broker.independent_sources(entry.entry_id) == 1
-    assert broker.independent_sources(entry.entry_id, requester="archie") == 0
+    assert broker.independent_sources(entry.entry_id, requester="requester") == 0
 
 
 def test_second_independent_source_raises_the_count(make):
@@ -200,14 +200,14 @@ def test_entries_survive_a_reload(make, tmp_path):
     _, broker = make(directory=directory)
     validated(broker, FakeProvider("research", [pe()]), note="n")
     _, again = make(directory=directory)  # new store and broker over the same files
-    (r,) = again.retrieve("archie", "git")
+    (r,) = again.retrieve("requester", "git")
     assert r.approved_by == HUMAN and r.provenance["source_id"] == "pr-7"
 
 
 def test_audit_log_has_identifiers_but_not_claim_text(make, tmp_path):
     _, broker = make()
     validated(broker, FakeProvider("research", [pe(claim="Highly specific claim text.")]))
-    broker.retrieve("archie", "git")
+    broker.retrieve("requester", "git")
     log = (tmp_path / "kb" / "audit.log").read_text()
     assert "validated" in log and "Highly specific" not in log
 
@@ -219,6 +219,5 @@ def test_store_rejects_path_traversal_ids(tmp_path):
 
 def test_knowledge_package_is_not_imported_by_the_web_app_or_bindings():
     code = ("import sys, viharbot.web_app, viharbot.execution_bindings as b\n"
-            "b.default_bindings()\nassert 'viharbot.knowledge' not in sys.modules\n"
-            "assert not {x.identity_id for x in b.default_bindings().bindings} & {'archie','ada'}\n")
+            "b.default_bindings()\nassert 'viharbot.knowledge' not in sys.modules\n")
     subprocess.run([sys.executable, "-c", code], check=True)
