@@ -21,8 +21,7 @@ from .models import Persona
 PERSONAS_DIR = Path(__file__).with_name("definitions")
 _ID_PATTERN = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 
-# The eight established identities. Each must always have a persona. The two education identities
-# (archie, ada) may have one later; they are not required in Phase A.
+# The eight established identities. Each must always have a persona.
 REQUIRED_PERSONA_IDS: frozenset[str] = frozenset(
     {"charlie", "nova", "atlas", "pixel", "sage", "cipher", "scout", "orbit"}
 )

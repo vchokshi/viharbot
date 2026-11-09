@@ -57,7 +57,7 @@ REQUEST_TIMEOUT = 20
 TRANSPORT_ATTEMPTS = 3  # GETs are idempotent; a dropped or truncated read is retried
 FAILURE_RETRY_SECONDS = 30
 AGENT_NAMES = ("Charlie", "Nova", "Atlas", "Pixel", "Sage", "Cipher", "Scout", "Orbit",
-               "Kepler", "Archie", "Ada")
+               "Kepler")
 MATURITY_LEVELS = ("proposed", "implemented", "tested", "integrated", "deployed",
                    "operationally validated")
 STATUS_DOC = "docs/development-status.md"
@@ -796,7 +796,7 @@ DOC_CATEGORIES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("LiteLLM Integration", ("litellm",)),
     ("Orchestration and Delegation", ("delegation", "orchestration", "identity-execution")),
     ("Agent Skills and Capabilities", ("skills", "capabilit", "pixel", "personality",
-                                       "education-agents", "sage-")),
+                                       "sage-")),
     ("Agent Architecture", ("agent-architecture", "agent-identity", "architecture.md",
                             "memory-architecture", "agent-communication")),
     ("Security and Governance", ("docs/governance/", "security", "threat-model", "contributing",

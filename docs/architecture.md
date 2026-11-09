@@ -17,7 +17,7 @@ flowchart TB
     CI[Cipher]
     PX[Pixel]
     SG[Sage]
-    PL["Atlas, Orbit, Archie, Ada, Kepler<br/>(not connected)"]
+    PL["Atlas, Orbit, Kepler<br/>(not connected)"]
   end
   SG -->|philosophical analysis, dev stack| SGS[sage service]
   CH -->|synthesis| SY[synthesis service]
@@ -181,7 +181,7 @@ A push to `main` deploys nothing. See [deployment strategy](deployment-strategy.
 | Memory | Write-only JSONL per agent | Retention guardrail and engagement id ([#229](https://github.com/vchokshi/viharbot/issues/229)); durable, isolated, retrievable memory (ADR-009, proposed) |
 | Communication | Plain JSON REST, validated contracts; opt-in signed assertions on four services | Authentication on all services ([#235](https://github.com/vchokshi/viharbot/issues/235)) |
 | Runtimes | Docker Compose; DigitalOcean template (six agents) | One placement file ([#226](https://github.com/vchokshi/viharbot/issues/226)); Kepler on AgentCore ([#198](https://github.com/vchokshi/viharbot/issues/198)); other AWS deployment |
-| Identities | Eleven defined; six connected to services (Pixel and Sage in the dev stack) | Behavior for Atlas, Orbit, Archie and Ada; Kepler agent runtime ([#198](https://github.com/vchokshi/viharbot/issues/198)) |
+| Identities | Nine defined; six connected to services (Pixel and Sage in the dev stack) | Behavior for Atlas and Orbit; Kepler agent runtime ([#198](https://github.com/vchokshi/viharbot/issues/198)) |
 
 ## Adding an operational agent today
 

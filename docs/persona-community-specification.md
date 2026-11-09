@@ -18,7 +18,7 @@ The brief this report answers is broader: persona and community design for the *
 
 | Area | State | Evidence |
 |---|---|---|
-| Identities | **Implemented.** Ten TOML identities: the eight established agents plus `archie` and `ada` (education). Strict, frozen, unknown fields rejected. | `src/viharbot/agent_identities/`, `identity.py`, `identity_registry.py` |
+| Identities | **Implemented.** Nine TOML identities: the eight established agents plus `kepler`. Strict, frozen, unknown fields rejected. | `src/viharbot/agent_identities/`, `identity.py`, `identity_registry.py` |
 | Identity prompts | Implemented as markdown, one per identity (role, style, expertise, evidence, boundaries, limitations, collaboration). | `agent_identities/prompts/*.md` |
 | Personality-aware inference | **Implemented, tested, flag off and set nowhere.** Composes identity prompt + precedence clause + service prompt. Only six pipeline services, and only their approved bindings. | `inference_config.py`, [personality-aware inference](personality-aware-inference.md), [development status](development-status.md) |
 | Execution bindings | Implemented. Nine enabled bindings: six pipeline services plus `pixel`, `sage`, and in-process `sage-code-review`. Atlas and Orbit have none. | `execution_config/bindings.toml`, `execution_bindings.py` |
@@ -190,7 +190,6 @@ Not created. Titles are proposals for the founder to file under #157. #161 (pers
 | D1 | Is the brief's scope a new child of #157, or does it replace part of #157's "Now Specifying" scope? | Proceed as a child; reference #157 without closing it |
 | D2 | Do the draft persona texts (biographies, values, voice) reflect the intended characters? | Marked `draft`; none approved |
 | D3 | After Phase A, is `prompts/<id>.md` or the persona file the source of truth for voice text? | Both coexist; nothing reads personas, so no conflict yet |
-| D4 | Should `archie` and `ada` receive personas? Issues #146 and #139 govern them separately | Not included; the loader does not require them |
 | D5 | Fix the documentation drift in G9 here or separately? | Separately (A3), to keep this PR to one concern |
 | D6 | Is durable memory in scope for #157 or only for the ADR-009 work? | Out of scope; interfaces only in Phase D |
 

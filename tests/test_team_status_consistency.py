@@ -30,10 +30,10 @@ def sidebar_entries():
         r'<a class="agent-name" href="#team/(\w+)">(.*?) <small class="status-\w+">([^<]*)</small>', SIDEBAR)}
 
 
-def test_the_sidebar_lists_all_eleven_identities_once_each():
+def test_the_sidebar_lists_all_nine_identities_once_each():
     entries = sidebar_entries()
-    assert set(entries) == {i.id for i in default_registry().list()} and len(entries) == 11
-    assert SIDEBAR.count('class="agent"') == 11
+    assert set(entries) == {i.id for i in default_registry().list()} and len(entries) == 9
+    assert SIDEBAR.count('class="agent"') == 9
 
 
 def test_exactly_the_bound_chat_identities_are_marked_live():
@@ -52,8 +52,8 @@ def test_unbound_identities_are_never_marked_live():
 def test_counts_match_the_bindings():
     live = len(chat_identities())
     words = {4: "Four", 5: "Five", 6: "Six"}
-    assert f"{live} live · 11 in the crew" in HTML
-    assert f"<em>{live} agents</em>" in HTML and f"<em>5 identities</em>" in HTML
+    assert f"{live} live · 9 in the crew" in HTML
+    assert f"<em>{live} agents</em>" in HTML and f"<em>3 identities</em>" in HTML
     assert f"{words[live]} live agents" in HTML and f"{words[live]} already work together" in HTML
 
 
@@ -69,7 +69,7 @@ def test_each_sidebar_name_deep_links_to_the_matching_team_profile():
         assert f'href="#team/{identity_id}"' in SIDEBAR
         assert f'<article class="profile-card" id="team-{identity_id}"' in HTML  # the anchor it targets
     anchors = re.findall(r'<article class="profile-card" id="(team-\w+)"', HTML)
-    assert len(anchors) == len(set(anchors)) == 11
+    assert len(anchors) == len(set(anchors)) == 9
 
 
 def test_sidebar_and_profile_show_the_same_name_title_and_status():
@@ -81,8 +81,8 @@ def test_sidebar_and_profile_show_the_same_name_title_and_status():
 
 
 def test_every_sidebar_entry_is_expandable_and_keyboard_reachable():
-    assert SIDEBAR.count('<details class="agent-more">') == 11
-    assert SIDEBAR.count('class="agent-profile-link"') == 11
+    assert SIDEBAR.count('<details class="agent-more">') == 9
+    assert SIDEBAR.count('class="agent-profile-link"') == 9
     assert "tabindex" not in SIDEBAR  # native links and summaries, no custom tab order
 
 
