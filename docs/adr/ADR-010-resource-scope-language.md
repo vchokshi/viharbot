@@ -1,6 +1,6 @@
 # ADR-010: Resource-scope language for delegation grants
 
-**Status: Proposed.** Nothing here is implemented. It resolves issue #94, which blocks A3 (delegation-based authorization, #38). It does not edit ADR-006; it fills the gap ADR-006 leaves ("path or resource patterns the capability may touch"). The founder confirms the numbering.
+**Status: Accepted (2026-11-10, founder).** Not yet implemented: A3 (#38) implements this language. It resolves issue #94, which blocks A3 (delegation-based authorization, #38). It does not edit ADR-006; it fills the gap ADR-006 leaves ("path or resource patterns the capability may touch"). Memory records addressed by path (ADR-009) fall under this language; other non-HTTP resources remain undecided (see "Not decided").
 
 ## Context
 
