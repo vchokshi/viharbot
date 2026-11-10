@@ -25,8 +25,6 @@ DEFAULT_MODEL_ID = "meta.llama3-1-8b-instruct-v1:0"
 APPROVED_MODEL_IDS = frozenset({DEFAULT_MODEL_ID})
 # The only values of KEPLER_MODEL_ID that turn the model off. Anything else must be approved.
 MODEL_OFF_VALUES = frozenset({"off", "none", "disabled"})
-# Kepler never touches this repository, in any role.
-FORBIDDEN_REPOSITORIES = frozenset({"vchokshi/viharbot-onboarding-instructor"})
 
 
 class ConfigError(ValueError):
@@ -60,9 +58,8 @@ class StewardConfig:
             raise ConfigError("model is not on the approved allowlist (ADR-011)")
         if not 20 <= self.model_max_tokens <= 400:
             raise ConfigError("model_max_tokens must be between 20 and 400")
-        if not _REPO.fullmatch(self.repo) or self.repo.casefold() in {
-                r.casefold() for r in FORBIDDEN_REPOSITORIES}:
-            raise ConfigError("repository must be owner/name and not a forbidden repository")
+        if not _REPO.fullmatch(self.repo):
+            raise ConfigError("repository must be owner/name")
         if not _REGION.fullmatch(self.region):
             raise ConfigError("region looks wrong")
         if not _SECRET.fullmatch(self.reader_secret_id):

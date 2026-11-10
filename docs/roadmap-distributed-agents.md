@@ -21,9 +21,8 @@ Implementation order: A2 (authentication), A3 (authorization), B2 (controller), 
 1. **Issuer key location** (ADR-006): web process, or a separate internal signer.
 2. **DigitalOcean team** (ADR-007): a separate team for the controller, so its token cannot reach Stage.
 3. **Memory service location** (ADR-009): AWS or DigitalOcean.
-4. **Review of the educational repositories:** neither has workflows, so Sage cannot review PRs there. Options: copy the Sage workflow into each (the instructor repo must never receive trainee-visible output), or review them manually.
-5. **ADR numbering** as above.
-6. **Approval gates:** which of the cost items below to approve, one at a time.
+4. **ADR numbering** as above.
+5. **Approval gates:** which of the cost items below to approve, one at a time.
 
 ## Estimated costs (estimates from the assessments; confirm with provider calculators before approving)
 

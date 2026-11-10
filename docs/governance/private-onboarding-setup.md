@@ -7,7 +7,7 @@ This document specifies the access-control setup for contributor onboarding. It 
 Create two repositories under the founder's account, both with GitHub visibility set to **Private**:
 
 1. `vchokshi/viharbot-onboarding` — trainee-facing exercises, instructions, and practice submissions.
-2. `vchokshi/viharbot-onboarding-instructor` — instructor-only preparation, answer keys, assessment rubrics, intentional-defect catalog, and founder-controlled assessment records.
+2. A separate private instructor-only repository — instructor-only preparation, answer keys, assessment rubrics, intentional-defect catalog, and founder-controlled assessment records.
 
 A directory inside a shared clone is not an access boundary. Do not add trainees to the instructor repository. Do not place instructor-only material in the trainee repository, its Git history, pull requests, issues, Actions logs, or artifacts.
 
