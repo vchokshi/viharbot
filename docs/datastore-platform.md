@@ -4,8 +4,15 @@
 
 ## Approved clouds and stores (founder, 2026-11-10)
 
-- **Approved clouds:** DigitalOcean (Stage), AWS (Production) and GCP. Approval is not permission to provision: `AGENTS.md` still requires an explicit request for AWS and GCP resources and a reviewed, confirmed promotion for Stage.
-- **Approved stores:** everything in the portable set below. **DynamoDB is approved when a feature needs it, provided the feature has a working rollout in both DigitalOcean and AWS.** DigitalOcean and GCP have no DynamoDB, so a DynamoDB-backed feature needs a Stage-capable implementation behind the same interface (for example a PostgreSQL adapter) and the same contract tests on both. Whether such a feature must also run on GCP is not decided here; this document assumes it does not.
+- **Approved clouds:** DigitalOcean (Stage), and AWS and GCP as Production options. Approval is not permission to provision: `AGENTS.md` still requires an explicit request for AWS and GCP resources and a reviewed, confirmed promotion for Stage.
+- **Approved stores:** everything in the portable set below, and DynamoDB.
+- **Placement rule:** a store is placed in the cloud that offers it. If the store an agent needs is not offered in one approved cloud, it may be launched in another approved cloud (for example DynamoDB in AWS for an agent that runs on DigitalOcean or GCP). A cross-cloud placement must:
+  - use authenticated TLS for every connection (never plain HTTP across a cloud boundary, and `ADR-006` already requires TLS across platform boundaries);
+  - use credentials that belong to that environment only, held by the service that fronts the store, and never shared between Stage and Production;
+  - keep Stage and Production data separate, since cross-environment data movement is still undecided and denied (ADR-009);
+  - have its cost (including egress) and added latency reported before promotion, and any failure of the other cloud treated as a dependency of the agent;
+  - stay behind the same service interface, so the agent can later move to a store in its own cloud without a contract change.
+  Prefer the store that exists in the agent's own cloud when it meets the need; a cross-cloud store is a choice with a cost, not a default.
 - **Memory:** unchanged. ADR-009's PostgreSQL decision stands; DynamoDB approval does not reopen it.
 
 ## Why this matters now
@@ -25,11 +32,11 @@
 | Search / vector later | OpenSearch container | Managed OpenSearch | Amazon OpenSearch Service | **Not verified** | DO and AWS list it; the GCP search found nothing, so no GCP equivalent is claimed |
 | Event streaming (only if a real need appears) | Kafka container | Managed Kafka | Amazon MSK | **Not verified** | DO verified; GCP's managed Kafka was not confirmed either. **MSK was not confirmed in this session's search; check before relying on it.** `AGENTS.md` also forbids brokers unless the founder changes direction |
 | Object storage (large bodies, artifacts) | S3-compatible container | Spaces (S3-compatible) | S3 | Cloud Storage (**not verified in this session**) | Spaces is already used for images. Local emulator not chosen, see below |
-| Single-table NoSQL | DynamoDB Local | **None** | DynamoDB | Bigtable or Firestore (nearest, **not equivalent**: different consistency, transaction and key models) | AWS service verified. No DigitalOcean equivalent exists. Approved only under the DynamoDB condition above |
+| Single-table NoSQL | DynamoDB Local | **None** | DynamoDB | Bigtable or Firestore (nearest, **not equivalent**: different consistency, transaction and key models) | AWS service verified. No DigitalOcean equivalent exists. Approved; for an agent outside AWS it is a cross-cloud placement under the rule above |
 
 DigitalOcean lists six managed engines: PostgreSQL, MySQL, Valkey, MongoDB, Kafka and OpenSearch. Backups differ by engine: daily point-in-time backups for PostgreSQL, MySQL, MongoDB and OpenSearch, not for Valkey or Kafka. Kafka and OpenSearch have no standby nodes. Announced plan changes (15 and 30 November 2026) limit Standard Edition PostgreSQL and MySQL plans above 4 GiB RAM and standby or read-only nodes for new clusters; existing clusters are not affected. Check current plans and prices before choosing a size.
 
-GCP's own managed set, from [Google's database overview](https://cloud.google.com/products/databases): Cloud SQL (MySQL, PostgreSQL, SQL Server), Spanner, Bigtable, Firestore and Memorystore, with MongoDB Atlas offered as a partner service. Spanner and Bigtable have no local container or DigitalOcean counterpart, so they would face the same portability condition as DynamoDB. Prices, plans and regions are not checked.
+GCP's own managed set, from [Google's database overview](https://cloud.google.com/products/databases): Cloud SQL (MySQL, PostgreSQL, SQL Server), Spanner, Bigtable, Firestore and Memorystore, with MongoDB Atlas offered as a partner service. Spanner and Bigtable have no local container or DigitalOcean counterpart, so they fall under the same placement rule as DynamoDB: they run in GCP, and an agent elsewhere reaches them across clouds only under the cross-cloud conditions above. Prices, plans and regions are not checked.
 
 ## What can run in Docker Desktop
 
