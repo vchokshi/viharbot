@@ -2,7 +2,7 @@
 
 > **Historical (Phase 2), still accurate for the identity model.** Its statement that identities are not connected to execution was true when written. Since Phase 3 the application binds four identities to running services; see [architecture](architecture.md) and [identity execution integration](identity-execution-integration.md). Atlas, Sage, Pixel and Orbit remain unconnected (planned).
 
-Phase 2 adds declarative configuration for eight agent identities. It does not connect them to execution. The six operational agents (Research, Fact Check, Source Quality, Security, Privacy Review, Synthesis), their prompts, model aliases, endpoints and the web pipeline are unchanged. Nothing in the request path imports the identity modules.
+Phase 2 added declarative configuration for eight agent identities (the team is designed for a flexible 8 to 12; the registry, not this page, is the source of truth for the current count). It does not connect them to execution. The six operational agents (Research, Fact Check, Source Quality, Security, Privacy Review, Synthesis), their prompts, model aliases, endpoints and the web pipeline are unchanged. Nothing in the request path imports the identity modules.
 
 ## Four separate concepts
 
@@ -32,7 +32,7 @@ flowchart LR
 
 An identity file cannot contain runtime fields; unknown keys are rejected. A runtime config refers to an identity only by `agent_id`.
 
-## The eight identities
+## The eight identities defined in Phase 2
 
 | ID | Name | Title | Capabilities | Preferred model family |
 |---|---|---|---|---|
