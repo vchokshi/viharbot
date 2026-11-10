@@ -1,6 +1,6 @@
 # ADR-009: Persistent, governed agent memory
 
-**Status: Proposed. Amended 2026-11-10 (founder decision): PostgreSQL is the memory backend in every environment; see "Amendment: PostgreSQL everywhere".** Nothing here is implemented or provisioned. It is intended to satisfy the memory design that issue #40 depends on (cited there as "ADR-003"), and to support the isolation and poisoning tests in #48. The founder confirms the numbering and still has to accept this ADR as amended.
+**Status: Accepted (2026-11-10, founder), as amended for PostgreSQL in every environment; see "Amendment: PostgreSQL everywhere".** The number ADR-009 is confirmed (issue #40 cites it as "ADR-003", which does not exist). Acceptance is of the design and contract only: nothing here is implemented or provisioned, the open questions below remain open (isolation level and locking, instance sizes and cost, backup retention, where each memory service runs, closure policy), and implementation proceeds under #40 with founder review of each PR. It satisfies the memory design that issue #40 depends on and supports the isolation and poisoning tests in #48.
 
 ## Context
 

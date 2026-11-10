@@ -178,7 +178,7 @@ A push to `main` deploys nothing. See [deployment strategy](deployment-strategy.
 | Independent agents | Separate containers, aliases, memory paths, structured logs | Per-agent cloud identities and permissions |
 | Orchestration | Live team or fixed pipeline, stateless planner, policy, freshness, budgets, deadline | Persistent planner state; parallel execution ([#234](https://github.com/vchokshi/viharbot/issues/234)) |
 | Observability | Request ID, structured logs, live SSE events, model labels | Persisted run traces ([#228](https://github.com/vchokshi/viharbot/issues/228)); token and cost metrics ([#231](https://github.com/vchokshi/viharbot/issues/231)); a hosted log destination |
-| Memory | Write-only JSONL per agent | Retention guardrail and engagement id ([#229](https://github.com/vchokshi/viharbot/issues/229)); durable, isolated, retrievable memory (ADR-009, proposed) |
+| Memory | Write-only JSONL per agent | Retention guardrail and engagement id ([#229](https://github.com/vchokshi/viharbot/issues/229)); durable, isolated, retrievable memory (ADR-009, accepted 2026-11-10; not implemented) |
 | Communication | Plain JSON REST, validated contracts; opt-in signed assertions on four services | Authentication on all services ([#235](https://github.com/vchokshi/viharbot/issues/235)) |
 | Runtimes | Docker Compose; DigitalOcean template (six agents) | One placement file ([#226](https://github.com/vchokshi/viharbot/issues/226)); Kepler on AgentCore ([#198](https://github.com/vchokshi/viharbot/issues/198)); other AWS deployment |
 | Identities | Nine defined; six connected to services (Pixel and Sage in the dev stack) | Behavior for Atlas and Orbit; Kepler agent runtime ([#198](https://github.com/vchokshi/viharbot/issues/198)) |
