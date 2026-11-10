@@ -1,0 +1,51 @@
+# Datastore platform: local, Stage and Production
+
+**Status: proposal. Nothing here is implemented or provisioned.** No Compose service, DigitalOcean resource or AWS resource was added for this document, and `AGENTS.md` still forbids provisioning AWS resources without an explicit request. It exists so that the memory work (#40, ADR-009) and any later store are chosen from what runs the same way in all three environments, instead of from what one cloud happens to offer.
+
+## Why this matters now
+
+- Stage runs on DigitalOcean App Platform. Its container filesystem is not persistent: data on the host's local disk is lost after deployments and other container replacements, and DigitalOcean's own guidance is to use Managed Databases or Spaces for durable state ([App Platform limits](https://docs.digitalocean.com/products/app-platform/details/limits/), [How to store data](https://docs.digitalocean.com/products/app-platform/how-to/store-data/)). Today's JSONL memory at `/tmp/viharbot-memory` is therefore ephemeral on Stage.
+- ADR-009 chose DynamoDB for Production and left the Stage store open. DigitalOcean has no DynamoDB, so a Stage that must honor the same memory contract needs a store that exists on both providers.
+- The team is designed for roughly 8 to 12 agents. Per-agent isolation can be done with separate schemas, key prefixes or buckets on a small number of shared stores, so store count does not need to scale with agent count.
+
+## The portable set
+
+| Role | Local (Docker Compose) | Stage (DigitalOcean) | Production (AWS) | Verified in this session |
+|---|---|---|---|---|
+| Relational / transactional | PostgreSQL container | Managed PostgreSQL | RDS for PostgreSQL | Both providers list it ([DO](https://docs.digitalocean.com/products/databases/), [AWS decision guide](https://docs.aws.amazon.com/decision-guides/latest/decision-guides/databases-on-aws-how-to-choose.html)) |
+| Relational (alternative) | MySQL container | Managed MySQL | RDS for MySQL | Same sources |
+| Key-value cache, queues, rate limits, `jti` replay cache | Valkey container (Redis-compatible) | Managed Valkey | ElastiCache (Valkey) | DO lists Valkey as Redis-compatible; its API still uses "redis" and "Caching" labels. AWS lists ElastiCache with Valkey, Memcached and Redis OSS |
+| Document | MongoDB container | Managed MongoDB | DocumentDB (MongoDB-compatible) | Both list it. DocumentDB is an API-compatible service, not MongoDB itself, so behavior differences must be tested |
+| Search / vector later | OpenSearch container | Managed OpenSearch | Amazon OpenSearch Service | Both list it |
+| Event streaming (only if a real need appears) | Kafka container | Managed Kafka | Amazon MSK | DO verified. **MSK was not confirmed in this session's search; check before relying on it.** `AGENTS.md` also forbids brokers unless the founder changes direction |
+| Object storage (large bodies, artifacts) | S3-compatible container | Spaces (S3-compatible) | S3 | Spaces is already used for images. Local emulator not chosen, see below |
+| Single-table NoSQL | DynamoDB Local | **None** | DynamoDB | AWS service verified. No DigitalOcean equivalent exists, which is the Stage problem for ADR-009 as written |
+
+DigitalOcean lists six managed engines: PostgreSQL, MySQL, Valkey, MongoDB, Kafka and OpenSearch. Backups differ by engine: daily point-in-time backups for PostgreSQL, MySQL, MongoDB and OpenSearch, not for Valkey or Kafka. Kafka and OpenSearch have no standby nodes. Announced plan changes (15 and 30 November 2026) limit Standard Edition PostgreSQL and MySQL plans above 4 GiB RAM and standby or read-only nodes for new clusters; existing clusters are not affected. Check current plans and prices before choosing a size.
+
+## What can run in Docker Desktop
+
+Everything in the first six rows runs as a standard container on a private Compose network, with a named volume for durability. Not verified here: exact image names and tags, resource use on a developer laptop, and licensing of each image. Confirm these when a store is actually added. One flag for the object store: the license and maintenance status of the best-known S3-compatible server image has changed over time, so compare current options (for example LocalStack, SeaweedFS or Garage) rather than assuming one.
+
+Rules for any store added to Compose:
+
+- Private network only, no published host port unless bound to `127.0.0.1`, same as the agents today.
+- Credentials from environment or secrets, never in source, and not reused between environments.
+- One database or schema per agent or namespace, with a separate credential where the store supports it, so the isolation tests in #48 have something real to test.
+- A store is added only when a feature needs it, in line with `AGENTS.md` ("do not add databases without a concrete need").
+
+## Decision this raises for ADR-009 (founder)
+
+ADR-009 is Proposed and describes DynamoDB conditional and transactional writes as the way to get its guard rules. Because Stage and local cannot run DynamoDB natively (DynamoDB Local is an emulator, and DigitalOcean has no equivalent), there are two honest options:
+
+1. **PostgreSQL as the one memory backend everywhere** (container locally, Managed PostgreSQL on Stage, RDS on Production). One contract, one set of tests, real transactions. ADR-009's DynamoDB design would be amended, and ADR-009 is a founder-review path.
+2. **Keep DynamoDB for Production**, and accept that Stage and local use a different engine behind the same interface. The ADR must then say which guarantees are weaker on Stage, and the contract tests must pass on both. This is the cost the ADR already warns about.
+
+Recommendation: option 1, unless there is a reason to want DynamoDB specifically. It removes the Stage gap and the dual-backend test burden. This is a recommendation, not a decision.
+
+## Not verified
+
+- Image names, tags, sizes and licenses for each local container.
+- MSK availability and any AWS plan or price.
+- DigitalOcean App Platform persistent file storage: the docs describe both "no persistent storage" and an NFS mount guide, and these conflict. Treat persistent files on App Platform as unavailable until verified.
+- Cost of any managed store. Provisioning any of them is a cost change that must be reported before promotion to Stage.

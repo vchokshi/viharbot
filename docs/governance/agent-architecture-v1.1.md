@@ -36,7 +36,7 @@ A skill declaration shall never independently grant tool permissions.
 
 ### 2. Existing Architecture Baseline
 
-The current repository defines eight identities and six operational specialist services.
+The team is designed for a flexible roster of about 8 to 12 identities. At the time of the baseline the repository defined eight identities and six operational specialist services; later changes are recorded in `docs/development-status.md`, and the registry is the source of truth.
 
 Four identities are connected to those services:
 
@@ -285,7 +285,7 @@ The migration from the current implementation to this specification shall be add
 
 The project shall:
 
-1. Preserve all eight identities.
+1. Preserve all currently defined identities (eight at the baseline), within the 8 to 12 design envelope.
 2. Preserve the six existing services.
 3. Preserve existing execution bindings.
 4. Introduce a separate skills registry.

@@ -69,7 +69,7 @@ The web container serves the UI and runs the orchestration. It is model-backed o
 
 ## Agents and capabilities
 
-Nine agent identities are defined (the original eight and Kepler); six are connected to running services (Nova, Scout, Cipher and Charlie, plus Pixel and Sage in the dev stack). Atlas, Orbit and Kepler have no execution binding. Kepler is being built as a first-contributor steward on AWS AgentCore ([#198](https://github.com/vchokshi/viharbot/issues/198), [design](docs/kepler-steward-aws.md)): a read-only assessment core exists in `src/viharbot/steward/` and the AWS lab foundation is provisioned ([change record](docs/aws-lab-change-record.md)), but the agent is not deployed and nothing in orchestration calls it.
+The team is designed to flex between about 8 and 12 agent identities under Charlie; nine are defined today (the original eight and Kepler, so the registry and `bindings.toml` are the source of truth for any count); six are connected to running services (Nova, Scout, Cipher and Charlie, plus Pixel and Sage in the dev stack). Atlas, Orbit and Kepler have no execution binding. Kepler is being built as a first-contributor steward on AWS AgentCore ([#198](https://github.com/vchokshi/viharbot/issues/198), [design](docs/kepler-steward-aws.md)): a read-only assessment core exists in `src/viharbot/steward/` and the AWS lab foundation is provisioned ([change record](docs/aws-lab-change-record.md)), but the agent is not deployed and nothing in orchestration calls it.
 
 | Identity | Status | Capability | Service | Default model alias |
 |---|---|---|---|---|
