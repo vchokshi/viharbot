@@ -80,7 +80,7 @@ check "still attach a policy to a bounded Kepler role" allowed "$(aws iam simula
 
 echo "--- regression: the live runtime role still has what it needs"
 check "read the reader secret"          allowed      "$(principal "$RUNTIME" secretsmanager:GetSecretValue "$SEC:viharbot/kepler/github-app-reader-AbCdEf")"
-check "read the LiteLLM secret"         allowed      "$(principal "$RUNTIME" secretsmanager:GetSecretValue "$SEC:viharbot/kepler/litellm-api-key-AbCdEf")"
+check "read the LiteLLM secret"         implicitDeny "$(principal "$RUNTIME" secretsmanager:GetSecretValue "$SEC:viharbot/kepler/litellm-api-key-AbCdEf")"
 check "read the alert-writer secret"    explicitDeny "$(principal "$RUNTIME" secretsmanager:GetSecretValue "$SEC:viharbot/kepler/github-app-alert-writer-AbCdEf")"
 check "write an audit row"              allowed      "$(principal "$RUNTIME" dynamodb:PutItem "$AUDIT")"
 check "update an audit row"             explicitDeny "$(principal "$RUNTIME" dynamodb:UpdateItem "$AUDIT")"

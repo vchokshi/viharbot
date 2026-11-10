@@ -36,10 +36,7 @@
       "Sid": "ReadOnlyTheSecretsKeplerNeeds",
       "Effect": "Allow",
       "Action": "secretsmanager:GetSecretValue",
-      "Resource": [
-        "arn:aws:secretsmanager:us-west-2:ACCOUNT_ID:secret:viharbot/kepler/github-app-reader-*",
-        "arn:aws:secretsmanager:us-west-2:ACCOUNT_ID:secret:viharbot/kepler/litellm-api-key-*"
-      ]
+      "Resource": "arn:aws:secretsmanager:us-west-2:ACCOUNT_ID:secret:viharbot/kepler/github-app-reader-*"
     },
     {
       "Sid": "MutableDeduplicationState",
