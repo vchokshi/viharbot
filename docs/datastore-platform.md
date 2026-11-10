@@ -10,7 +10,7 @@
   - use authenticated TLS for every connection (never plain HTTP across a cloud boundary, and `ADR-006` already requires TLS across platform boundaries);
   - use credentials that belong to that environment only, held by the service that fronts the store, and never shared between Stage and Production;
   - keep Stage and Production data separate, since cross-environment data movement is still undecided and denied (ADR-009);
-  - have its cost (including egress) and added latency reported before promotion, and any failure of the other cloud treated as a dependency of the agent;
+  - note added latency and any material cost change (including egress) in the promotion summary, without making cost a gate, and treat a failure of the other cloud as a dependency of the agent;
   - stay behind the same service interface, so the agent can later move to a store in its own cloud without a contract change.
   Prefer the store that exists in the agent's own cloud when it meets the need; a cross-cloud store is a choice with a cost, not a default.
 - **Memory:** unchanged. ADR-009's PostgreSQL decision stands; DynamoDB approval does not reopen it.
