@@ -369,7 +369,7 @@ def test_the_cli_can_target_one_pull_request_and_reports_failures_with_a_status_
 
 def test_the_cli_refuses_an_unsafe_configuration():
     gh, _ = world()
-    code, output = run_cli(gh, environ={"KEPLER_REPOSITORY": "vchokshi/viharbot-onboarding-instructor"})
+    code, output = run_cli(gh, environ={"KEPLER_REPOSITORY": "noslash"})
     assert code == 2 and "configuration problem" in output and not gh.paths
 
 

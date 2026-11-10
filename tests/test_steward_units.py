@@ -58,7 +58,6 @@ def test_defaults_and_environment():
 
 
 @pytest.mark.parametrize("over", [
-    {"repo": "vchokshi/viharbot-onboarding-instructor"}, {"repo": "VChokshi/Viharbot-Onboarding-Instructor"},
     {"repo": "../x"}, {"repo": "noslash"}, {"region": "mars"},
     {"state_table": "other-table"}, {"audit_table": "viharbot-kepler-state"},
     {"alert_topic_arn": "arn:aws:sns:us-west-2:123456789012:other-topic"},

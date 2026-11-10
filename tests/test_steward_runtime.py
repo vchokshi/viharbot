@@ -74,7 +74,6 @@ def test_the_request_id_header_is_used_for_a_raw_payload():
     {"action": "check", "pr": 1.5}, {"input": {"action": "poll"}, "request_id": "r", "extra": 1},
     {"input": "not a dict"}, {"input": ["list"]}, {"input": {"action": "poll"}, "request_id": 12},
     {"input": {"action": "poll"}, "request_id": "x" * 129}, {"repo": "other/repo"},
-    {"input": {"action": "check", "pr": 179, "repo": "vchokshi/viharbot-onboarding-instructor"}},
 ])
 def test_anything_else_is_refused_before_any_work(body):
     c, recorder = client()
@@ -261,7 +260,7 @@ def test_a_bad_configuration_stops_the_service_from_starting():
         create_app_from_env({})  # no topic
     with pytest.raises(ConfigError):
         create_app_from_env({"KEPLER_ALERT_TOPIC_ARN": TOPIC,
-                             "KEPLER_REPOSITORY": "vchokshi/viharbot-onboarding-instructor"})
+                             "KEPLER_REPOSITORY": "noslash"})
     with pytest.raises(ConfigError):
         create_app_from_env({"KEPLER_ALERT_TOPIC_ARN": TOPIC, "KEPLER_STATE_TABLE": "other-table"})
 

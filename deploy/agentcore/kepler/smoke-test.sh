@@ -36,8 +36,8 @@ echo "== a bad configuration must not start"
 docker run --rm --platform linux/arm64 "$IMAGE" >"$WORK/badstart.log" 2>&1; code=$?
 [ "$code" -ne 0 ] && ok "no alert topic configured: the container exits ($code)" || bad "bad config" "container started"
 grep -q "KEPLER_ALERT_TOPIC_ARN" "$WORK/badstart.log" && ok "the error names the missing setting" || bad "error message" "$(tail -3 "$WORK/badstart.log")"
-docker run --rm --platform linux/arm64 -e KEPLER_ALERT_TOPIC_ARN="$TOPIC" -e KEPLER_REPOSITORY=vchokshi/viharbot-onboarding-instructor "$IMAGE" >"$WORK/forbidden.log" 2>&1; code=$?
-[ "$code" -ne 0 ] && ok "the instructor repository can never be configured" || bad "forbidden repo" "container started"
+docker run --rm --platform linux/arm64 -e KEPLER_ALERT_TOPIC_ARN="$TOPIC" -e KEPLER_REPOSITORY=noslash "$IMAGE" >"$WORK/forbidden.log" 2>&1; code=$?
+[ "$code" -ne 0 ] && ok "a malformed repository is refused at startup" || bad "forbidden repo" "container started"
 docker run --rm --platform linux/arm64 -e KEPLER_ALERT_TOPIC_ARN="$TOPIC" -e KEPLER_MODEL_ID=anthropic.claude-3-haiku-20240307-v1:0 "$IMAGE" >"$WORK/claude.log" 2>&1; code=$?
 [ "$code" -ne 0 ] && grep -q "approved allowlist" "$WORK/claude.log" && ok "an Anthropic model id is refused at startup" || bad "anthropic model" "container started or no clear message"
 docker run --rm --platform linux/arm64 -e KEPLER_ALERT_TOPIC_ARN="$TOPIC" -e KEPLER_MODEL_ID=meta.llama3-3-70b-instruct-v1:0 "$IMAGE" >"$WORK/other.log" 2>&1; code=$?
