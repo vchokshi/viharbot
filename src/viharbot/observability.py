@@ -61,6 +61,11 @@ class JsonFormatter(logging.Formatter):
             "target",
             "capability",
             "personality_mode",
+            # Memory service audit (ADR-009): identifiers and fixed codes only, never content.
+            "scope",
+            "operation",
+            "outcome",
+            "memory_id",
             # Epic #157: persona attribution (Phase B) and peer-review records (Phase C2).
             # Identifiers, counts and fixed codes only; never persona text or review content.
             "persona_id",
