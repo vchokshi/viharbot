@@ -2,7 +2,15 @@
 
 ## Local development
 
-`compose.yaml` runs the web chat and six model-backed agents on a private bridge network (`agent-network`). The web container receives the optional orchestration settings (`CHARLIE_PLANNER_MODEL`, `VIHARBOT_DEV_DIAGNOSTICS_ENABLED`) and, only if you opt in through `WEB_LITELLM_API_KEY`, a LiteLLM key for Charlie's planner. The browser reaches the web container at `http://127.0.0.1:8080`; agent ports are not published to the host. Research and Security use independent bind-mounted memory directories. Fact Check, Source Quality, Privacy Review, and Synthesis use individual named volumes. The optional orchestrator profile remains a CLI-style REST demonstration.
+`compose.yaml` runs the web chat and six model-backed agents on a private bridge network (`agent-network`). The web container receives the optional orchestration settings (`CHARLIE_PLANNER_MODEL`, `VIHARBOT_DEV_DIAGNOSTICS_ENABLED`) and, only if you opt in through `WEB_LITELLM_API_KEY`, a LiteLLM key for Charlie's planner. The browser reaches the web container at `http://127.0.0.1:8080`; agent ports are not published to the host. Research and Security use independent bind-mounted memory directories. Fact Check, Source Quality, Privacy Review, and Synthesis use individual named volumes. The optional orchestrator profile remains a CLI-style REST demonstration. Service authentication is on by default here; see below.
+
+### Service authentication in local Compose
+
+Local Compose runs with service authentication on by default (ADR-006 A2, [#235](https://github.com/vchokshi/viharbot/issues/235)): every agent service verifies a signed assertion on its non-health routes, and the web service, Research (to Security) and the `demo`-profile orchestrator sign their calls. Run `python scripts/dev_service_auth.py` once to generate development keys and a registry under `data/dev-auth/` (gitignored); Compose mounts them at run time, and no key or registry is in source or an image. Set `VIHARBOT_SERVICE_AUTH=off` and `VIHARBOT_OUTBOUND_AUTH=off` in `.env` to run without it. Details and limits: [service authentication](service-authentication.md).
+
+**Decision (2026-11-10): Compose only, Stage unchanged.** `deploy/digitalocean/app.yaml` does not set either variable, so Stage verifies and signs nothing, and AgentCore is untouched. Stage key storage and distribution are open questions in ADR-006 (where the private keys live, how registries are distributed and rotated), and a Stage change needs the "Do you want to promote this dev build to Stage?" confirmation above.
+
+**Trigger to enable it on Stage** (recorded for #235): before any non-private Stage use, that is any use with real prompts or client data, any public or shared exposure of the agent services, or an AgentCore runtime that other agents call. At that point decide Stage key storage, add the verifier settings and a public registry to the app spec, give each signing service (web, Research) its own key, run the offline suite, and ask the promotion question for that specific build. Until then Stage agent services trust the private network.
 
 ## Deployments after pushing to main
 

@@ -1,9 +1,22 @@
+# Service authentication (ADR-006 A2, issue #235) is ON by default in local Compose only. Run
+# `python scripts/dev_service_auth.py` once to generate development keys and a registry under
+# data/dev-auth/ (gitignored); they are mounted at run time and never baked into an image. Set
+# VIHARBOT_SERVICE_AUTH=off and VIHARBOT_OUTBOUND_AUTH=off in .env to run without it. This does not
+# change deploy/digitalocean/app.yaml: Stage stays off until it is promoted deliberately.
+x-auth-verify: &auth-verify
+  VIHARBOT_SERVICE_AUTH: ${VIHARBOT_SERVICE_AUTH:-on}
+  VIHARBOT_KEY_REGISTRY: /run/viharbot-auth/registry.toml
+
 services:
   web:
     build:
       context: .
       dockerfile: Dockerfile.web
     environment:
+      VIHARBOT_OUTBOUND_AUTH: ${VIHARBOT_OUTBOUND_AUTH:-on}
+      VIHARBOT_SIGNING_KID: web-dev-1
+      VIHARBOT_SERVICE_SUBJECT: web
+      VIHARBOT_SIGNING_KEY_FILE: /run/viharbot-auth/signing.key
       PORT: 8080
       WEB_STATIC_DIR: /app/static
       # Images live in the public Spaces store, not in the repository or the image.
@@ -37,6 +50,8 @@ services:
       CHARLIE_PLANNER_MODEL: ${CHARLIE_PLANNER_MODEL:-gpt-6-luna}
       LITELLM_BASE_URL: ${LITELLM_BASE_URL:-https://litellm.viharchokshi.com}
       LITELLM_API_KEY: ${WEB_LITELLM_API_KEY:-}
+    volumes:
+      - ./data/dev-auth/keys/web.key:/run/viharbot-auth/signing.key:ro
     ports:
       - "127.0.0.1:8080:8080"
     depends_on:
@@ -70,11 +85,18 @@ services:
       context: .
       dockerfile: Dockerfile.research
     environment:
+      <<: *auth-verify
+      VIHARBOT_OUTBOUND_AUTH: ${VIHARBOT_OUTBOUND_AUTH:-on}
+      VIHARBOT_SIGNING_KID: research-dev-1
+      VIHARBOT_SERVICE_SUBJECT: research
+      VIHARBOT_SIGNING_KEY_FILE: /run/viharbot-auth/signing.key
       LITELLM_BASE_URL: ${LITELLM_BASE_URL:-https://litellm.viharchokshi.com}
       LITELLM_API_KEY: ${LITELLM_API_KEY:-}
       RESEARCH_MODEL: ${RESEARCH_MODEL:-gpt-6.1-sol}
       MEMORY_DIR: /data
     volumes:
+      - ./data/dev-auth/registry.toml:/run/viharbot-auth/registry.toml:ro
+      - ./data/dev-auth/keys/research.key:/run/viharbot-auth/signing.key:ro
       - ./data/research:/data/research
     expose:
       - "8000"
@@ -92,11 +114,13 @@ services:
       context: .
       dockerfile: Dockerfile.security
     environment:
+      <<: *auth-verify
       LITELLM_BASE_URL: ${LITELLM_BASE_URL:-https://litellm.viharchokshi.com}
       LITELLM_API_KEY: ${LITELLM_API_KEY:-}
       SECURITY_MODEL: ${SECURITY_MODEL:-openai/gpt-5.4}
       MEMORY_DIR: /data
     volumes:
+      - ./data/dev-auth/registry.toml:/run/viharbot-auth/registry.toml:ro
       - ./data/security:/data/security
     expose:
       - "8000"
@@ -114,12 +138,14 @@ services:
       context: .
       dockerfile: Dockerfile.specialist
     environment:
+      <<: *auth-verify
       AGENT_KIND: fact-check
       LITELLM_BASE_URL: ${LITELLM_BASE_URL:-https://litellm.viharchokshi.com}
       LITELLM_API_KEY: ${LITELLM_API_KEY:-}
       FACT_CHECK_MODEL: ${FACT_CHECK_MODEL:-gemini/gemini-3.5-flash}
       MEMORY_DIR: /data
     volumes:
+      - ./data/dev-auth/registry.toml:/run/viharbot-auth/registry.toml:ro
       - fact_check_data:/data
     expose:
       - "8000"
@@ -137,12 +163,14 @@ services:
       context: .
       dockerfile: Dockerfile.specialist
     environment:
+      <<: *auth-verify
       AGENT_KIND: source-quality
       LITELLM_BASE_URL: ${LITELLM_BASE_URL:-https://litellm.viharchokshi.com}
       LITELLM_API_KEY: ${LITELLM_API_KEY:-}
       SOURCE_QUALITY_MODEL: ${SOURCE_QUALITY_MODEL:-gemini/gemini-3.5-flash}
       MEMORY_DIR: /data
     volumes:
+      - ./data/dev-auth/registry.toml:/run/viharbot-auth/registry.toml:ro
       - source_quality_data:/data
     expose:
       - "8000"
@@ -160,12 +188,14 @@ services:
       context: .
       dockerfile: Dockerfile.specialist
     environment:
+      <<: *auth-verify
       AGENT_KIND: privacy-review
       LITELLM_BASE_URL: ${LITELLM_BASE_URL:-https://litellm.viharchokshi.com}
       LITELLM_API_KEY: ${LITELLM_API_KEY:-}
       PRIVACY_MODEL: ${PRIVACY_MODEL:-openai/gpt-5.4-mini}
       MEMORY_DIR: /data
     volumes:
+      - ./data/dev-auth/registry.toml:/run/viharbot-auth/registry.toml:ro
       - privacy_review_data:/data
     expose:
       - "8000"
@@ -183,12 +213,14 @@ services:
       context: .
       dockerfile: Dockerfile.specialist
     environment:
+      <<: *auth-verify
       AGENT_KIND: synthesis
       LITELLM_BASE_URL: ${LITELLM_BASE_URL:-https://litellm.viharchokshi.com}
       LITELLM_API_KEY: ${LITELLM_API_KEY:-}
       SYNTHESIS_MODEL: ${SYNTHESIS_MODEL:-openai/gpt-5.4-mini}
       MEMORY_DIR: /data
     volumes:
+      - ./data/dev-auth/registry.toml:/run/viharbot-auth/registry.toml:ro
       - synthesis_data:/data
     expose:
       - "8000"
@@ -206,6 +238,7 @@ services:
       context: .
       dockerfile: Dockerfile.pixel
     environment:
+      <<: *auth-verify
       LITELLM_BASE_URL: ${LITELLM_BASE_URL:-https://litellm.viharchokshi.com}
       LITELLM_API_KEY: ${LITELLM_API_KEY:-}
       PIXEL_MODEL: ${PIXEL_MODEL:-openai/gpt-5.4-mini}
@@ -216,6 +249,7 @@ services:
       PIXEL_MAX_MODEL_CALLS: ${PIXEL_MAX_MODEL_CALLS:-8}
       MEMORY_DIR: /data
     volumes:
+      - ./data/dev-auth/registry.toml:/run/viharbot-auth/registry.toml:ro
       - pixel_data:/data
     expose:
       - "8000"
@@ -233,6 +267,7 @@ services:
       context: .
       dockerfile: Dockerfile.sage
     environment:
+      <<: *auth-verify
       LITELLM_BASE_URL: ${LITELLM_BASE_URL:-https://litellm.viharchokshi.com}
       LITELLM_API_KEY: ${LITELLM_API_KEY:-}
       # Sage prefers a Claude Opus model, but the gateway routes no Claude alias, so this is a
@@ -241,6 +276,7 @@ services:
       SAGE_MODEL_TIMEOUT_SECONDS: ${SAGE_MODEL_TIMEOUT_SECONDS:-80}
       MEMORY_DIR: /data
     volumes:
+      - ./data/dev-auth/registry.toml:/run/viharbot-auth/registry.toml:ro
       - sage_data:/data
     expose:
       - "8000"
@@ -259,6 +295,10 @@ services:
       context: .
       dockerfile: Dockerfile.orchestrator
     environment:
+      VIHARBOT_OUTBOUND_AUTH: ${VIHARBOT_OUTBOUND_AUTH:-on}
+      VIHARBOT_SIGNING_KID: orchestrator-dev-1
+      VIHARBOT_SERVICE_SUBJECT: orchestrator
+      VIHARBOT_SIGNING_KEY_FILE: /run/viharbot-auth/signing.key
       RESEARCH_URL: http://research:8000/research
       SECURITY_URL: http://security:8000/assess
       FACT_CHECK_URL: http://fact-check:8000/process
@@ -266,6 +306,8 @@ services:
       PRIVACY_REVIEW_URL: http://privacy-review:8000/process
       SYNTHESIS_URL: http://synthesis:8000/process
       RESEARCH_QUESTION: ${RESEARCH_QUESTION:-Summarize general safety practices for bicycle maintenance.}
+    volumes:
+      - ./data/dev-auth/keys/orchestrator.key:/run/viharbot-auth/signing.key:ro
     depends_on:
       research:
         condition: service_healthy

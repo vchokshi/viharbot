@@ -150,8 +150,11 @@ def test_off_by_default_sends_no_header(monkeypatch, env):
 
 
 def test_destinations_without_a_verifying_route_get_no_token(on):
-    for name in ("research", "security", "pixel"):
+    # Every agent service verifies assertions now (#235); only an unknown destination is unsigned.
+    for name in ("unknown-service", "web"):
         assert oa.outbound_headers(f"http://{name}:8000/x", destination=name, method="POST", body=b"") == {}
+    # A GET is signed only where a GET route is protected (Pixel's deck downloads).
+    assert oa.outbound_headers("http://research:8000/x", destination="research", method="GET", body=b"") == {}
 
 
 def test_unreadable_key_fails_closed_and_nothing_is_sent(on, monkeypatch, tmp_path):
@@ -260,7 +263,7 @@ def test_signed_requests_select_the_no_redirect_opener(on, monkeypatch):
     monkeypatch.setattr(demo, "no_redirect_urlopen", strict)
     demo.post_json("http://fact-check:8000/process", {"a": 1}, "rid", "fact-check")
     assert (len(plain.requests), len(strict.requests)) == (0, 1)
-    demo.post_json("http://research:8000/research", {"a": 1}, "rid", "research")  # unsigned
+    demo.post_json("http://elsewhere:8000/x", {"a": 1}, "rid", "unknown-service")  # unsigned
     assert (len(plain.requests), len(strict.requests)) == (1, 1)
 
 

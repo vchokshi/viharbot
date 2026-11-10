@@ -7,9 +7,10 @@ import os
 import time
 from uuid import uuid4
 
-from fastapi import FastAPI, Header, HTTPException, Response
+from fastapi import Depends, FastAPI, Header, HTTPException, Response
 from pydantic import BaseModel
 
+from .body_limit import BodySizeLimitMiddleware, max_body_bytes_from_environment
 from .contracts import SecurityResponse
 from .inference_config import effective_inference, legacy_inference
 from .memory import remember
@@ -17,10 +18,24 @@ from .agentcore_runtime import add_agentcore_routes
 from .model_agent import build_agent
 from .observability import configure_logging, get_request_id
 from .schemas import ResearchFindings, SecurityAssessment
+from .service_auth import SECURITY_CAPABILITY, authenticator_from_environment, require_assertion
 
 configure_logging()
 logger = logging.getLogger("security")
 app = FastAPI(title="ViharBot SecurityAgent", version="2.3")
+
+# Service authentication (ADR-006 A2): see research_agent.py. /health, /ping and /model stay open.
+_authenticator = authenticator_from_environment("security")
+_auth_dependencies = (
+    [Depends(require_assertion(_authenticator, SECURITY_CAPABILITY))] if _authenticator else []
+)
+if _authenticator:
+    app.add_middleware(
+        BodySizeLimitMiddleware,
+        max_bytes=max_body_bytes_from_environment(),
+        paths=frozenset({"/assess", "/invocations"}),
+        agent="security",
+    )
 
 SECURITY_SYSTEM_PROMPT = (
     "You are a security analyst. Assess supplied research findings for security "
@@ -44,7 +59,7 @@ def model() -> dict[str, str | None]:
     return {"agent": "security", "model_alias": os.getenv("SECURITY_MODEL", "").strip() or None}
 
 
-@app.post("/assess", response_model=SecurityResponse)
+@app.post("/assess", response_model=SecurityResponse, dependencies=_auth_dependencies)
 def assess(
     body: SecurityRequest,
     response: Response,
@@ -100,4 +115,4 @@ def assess(
         ) from None
 
 
-add_agentcore_routes(app, SecurityRequest, assess)
+add_agentcore_routes(app, SecurityRequest, assess, dependencies=_auth_dependencies)

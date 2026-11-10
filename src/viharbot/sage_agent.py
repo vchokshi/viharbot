@@ -8,9 +8,9 @@ result through a deterministic guard, and returns the standard specialist envelo
 Configuration: LITELLM_BASE_URL, LITELLM_API_KEY and its own model alias SAGE_MODEL (no default in
 code; Compose supplies one). SAGE_MODEL_TIMEOUT_SECONDS bounds the model call.
 
-Limitations: the HTTP interface is unauthenticated like the other private agents. Nothing here
-calls a real model in automated checks. This service is not yet bound to a capability or reachable
-from Charlie's orchestration; that is a separate step.
+Limitations: the HTTP interface trusts the private network unless VIHARBOT_SERVICE_AUTH is on, which
+authenticates callers of /process (docs/service-authentication.md; authentication only, no grant).
+Nothing here calls a real model in automated checks.
 """
 
 from __future__ import annotations
@@ -20,18 +20,34 @@ import os
 import time
 from uuid import uuid4
 
-from fastapi import FastAPI, Header, HTTPException, Response
+from fastapi import Depends, FastAPI, Header, HTTPException, Response
 
+from .body_limit import BodySizeLimitMiddleware, max_body_bytes_from_environment
 from .contracts import SpecialistResponse
 from .memory import remember
 from .model_agent import build_agent
 from .observability import configure_logging, get_request_id
 from .sage import SageRequest, build_sage_prompt, guard_analysis, sage_system_prompt
 from .schemas import SageAnalysis
+from .service_auth import SAGE_CAPABILITY, authenticator_from_environment, require_assertion
 
 configure_logging()
 logger = logging.getLogger("sage")
 app = FastAPI(title="ViharBot Sage Agent", version="1.0")
+
+# Service authentication (ADR-006 A2): off unless VIHARBOT_SERVICE_AUTH is set; a missing or empty
+# registry then stops startup. /health and /model stay open (follow-up: /model).
+_authenticator = authenticator_from_environment("sage")
+_auth_dependencies = (
+    [Depends(require_assertion(_authenticator, SAGE_CAPABILITY))] if _authenticator else []
+)
+if _authenticator:
+    app.add_middleware(
+        BodySizeLimitMiddleware,
+        max_bytes=max_body_bytes_from_environment(),
+        paths=frozenset({"/process"}),
+        agent="sage",
+    )
 
 MODEL_ENV = "SAGE_MODEL"
 TIMEOUT_ENV = "SAGE_MODEL_TIMEOUT_SECONDS"
@@ -61,7 +77,7 @@ def model() -> dict[str, str | None]:
     return {"agent": "sage", "model_alias": os.getenv(MODEL_ENV, "").strip() or None}
 
 
-@app.post("/process", response_model=SpecialistResponse)
+@app.post("/process", response_model=SpecialistResponse, dependencies=_auth_dependencies)
 def process(
     body: SageRequest,
     response: Response,
