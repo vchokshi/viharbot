@@ -1,6 +1,6 @@
 # ADR-009: Persistent, governed agent memory
 
-**Status: Proposed.** Nothing here is implemented or provisioned. It is intended to satisfy the memory design that issue #40 depends on (cited there as "ADR-003"), and to support the isolation and poisoning tests in #48. The founder confirms the numbering.
+**Status: Proposed. Amended 2026-11-10 (founder decision): PostgreSQL is the memory backend in every environment; see "Amendment: PostgreSQL everywhere".** Nothing here is implemented or provisioned. It is intended to satisfy the memory design that issue #40 depends on (cited there as "ADR-003"), and to support the isolation and poisoning tests in #48. The founder confirms the numbering and still has to accept this ADR as amended.
 
 ## Context
 
@@ -14,29 +14,73 @@ Verified in the repository:
 
 ## Decision
 
-**For production, one DynamoDB table behind a small memory API service**, with S3 only for large bodies (the Stage backend is not chosen; see Environment placement). Semantic search, AgentCore Memory, OpenSearch, Aurora with pgvector and Bedrock Knowledge Bases are deferred until recall quality is shown to be insufficient. Idle cost is close to zero and conditional writes provide the consistency rules directly.
+**One PostgreSQL database behind a small memory API service, in every environment** (a container locally, DigitalOcean Managed PostgreSQL for Stage, Amazon RDS for PostgreSQL for Production; see Amendment). Semantic search, AgentCore Memory, OpenSearch, pgvector and Bedrock Knowledge Bases are deferred until recall quality is shown to be insufficient. *Superseded by the amendment: the original decision was one DynamoDB table with S3 for large bodies, for Production only. The DynamoDB text below is kept as the historical design and as the source of the guarantees the PostgreSQL mapping must reproduce.*
 
-### Environment placement (founder decision, 2026-11-03)
+## Amendment: PostgreSQL everywhere (founder decision, 2026-11-10)
+
+**Why.** Stage runs on DigitalOcean, which has no DynamoDB, and App Platform's local disk is not persistent (DigitalOcean's limits page recommends Managed Databases or Spaces for durable state). The DynamoDB design left Stage without a backend that could honor the same contract, so every guard rule would have been implemented and tested twice. PostgreSQL exists as a container for local development, as DigitalOcean Managed PostgreSQL for Stage and as RDS for PostgreSQL in AWS, with real transactions in all three (`docs/datastore-platform.md`). One contract and one conformance suite now cover every environment.
+
+**What changes**
+
+| Area | Before | After |
+|---|---|---|
+| Backend | DynamoDB (Production), unchosen (Stage) | PostgreSQL in all environments |
+| Local | not specified | PostgreSQL container on the private Compose network |
+| Stage | open | DigitalOcean Managed PostgreSQL |
+| Production | DynamoDB + S3 | RDS for PostgreSQL (Aurora PostgreSQL is not excluded; not chosen here) |
+| Bodies | S3 object per generation, with leases, epochs and an orphan sweep | stored in the database row, in the same transaction as the version, until a measured need for object storage exists |
+| Authorization reads | DynamoDB `ConsistentRead=true` | read from the primary only, inside the transaction |
+
+**What does not change.** The contract in this ADR: record metadata, retrieval and write authorization, deny by default, the promotion rules, the deferral of cross-scope promotion, read-time retention, `retire` versus `erase`, tombstones, idempotency, and the memory service as the only holder of data-plane credentials. Authorization stays in the memory service, never in the database. Database roles and row-level security may be added as defense in depth but are not the control.
+
+### PostgreSQL mapping of the guard rules
+
+These are the intended mechanics. They use standard PostgreSQL behavior (transactions, row locks, unique constraints, conditional `UPDATE`), which this change did **not** re-verify against the PostgreSQL or provider documentation; the conformance suite must prove each one.
+
+| Required guarantee (DynamoDB term in the text below) | PostgreSQL mechanism |
+|---|---|
+| Atomic multi-item write (`TransactWriteItems`) | One database transaction per mutation |
+| `current.rev == expected_rev` and `lifecycle == active` (conditional update) | `UPDATE ... SET rev = rev + 1 ... WHERE id = $1 AND rev = $2 AND lifecycle = 'active'`; zero rows updated means the writer lost and must re-read and re-authorize |
+| Engagement open check (G2) | The transaction takes a shared lock (`SELECT ... FOR SHARE`) on the `engagement` row and requires `state = 'open'`; closure takes an exclusive lock, so a write and a closure serialize |
+| Idempotency items (`idem#`) | A unique constraint on (principal, record, idempotency key) storing the original result; a retry returns it |
+| Tombstones (`tombstone#`) | A tombstone table with a unique constraint; create refuses a tombstoned id or key |
+| Erase write barrier | One transaction sets `lifecycle = 'erased'` and inserts the erase row, conditioned on `lifecycle <> 'erased'` and not on `rev`, so it cannot lose to a racing writer |
+| Strongly consistent authorization read | Read `current` on the primary, in the same transaction as the write; never from a read replica or standby |
+| Body generations, leases, `lease_epoch`, `max_lease_expiry`, orphan sweep | **Not needed** while bodies live in the row; they return only if object storage is added later and must then be re-derived and re-tested |
+| Physical erasure | `DELETE` of the record's rows inside the erase-completion transaction, followed by the tombstone insert |
+
+Isolation level (for example `READ COMMITTED` with the explicit row locks above, or `SERIALIZABLE` with retry on serialization failure) is **not decided** here; it is chosen by the conformance suite and recorded in the implementation PR.
+
+**Limits stated plainly.**
+- A read replica or standby can lag, so authorization decisions must never use one. DigitalOcean Managed PostgreSQL offers standby and read-only nodes; the memory service must connect to the primary only.
+- Managed backups keep copies of erased data. DigitalOcean lists daily point-in-time backups for PostgreSQL; an `erase` therefore still does not claim to remove backup copies, and backup retention remains an open decision.
+- DigitalOcean announced plan changes for Standard Edition PostgreSQL (limits above 4 GiB RAM and on standby or read-only nodes for new clusters from 15 and 30 November 2026). Check the current plan before choosing a Stage size.
+- Cost is not estimated here. A managed PostgreSQL instance has a standing monthly cost on both providers, unlike DynamoDB on-demand; provisioning needs the approval already required by `AGENTS.md`, and a Stage change is a cost change to report before promotion.
+
+**Conformance.** The same contract and interleaving tests (below) run against the local PostgreSQL container and against the Stage and Production instances before each is adopted. The transaction-shape check applies to SQL statements instead of `TransactWriteItems`: every mutation's statements and the locks it takes are listed and tested.
+
+### Environment placement (founder decision, 2026-11-03; backend superseded by the amendment above)
 
 The founder decided: **Stage memory is kept in DigitalOcean; Production memory is kept in AWS.** The memory **contract** is the same in both environments: record metadata, write and read authorization, versioning and supersession, retention, retirement and erasure semantics, audit, and the guard rules under Consistency rules. Only the backend differs.
 
 | Environment | Backend | Status |
 |---|---|---|
-| Production | AWS: DynamoDB, with S3 for large bodies, as described in the rest of this ADR | Proposed design; not provisioned, and no AWS resource is created without explicit approval |
-| Stage | DigitalOcean; **the store is not yet chosen** | Open |
+| Local | PostgreSQL container (Docker Compose, private network) | Amended design; not yet added to Compose |
+| Production | AWS: RDS for PostgreSQL (originally DynamoDB with S3) | Amended design; not provisioned, and no AWS resource is created without explicit approval |
+| Stage | DigitalOcean Managed PostgreSQL (originally open) | Amended design; not provisioned; a cost change to report before promotion |
 
-Not decided or verified by this ADR:
+Not decided or verified by this ADR (items marked *resolved* were open before the amendment):
 
-- **Which DigitalOcean store holds Stage memory.** No store is picked here, and no DigitalOcean capability is asserted.
+- **Which DigitalOcean store holds Stage memory.** *Resolved by the amendment: Managed PostgreSQL.* DigitalOcean's documentation lists it as a managed engine; plan sizes, prices and the plan-limit changes noted above are not verified here.
 - **Persistence on App Platform.** Per `docs/memory-architecture.md` and `deploy/digitalocean/app.yaml`, App Platform containers write memory to an ephemeral disk (`/tmp/viharbot-memory`), so a container-local store would lose data on redeploy or restart. Any container-based Stage store needs a verified persistence answer from official DigitalOcean documentation first. That documentation has not been fetched for this change, so it is an open question, not a finding.
-- **Atomicity of the Stage backend.** The guard rules rely on atomic multi-item conditional writes, strongly consistent reads and a transaction that fences stale writers. DynamoDB `TransactWriteItems` provides these (documented DynamoDB behavior, not re-verified here). A different Stage store must be shown to provide the same guarantees before it is chosen; if it cannot, the contract's guard rules cannot be claimed for Stage and the ADR must say what is weaker there.
+- **Atomicity of the Stage backend.** The guard rules rely on atomic multi-row conditional writes, reads that cannot be stale, and a transaction that fences stale writers. The amendment maps these to PostgreSQL transactions, conditional updates and row locks, identical in all environments; the conformance suite must prove it on each instance before it is adopted. If it cannot, the guard rules cannot be claimed for that environment.
 - **Cross-environment data movement.** Whether Stage data may ever reach Production, or Production data reach Stage, is not decided. Until it is, neither direction is allowed, and the engagement and institutional tiers keep separate namespaces per environment.
 
-The consistency rules below are written in DynamoDB terms because that is the production backend. They state the required semantics for any backend; a Stage store must pass the same contract and interleaving tests.
+**The consistency rules below were written in DynamoDB terms and are retained as the historical design.** They state the required semantics; the amendment's PostgreSQL mapping replaces the DynamoDB mechanics wherever the two differ, and the same interleaving tests apply to the PostgreSQL implementation.
 
 ### Taxonomy
 
-| Type | Store (production backend; Stage backend open) | Scope key | Lifecycle |
+| Type | Store (amended: PostgreSQL tables in every environment; DynamoDB wording is historical) | Scope key | Lifecycle |
 |---|---|---|---|
 | Task | DynamoDB item with TTL | `task#<id>` | Expires in days; never promoted automatically |
 | Logical-agent (for example Nova, shared by both runtimes) | DynamoDB | `agent#nova` | Versioned and superseded; survives failover because it is keyed by the logical agent, never the instance |
@@ -98,6 +142,8 @@ Promotion in the table above moves a record's status inside the scope it already
 Body deletion (after `erase`, or after `retention_until` for a retired or expired record) runs as an idempotent delete job with retries, and an orphan sweep finds bodies with no live record (protocol under Consistency rules). Whether backups and point-in-time recovery are enabled, and for how long, is an open decision; until it is made they are off and the gap is stated. Because erasure of backups is not covered, an `erase` does not claim to remove backup copies. Tests: an expired-but-present record is not returned; a closed engagement's records are not returned by ordinary retrieval; a retired record is not in ordinary retrieval, its history and bodies remain readable to authorized principals until `retention_until`, and its bodies are deleted after it; an erased record is refused on the very next read and write while deletion is still pending, including a writer that read the record before the erase and a writer that reads after it (interleaving tests in Consistency rules); the job's retry after a mid-way failure finishes the deletion; `physically deleted` is reported only after every version and body is verified gone; the erase is audited; `erase` by an unrelated principal is refused; an orphaned body is found by the sweep.
 
 ### Consistency rules
+
+> **Amended 2026-11-10:** this section describes the original DynamoDB mechanics. Read it for the guarantees (G1, G2, `rev` fencing, tombstones, idempotency, the erase barrier); implement them with the PostgreSQL mapping in the amendment. The body-generation, lease and orphan-sweep protocol below applies only if object storage is added later.
 
 A write is one atomic **DynamoDB** transaction (`TransactWriteItems`, which supports Put, Update, Delete and ConditionCheck actions on several items, including items with different partition keys in one table; conditional writes and strongly consistent reads are likewise documented DynamoDB features, not re-verified in this change, and no transaction size limit is relied on), so revision checks, supersession and de-duplication of the metadata cannot be partly applied. The atomicity claim covers DynamoDB only; S3 bodies follow the ordering below. Layout, per logical record `pk = <scope>#<record_id>`, plus one authority partition per engagement:
 
@@ -162,33 +208,34 @@ Pricing figures are examples taken from provider pages; confirm in the AWS calcu
 
 | Store | Fit |
 |---|---|
-| DynamoDB | Chosen for Production. Conditional writes, TTL, transactions; on-demand about $0.625 per million writes and $0.125 per million reads; near-zero idle |
-| S3 | Only for large bodies referenced from DynamoDB |
+| PostgreSQL (container, DigitalOcean Managed, RDS) | **Chosen (amendment).** Same engine and contract in all three environments; transactions, row locks and unique constraints. Standing monthly cost on managed plans; not estimated here |
+| DynamoDB | Original Production choice, superseded. No DigitalOcean equivalent, which left Stage without a matching backend |
+| S3 / Spaces | Not used for bodies unless a measured need appears |
 | AgentCore Memory | Managed events and extracted long-term records; usage-based with no idle charge listed; no per-record principal ACL or explicit supersession model, and extraction runs through a model, which makes poisoned content hard to keep out; couples the Fargate runtime and validated tiers to AgentCore. Revisit later |
 | OpenSearch Serverless | Vector search, but about $175 to $350 per month minimum (a scale-to-zero collection type exists; vector support unverified) |
-| Aurora PostgreSQL with pgvector | SQL and row-level security, about $45 to $60 per month at the minimum; needs private networking |
+| Aurora PostgreSQL with pgvector | Not excluded as a later Production option and for vector search; about $45 to $60 per month at the minimum (example figure); needs private networking |
 | Bedrock Knowledge Bases | Document retrieval over a vector store; coarse access control; poor fit for writable memory |
 
 ## Alternatives considered
 
-Direct data-plane access from each agent (spreads AWS keys, repeats authorization everywhere, no clean rotation); AgentCore Memory as the single store; a vector database first; keeping local files (no sharing, ephemeral on DigitalOcean), and a single AWS store for every environment (superseded by the environment placement decision).
+Direct data-plane access from each agent (spreads AWS keys, repeats authorization everywhere, no clean rotation); AgentCore Memory as the single store; a vector database first; keeping local files (no sharing, ephemeral on DigitalOcean), and a single AWS store for every environment (superseded by the environment placement decision), and DynamoDB for Production with a different engine behind the same interface for Stage and local (rejected by the 2026-11-10 amendment because the guard rules and interleaving tests would be implemented and verified twice, and Stage's guarantees could be weaker).
 
 ## Consequences
 
-A new service and, in Production, a table to operate; Stage needs its own backend, which adds a second implementation to verify against the same contract. Recall is by key and tag until semantic search is justified. Existing `remember()` callers must move to the service or stay as non-authoritative local logs.
+A new service and a PostgreSQL database in each environment to operate and pay for; one implementation to verify in every environment. Bodies in the row remove the S3 protocol but cap practical body size; a large-body need would reintroduce object storage. Recall is by key and tag until semantic search is justified. Existing `remember()` callers must move to the service or stay as non-authoritative local logs.
 
-## Test plan (no live inference; DynamoDB Local and fixtures)
+## Test plan (no live inference; a local PostgreSQL container and fixtures)
 
-The same contract tests run against whichever backend is in use (DynamoDB Local for Production; the Stage backend must pass them before it is adopted). The transaction-shape check above. Isolation across agents and engagements; a benign poisoned instruction is returned only as data; unauthorized read and write refused; the write-authorization, retention and consistency tests above; a stale or unvalidated item is never served as institutional; concurrent-write conflict and idempotent retry; the erase write-barrier, body-generation and engagement-closure interleavings; supersession keeps history; retention and deletion; failover reads the same record; logs contain no memory content.
+The same contract tests run against the local PostgreSQL container and, before each is adopted, against the Stage and Production instances (originally DynamoDB Local for Production). The transaction-shape check above. Isolation across agents and engagements; a benign poisoned instruction is returned only as data; unauthorized read and write refused; the write-authorization, retention and consistency tests above; a stale or unvalidated item is never served as institutional; concurrent-write conflict and idempotent retry; the erase write-barrier, body-generation and engagement-closure interleavings; supersession keeps history; retention and deletion; failover reads the same record; logs contain no memory content.
 
 ## Cost
 
-Production estimates only; the Stage backend cost is unknown until it is chosen. A DynamoDB table plus a small memory API is well under $5 per month at low volume. Adding Aurora with pgvector is about $45 to $60, and OpenSearch about $175 to $350. AgentCore Memory is usage-based. Approval is required before provisioning.
+Not estimated after the amendment. The earlier DynamoDB figure (well under $5 per month) no longer applies. Managed PostgreSQL has a standing monthly cost on DigitalOcean and RDS; the amount depends on the plan and instance size, which are not chosen. Aurora with pgvector was about $45 to $60 and OpenSearch about $175 to $350 as example figures. AgentCore Memory is usage-based. Approval is required before provisioning.
 
 ## Open questions
 
-Partly answered by the environment placement decision (Stage on DigitalOcean, Production on AWS). Still open: which DigitalOcean store holds Stage memory and a verified persistence answer for it from official DigitalOcean documentation; whether that store provides the atomic conditional-write, strongly consistent read and fencing semantics the guard rules need; where each environment's memory service itself runs; whether Stage data may ever reach Production; whether AgentCore Memory's access model suits any tier once verified; who may validate institutional records; retention periods and the consent policy; how founder knowledge is delivered to agents without entering global memory. Who is named in the engagement-closure policy; the values for lease length, grace period, clock-skew allowance and maximum upload time (all ASSUMED until set and tested).
+Partly answered by the environment placement decision (Stage on DigitalOcean, Production on AWS) and the PostgreSQL amendment (the store is chosen). Still open: the isolation level and the exact locking per mutation (set by the conformance suite); instance sizes, plans and cost for Stage and Production; backup and point-in-time-recovery retention, given that backups retain erased data; whether bodies ever need object storage; where each environment's memory service itself runs; whether Stage data may ever reach Production; whether AgentCore Memory's access model suits any tier once verified; who may validate institutional records; retention periods and the consent policy; how founder knowledge is delivered to agents without entering global memory. Who is named in the engagement-closure policy; the values for lease length, grace period, clock-skew allowance and maximum upload time (all ASSUMED until set and tested).
 
 ## Related
 
-ADR-006, ADR-008, #40, #48, `docs/memory-architecture.md`, `docs/roadmap-distributed-agents.md`.
+ADR-006, ADR-008, ADR-010 (path-addressed memory resources fall under its scope language), #40, #48, `docs/memory-architecture.md`, `docs/roadmap-distributed-agents.md`, `docs/datastore-platform.md` (proposed in #307).
