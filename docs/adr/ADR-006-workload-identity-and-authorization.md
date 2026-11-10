@@ -1,6 +1,6 @@
 # ADR-006: Agent workload identity and platform authorization
 
-**Status: Proposed.** Nothing in this document is implemented. It is intended to satisfy the identity and authorization design that issues #38 and #39 depend on, and to inform the ADR-001 reconciliation tracked by #49. The founder confirms the numbering and the decisions below before implementation starts.
+**Status: Accepted (2026-11-10, founder).** Implementation state: step A2 (assertion authentication) is implemented, off by default and verified only by the four specialist services (`docs/service-authentication.md`, `src/viharbot/service_auth.py`); outbound assertions (A2b) are implemented, off by default. Step A3 (delegation grants and authorization, #38) is **not** implemented, so no service may claim delegation-based authorization yet. Enabling authentication in Stage still depends on the open questions below. It satisfies the identity and authorization design that issues #38 and #39 depend on, and informs the ADR-001 reconciliation tracked by #49 (ADR-001 is not in `docs/adr/`; #49 tracks where it lives).
 
 ## Context
 
