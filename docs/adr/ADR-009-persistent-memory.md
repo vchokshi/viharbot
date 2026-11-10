@@ -31,6 +31,8 @@ Verified in the repository:
 | Bodies | S3 object per generation, with leases, epochs and an orphan sweep | stored in the database row, in the same transaction as the version, until a measured need for object storage exists |
 | Authorization reads | DynamoDB `ConsistentRead=true` | read from the primary only, inside the transaction |
 
+**Platform policy (founder, 2026-11-10).** DynamoDB remains an approved store for features that need it, provided they have a working rollout in both DigitalOcean and AWS, and GCP is an approved cloud (Cloud SQL for PostgreSQL is the matching backend there; nothing is provisioned). Neither reopens this decision: memory stays on PostgreSQL. See `docs/datastore-platform.md`.
+
 **What does not change.** The contract in this ADR: record metadata, retrieval and write authorization, deny by default, the promotion rules, the deferral of cross-scope promotion, read-time retention, `retire` versus `erase`, tombstones, idempotency, and the memory service as the only holder of data-plane credentials. Authorization stays in the memory service, never in the database. Database roles and row-level security may be added as defense in depth but are not the control.
 
 ### PostgreSQL mapping of the guard rules

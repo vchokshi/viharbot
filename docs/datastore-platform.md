@@ -1,6 +1,12 @@
 # Datastore platform: local, Stage and Production
 
-**Status: proposal. Nothing here is implemented or provisioned.** No Compose service, DigitalOcean resource or AWS resource was added for this document, and `AGENTS.md` still forbids provisioning AWS resources without an explicit request. It exists so that the memory work (#40, ADR-009) and any later store are chosen from what runs the same way in all three environments, instead of from what one cloud happens to offer.
+**Status: proposal, with founder policy decisions recorded below (2026-11-10). Nothing here is implemented or provisioned.** No Compose service, DigitalOcean resource or AWS resource was added for this document, and `AGENTS.md` still forbids provisioning AWS resources without an explicit request. It exists so that the memory work (#40, ADR-009) and any later store are chosen from what runs the same way in all three environments, instead of from what one cloud happens to offer.
+
+## Approved clouds and stores (founder, 2026-11-10)
+
+- **Approved clouds:** DigitalOcean (Stage), AWS (Production) and GCP. Approval is not permission to provision: `AGENTS.md` still requires an explicit request for AWS and GCP resources and a reviewed, confirmed promotion for Stage.
+- **Approved stores:** everything in the portable set below. **DynamoDB is approved when a feature needs it, provided the feature has a working rollout in both DigitalOcean and AWS.** DigitalOcean and GCP have no DynamoDB, so a DynamoDB-backed feature needs a Stage-capable implementation behind the same interface (for example a PostgreSQL adapter) and the same contract tests on both. Whether such a feature must also run on GCP is not decided here; this document assumes it does not.
+- **Memory:** unchanged. ADR-009's PostgreSQL decision stands; DynamoDB approval does not reopen it.
 
 ## Why this matters now
 
@@ -10,18 +16,20 @@
 
 ## The portable set
 
-| Role | Local (Docker Compose) | Stage (DigitalOcean) | Production (AWS) | Verified in this session |
-|---|---|---|---|---|
-| Relational / transactional | PostgreSQL container | Managed PostgreSQL | RDS for PostgreSQL | Both providers list it ([DO](https://docs.digitalocean.com/products/databases/), [AWS decision guide](https://docs.aws.amazon.com/decision-guides/latest/decision-guides/databases-on-aws-how-to-choose.html)) |
-| Relational (alternative) | MySQL container | Managed MySQL | RDS for MySQL | Same sources |
-| Key-value cache, queues, rate limits, `jti` replay cache | Valkey container (Redis-compatible) | Managed Valkey | ElastiCache (Valkey) | DO lists Valkey as Redis-compatible; its API still uses "redis" and "Caching" labels. AWS lists ElastiCache with Valkey, Memcached and Redis OSS |
-| Document | MongoDB container | Managed MongoDB | DocumentDB (MongoDB-compatible) | Both list it. DocumentDB is an API-compatible service, not MongoDB itself, so behavior differences must be tested |
-| Search / vector later | OpenSearch container | Managed OpenSearch | Amazon OpenSearch Service | Both list it |
-| Event streaming (only if a real need appears) | Kafka container | Managed Kafka | Amazon MSK | DO verified. **MSK was not confirmed in this session's search; check before relying on it.** `AGENTS.md` also forbids brokers unless the founder changes direction |
-| Object storage (large bodies, artifacts) | S3-compatible container | Spaces (S3-compatible) | S3 | Spaces is already used for images. Local emulator not chosen, see below |
-| Single-table NoSQL | DynamoDB Local | **None** | DynamoDB | AWS service verified. No DigitalOcean equivalent exists, which is the Stage problem for ADR-009 as written |
+| Role | Local (Docker Compose) | Stage (DigitalOcean) | Production (AWS) | GCP | Verified in this session |
+|---|---|---|---|---|---|
+| Relational / transactional | PostgreSQL container | Managed PostgreSQL | RDS for PostgreSQL | Cloud SQL for PostgreSQL | All three providers list it ([DO](https://docs.digitalocean.com/products/databases/), [AWS decision guide](https://docs.aws.amazon.com/decision-guides/latest/decision-guides/databases-on-aws-how-to-choose.html)) |
+| Relational (alternative) | MySQL container | Managed MySQL | RDS for MySQL | Cloud SQL for MySQL | Same sources |
+| Key-value cache, queues, rate limits, `jti` replay cache | Valkey container (Redis-compatible) | Managed Valkey | ElastiCache (Valkey) | Memorystore (lists Valkey, Redis, Memcached) | DO lists Valkey as Redis-compatible; its API still uses "redis" and "Caching" labels. AWS lists ElastiCache with Valkey, Memcached and Redis OSS |
+| Document | MongoDB container | Managed MongoDB | DocumentDB (MongoDB-compatible) | Firestore (serverless document; MongoDB compatibility reported) or MongoDB Atlas on GCP | DO and AWS list it; GCP's Firestore and Atlas listing from Google's database pages. DocumentDB is an API-compatible service, not MongoDB itself, so behavior differences must be tested |
+| Search / vector later | OpenSearch container | Managed OpenSearch | Amazon OpenSearch Service | **Not verified** | DO and AWS list it; the GCP search found nothing, so no GCP equivalent is claimed |
+| Event streaming (only if a real need appears) | Kafka container | Managed Kafka | Amazon MSK | **Not verified** | DO verified; GCP's managed Kafka was not confirmed either. **MSK was not confirmed in this session's search; check before relying on it.** `AGENTS.md` also forbids brokers unless the founder changes direction |
+| Object storage (large bodies, artifacts) | S3-compatible container | Spaces (S3-compatible) | S3 | Cloud Storage (**not verified in this session**) | Spaces is already used for images. Local emulator not chosen, see below |
+| Single-table NoSQL | DynamoDB Local | **None** | DynamoDB | Bigtable or Firestore (nearest, **not equivalent**: different consistency, transaction and key models) | AWS service verified. No DigitalOcean equivalent exists. Approved only under the DynamoDB condition above |
 
 DigitalOcean lists six managed engines: PostgreSQL, MySQL, Valkey, MongoDB, Kafka and OpenSearch. Backups differ by engine: daily point-in-time backups for PostgreSQL, MySQL, MongoDB and OpenSearch, not for Valkey or Kafka. Kafka and OpenSearch have no standby nodes. Announced plan changes (15 and 30 November 2026) limit Standard Edition PostgreSQL and MySQL plans above 4 GiB RAM and standby or read-only nodes for new clusters; existing clusters are not affected. Check current plans and prices before choosing a size.
+
+GCP's own managed set, from [Google's database overview](https://cloud.google.com/products/databases): Cloud SQL (MySQL, PostgreSQL, SQL Server), Spanner, Bigtable, Firestore and Memorystore, with MongoDB Atlas offered as a partner service. Spanner and Bigtable have no local container or DigitalOcean counterpart, so they would face the same portability condition as DynamoDB. Prices, plans and regions are not checked.
 
 ## What can run in Docker Desktop
 
@@ -34,9 +42,9 @@ Rules for any store added to Compose:
 - One database or schema per agent or namespace, with a separate credential where the store supports it, so the isolation tests in #48 have something real to test.
 - A store is added only when a feature needs it, in line with `AGENTS.md` ("do not add databases without a concrete need").
 
-## Decision this raises for ADR-009 (founder)
+## Decision this raised for ADR-009 (founder, resolved 2026-11-10: PostgreSQL everywhere)
 
-ADR-009 is Proposed and describes DynamoDB conditional and transactional writes as the way to get its guard rules. Because Stage and local cannot run DynamoDB natively (DynamoDB Local is an emulator, and DigitalOcean has no equivalent), there are two honest options:
+Historical context, kept for the record. ADR-009 described DynamoDB conditional and transactional writes as the way to get its guard rules. Because Stage and local cannot run DynamoDB natively (DynamoDB Local is an emulator, and DigitalOcean has no equivalent), there are two honest options:
 
 1. **PostgreSQL as the one memory backend everywhere** (container locally, Managed PostgreSQL on Stage, RDS on Production). One contract, one set of tests, real transactions. ADR-009's DynamoDB design would be amended, and ADR-009 is a founder-review path.
 2. **Keep DynamoDB for Production**, and accept that Stage and local use a different engine behind the same interface. The ADR must then say which guarantees are weaker on Stage, and the contract tests must pass on both. This is the cost the ADR already warns about.

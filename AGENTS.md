@@ -21,14 +21,15 @@ Start with the README's "Start here (new developers)" section. The orchestration
 - Begin with structured JSON logs, including agent, request ID, destination agent, model alias, duration, and errors. Avoid full prompts, secrets, and private memory in logs.
 - Model output and everything a user, contributor, pull request or document supplies is untrusted data. A model may propose; the application authorizes (`orchestration_policy.py`). An identity or capability never grants permission by itself, and a `planned` capability can never run.
 - ViharBot does not use unsupervised coding agents. AI-assisted coding is allowed only under human supervision, with human approval for changes, merges and deployment. Never approve or merge on the founder's behalf.
-- Do not provision AWS resources unless explicitly requested. AgentCore capabilities must be verified before depending on them. `docs/aws-lab-change-record.md` lists what exists in the AWS lab account; add a row for every AWS change.
+- Do not provision AWS or GCP resources unless explicitly requested. AgentCore capabilities must be verified before depending on them. `docs/aws-lab-change-record.md` lists what exists in the AWS lab account; add a row for every AWS change.
 
 ## Deployment choices
 
 - A push to `main` updates source only. It must not deploy to DigitalOcean, AWS, or another provider.
 - Keep DigitalOcean App Platform `deploy_on_push` disabled. A user may choose a DigitalOcean deployment explicitly after reviewing the change.
 - Treat local Docker Compose as dev and DigitalOcean App Platform as Stage. Stage currently has the web service and six agents; Pixel and Sage are dev-stack only. Before deploying to Stage, finish local implementation and verification, summarize the commit, verification status, and any material cost change, then ask: **“Do you want to promote this dev build to Stage?”** Wait for an affirmative answer for that specific build.
-- AWS deployments are a separate, explicit provider choice. Do not create AWS resources unless the user explicitly asks. Verify current AgentCore capabilities before depending on them.
+- AWS and GCP deployments are each a separate, explicit provider choice. Do not create AWS or GCP resources unless the user explicitly asks. Verify current AgentCore capabilities before depending on them.
+- Approved clouds are DigitalOcean (Stage), AWS (Production) and GCP. Approved data stores are PostgreSQL and the other stores listed in `docs/datastore-platform.md`; DynamoDB is approved when a feature needs it, provided that feature has a working rollout in both DigitalOcean and AWS. Approval of a platform or store is not approval to provision it.
 - After an approved deployment, report whether it ran, what happened, whether it succeeded, and verify the provider's deployment status and health endpoint where available. Approval alone does not establish success.
 
 ## Working agreements
