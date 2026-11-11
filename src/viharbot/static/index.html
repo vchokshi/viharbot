@@ -83,6 +83,7 @@
       .agent-name small.status-support { color: #816a4b; background: #f8f0e4; }
       .agent-name small.status-planned { color: #5d6474; background: #eef0f4; }
       .agent-name small.status-development { color: #7661a5; background: #f1ebfc; }
+      .agent-name small.status-external { color: #3f6c73; background: #e6f2f3; }
       .agent-more { margin-top: 6px; font-size: 11px; line-height: 1.55; color: #6f7069; }
       .agent-more summary { cursor: pointer; color: #8a5a3c; font-weight: 700; font-size: 10px; }
       .agent-more p { margin: 6px 0 0; }
@@ -107,7 +108,11 @@
       .team-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; margin: 35px 0 15px; }
       .team-section-head h2 { margin: 0; font-family: Iowan Old Style, "Palatino Linotype", Georgia, serif; font-size: 32px; font-weight: 400; letter-spacing: -.03em; }
       .team-section-head p { margin: 0; color: #87877e; font-size: 14px; }
-      .profile-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; }
+      .profile-grid { display: grid; gap: 34px; }
+      .app-head h2 { margin: 0; font-family: Iowan Old Style, "Palatino Linotype", Georgia, serif; font-size: 28px; font-weight: 400; letter-spacing: -.02em; }
+      .app-head p { margin: 5px 0 0; color: #695f53; font-size: 14px; }
+      .app-head .app-tagline { color: #87877e; }
+      .app-members { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; margin-top: 14px; }
       .profile-card { display: grid; grid-template-columns: 88px minmax(0,1fr); align-content: start; gap: 14px; min-width: 0; padding: 16px; border: 1px solid #ece9e1; border-radius: 19px; background: linear-gradient(135deg, rgba(255,255,255,.98), rgba(250,248,244,.93)); transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease; }
       .profile-card:hover { transform: translateY(-2px); border-color: #e3d2c2; box-shadow: 0 10px 24px rgba(61,53,40,.07); }
       .profile-card img, .profile-monogram { display: grid; width: 88px; height: 100px; place-items: center; border: 1px solid #f0e8de; border-radius: 15px; background: linear-gradient(145deg, #fff0e6, #e8edff 54%, #e7f1e6); object-fit: cover; box-shadow: 0 5px 14px rgba(61,53,40,.1); }
@@ -124,6 +129,7 @@
       .profile-card { scroll-margin-top: 16px; }
       .profile-status.planned { color: #5d6474; background: #eef0f4; }
       .profile-status.development { color: #7661a5; background: #f1ebfc; }
+      .profile-status.external { color: #3f6c73; background: #e6f2f3; }
       .profile-more { margin-top: 10px; font-size: 14px; color: #6f7069; }
       .profile-more summary { cursor: pointer; color: #8a5a3c; font-weight: 750; }
       .profile-more p { margin: 8px 0 0; line-height: 1.55; }
@@ -275,7 +281,8 @@
         .team-grid-art { border-radius: 13px; }
         .team-section-head { align-items: flex-start; flex-direction: column; gap: 5px; margin-top: 25px; }
         .team-section-head h2 { font-size: 28px; }
-        .profile-grid { grid-template-columns: 1fr; gap: 9px; }
+        .profile-grid { gap: 26px; }
+        .app-members { grid-template-columns: 1fr; gap: 9px; }
         .profile-card { grid-template-columns: 68px minmax(0,1fr); gap: 11px; padding: 11px; border-radius: 15px; }
         .profile-card img, .profile-monogram { width: 68px; height: 78px; border-radius: 12px; }
         .profile-name-line h3 { font-size: 17px; }
@@ -400,7 +407,7 @@
           <p class="intro">Nine established identities. Six already work together; Pixel joins when you ask for a slide deck, and Sage when the question has human stakes.</p>
           <div class="team-heading"><strong>Meet your crew</strong><span>9 identities</span></div>
           <!--TEAM_SIDEBAR-->
-          <div class="sidebar-foot"><strong>Six live agents · one shared LiteLLM server</strong>Calls run in sequence. Pixel runs last, and only when you ask for a slide deck. Sage runs only when Charlie judges the question has human or organizational stakes. Atlas, Orbit, Kepler, Archie and Ada are established identities that do not run in the live chat. Choose a name to open that profile.</div>
+          <div class="sidebar-foot"><strong>Six live agents · one shared LiteLLM server</strong>Calls run in sequence. Pixel runs last, and only when you ask for a slide deck. Sage runs only when Charlie judges the question has human or organizational stakes. Atlas, Orbit and Kepler are established identities that do not run in the live chat. Professor Archibald and Dr. Ada Lovewell lead two separate applications that ViharBot does not run. Choose a name to open that profile.</div>
         </aside>
 
         <main class="chat-panel">
@@ -449,13 +456,13 @@
           <div>
             <div class="team-page-kicker">Curiosity, with a crew behind it</div>
             <h1>Meet the ViharBot <em>team.</em></h1>
-            <p class="team-page-intro">Nine established identities bring research, practical thinking, creativity, and care to the work. Each profile says plainly what the identity does today and what is still planned.</p>
+            <p class="team-page-intro">ViharBot is an agentic-AI platform with three applications built on it: Super Consulting for AI security, Knowledge and Learning, and Training and Instruction led by Ada. Each profile says plainly what exists today and what is still planned.</p>
           </div>
           <a class="back-chat" href="#home">Back to your question <span aria-hidden="true">↗</span></a>
         </div>
         <div class="team-section-head">
-          <h2>Nine identities. One curious crew.</h2>
-          <p>Six roles run in the chat pipeline. Every other identity is labeled for what it is today: planned, in development, or platform support. A listed identity is not a runnable agent.</p>
+          <h2>One platform. Three applications.</h2>
+          <p>Six roles run in the chat pipeline. Every other identity is labeled for what it is today: planned, deployed outside the chat, platform support, or a separate application. A listed identity is not a runnable agent.</p>
         </div>
         <section class="profile-grid" aria-label="ViharBot agent profiles">
           <!--TEAM_PROFILES-->
@@ -465,7 +472,7 @@
           <img class="team-grid-art" src="/images/AI%20Robot%20Team%20Portrait%20Grid.png" alt="Historical portrait grid of the first eight ViharBot characters: Charlie Chatwin, Nova, Atlas, Pixel, Sage, Cipher, Scout, and Orbit." />
           <figcaption>Historical artwork: the original eight-character portrait grid. It is not the current roster; the profiles above are.</figcaption>
         </figure>
-        <div class="team-principle"><strong>Nine identities. One mission.</strong><span>Explore boldly. Question assumptions. Respect evidence. Build intelligently.</span></div>
+        <div class="team-principle"><strong>One platform. One mission.</strong><span>Explore boldly. Question assumptions. Respect evidence. Build intelligently.</span></div>
       </main>
     </div>
 

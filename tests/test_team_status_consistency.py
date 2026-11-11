@@ -30,10 +30,10 @@ def sidebar_entries():
         r'<a class="agent-name" href="#team/(\w+)">(.*?) <small class="status-\w+">([^<]*)</small>', SIDEBAR)}
 
 
-def test_the_sidebar_lists_all_nine_identities_once_each():
+def test_the_sidebar_lists_all_nine_identities_and_the_two_external_leads_once_each():
     entries = sidebar_entries()
-    assert set(entries) == {i.id for i in default_registry().list()} and len(entries) == 9
-    assert SIDEBAR.count('class="agent"') == 9
+    assert set(entries) == {i.id for i in default_registry().list()} | {"archie", "ada"}
+    assert len(entries) == 11 and SIDEBAR.count('class="agent"') == 11
 
 
 def test_exactly_the_bound_chat_identities_are_marked_live():
@@ -69,7 +69,7 @@ def test_each_sidebar_name_deep_links_to_the_matching_team_profile():
         assert f'href="#team/{identity_id}"' in SIDEBAR
         assert f'<article class="profile-card" id="team-{identity_id}"' in HTML  # the anchor it targets
     anchors = re.findall(r'<article class="profile-card" id="(team-\w+)"', HTML)
-    assert len(anchors) == len(set(anchors)) == 9
+    assert len(anchors) == len(set(anchors)) == 11
 
 
 def test_sidebar_and_profile_show_the_same_name_title_and_status():
@@ -81,8 +81,8 @@ def test_sidebar_and_profile_show_the_same_name_title_and_status():
 
 
 def test_every_sidebar_entry_is_expandable_and_keyboard_reachable():
-    assert SIDEBAR.count('<details class="agent-more">') == 9
-    assert SIDEBAR.count('class="agent-profile-link"') == 9
+    assert SIDEBAR.count('<details class="agent-more">') == 11
+    assert SIDEBAR.count('class="agent-profile-link"') == 11
     assert "tabindex" not in SIDEBAR  # native links and summaries, no custom tab order
 
 
