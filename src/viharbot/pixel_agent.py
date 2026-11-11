@@ -5,7 +5,8 @@ schemas and rates each item. Everything deterministic is code: layout and token 
 between calls, a hard model-call budget, and the .pptx rendering. All inference goes through
 LiteLLM with Pixel's own alias in PIXEL_MODEL. The service refuses to run unless the PPT flag is on.
 
-Limitations: the HTTP interface is unauthenticated like the other private agents. Finished decks
+Limitations: the HTTP interface trusts the private network unless VIHARBOT_SERVICE_AUTH is on, which
+authenticates callers of /process and the deck downloads (docs/service-authentication.md). Finished decks
 are kept under MEMORY_DIR/pixel/decks (newest PIXEL_MAX_DECKS, default 20) and contain the team's
 results, so protect that storage like the other agent memory. Nothing here has been run against a
 real model in automated checks.
@@ -22,10 +23,11 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from fastapi import FastAPI, Header, HTTPException, Response
+from fastapi import Depends, FastAPI, Header, HTTPException, Response
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
 
+from .body_limit import BodySizeLimitMiddleware, max_body_bytes_from_environment
 from .contracts import SpecialistResponse
 from .inference_config import effective_inference, legacy_inference
 from .model_agent import build_agent
@@ -36,10 +38,34 @@ from .pixel.models import EngagementProfile
 from .pixel.render import render_html
 from .pixel.runner import PixelError, build_deck_in_memory
 from .schemas import DeckResult
+from .service_auth import (
+    PIXEL_PROCESS_CAPABILITY,
+    PIXEL_READ_DECK_CAPABILITY,
+    authenticator_from_environment,
+    require_assertion,
+)
 
 configure_logging()
 logger = logging.getLogger("pixel")
 app = FastAPI(title="ViharBot Pixel Slide Agent", version="1.0")
+
+# Service authentication (ADR-006 A2): off unless VIHARBOT_SERVICE_AUTH is set; a missing or empty
+# registry then stops startup. POST /process and the deck downloads need their own capabilities;
+# /health and /model stay open (follow-up: /model).
+_authenticator = authenticator_from_environment("pixel")
+_process_auth = (
+    [Depends(require_assertion(_authenticator, PIXEL_PROCESS_CAPABILITY))] if _authenticator else []
+)
+_read_deck_auth = (
+    [Depends(require_assertion(_authenticator, PIXEL_READ_DECK_CAPABILITY))] if _authenticator else []
+)
+if _authenticator:
+    app.add_middleware(
+        BodySizeLimitMiddleware,
+        max_bytes=max_body_bytes_from_environment(),
+        paths=frozenset({"/process"}),
+        agent="pixel",
+    )
 
 # Result sections from the other agents that may be used as evidence, by name.
 EVIDENCE_KEYS = ("research", "fact_check", "source_quality", "security", "privacy_review", "synthesis")
@@ -87,7 +113,7 @@ def model() -> dict[str, str | None]:
     return {"agent": "pixel", "model_alias": os.getenv("PIXEL_MODEL", "").strip() or None}
 
 
-@app.post("/process", response_model=SpecialistResponse)
+@app.post("/process", response_model=SpecialistResponse, dependencies=_process_auth)
 def process(
     body: PixelRequest,
     response: Response,
@@ -187,7 +213,7 @@ def _safe_deck_path(deck_id: str, extension: str) -> Path:
     raise HTTPException(status_code=404, detail="Deck not found")
 
 
-@app.get("/decks/{deck_id}.pptx")
+@app.get("/decks/{deck_id}.pptx", dependencies=_read_deck_auth)
 def download(deck_id: str) -> FileResponse:
     path = _safe_deck_path(deck_id, "pptx")
     if not path.is_file():
@@ -199,7 +225,7 @@ def download(deck_id: str) -> FileResponse:
     )
 
 
-@app.get("/decks/{deck_id}.html")
+@app.get("/decks/{deck_id}.html", dependencies=_read_deck_auth)
 def view(deck_id: str) -> HTMLResponse:
     """Pixel's HTML rendition of the deck, in the same colours as the .pptx."""
     path = _safe_deck_path(deck_id, "html")

@@ -23,6 +23,7 @@ from .execution_bindings import default_bindings
 from .identity import Capability
 from .identity_registry import default_registry
 from .litellm_client import urlopen as no_redirect_urlopen
+from .outbound_auth import OutboundAuthError, outbound_headers
 from .pipeline_state import AgentActivity
 from .pixel.flag import ppt_generation_enabled  # noqa: F401  (re-exported for web_app)
 from .schemas import DeckResult
@@ -138,7 +139,14 @@ def fetch_deck(deck_id: str, kind: str = "pptx") -> bytes | None:
     if not DECK_ID.fullmatch(deck_id) or kind not in {"pptx", "html"}:
         return None
     parts = urlsplit(pixel_url())
-    request = Request(f"{parts.scheme}://{parts.netloc}/decks/{deck_id}.{kind}")
+    url = f"{parts.scheme}://{parts.netloc}/decks/{deck_id}.{kind}"
+    try:
+        # A GET with an empty body: the assertion still binds the method, the target and the empty
+        # body. Off by default. When on and signing fails nothing is sent (no unsigned fallback).
+        assertion = outbound_headers(url, destination="pixel", method="GET", body=b"")
+    except OutboundAuthError:
+        return None
+    request = Request(url, headers=assertion)
     try:
         with no_redirect_urlopen(request, 30) as response:
             data = response.read(MAX_DECK_BYTES + 1)

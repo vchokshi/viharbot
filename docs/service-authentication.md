@@ -1,9 +1,12 @@
 # Service authentication (ADR-006, step A2)
 
-**Status: implemented behind a setting that is off by default.** This is authentication only. It
-proves which service signed a request and that the request was not altered or replayed. It does
-**not** prove the caller is authorized by a delegation grant: that is A3 (issue #95). Design:
-`docs/adr/ADR-006-workload-identity-and-authorization.md`. Code: `src/viharbot/service_auth.py`.
+**Status: implemented on all eight agent services (Research, Security, Fact Check, Source Quality,
+Privacy Review, Synthesis, Sage and Pixel), behind a setting that is off by default in code.** Local
+Docker Compose turns it on by default (see "Turning it on"); Stage and the committed DigitalOcean
+spec do not. This is authentication only. It proves which service signed a request and that the
+request was not altered or replayed. It does **not** prove the caller is authorized by a delegation
+grant: that is A3 (issue #95). Design: `docs/adr/ADR-006-workload-identity-and-authorization.md`.
+Code: `src/viharbot/service_auth.py`.
 
 ## What it does
 
@@ -18,21 +21,75 @@ never used. Failures return 400 (bad target), 401, 403 (capability), or 503 (reg
 a generic body. Decisions are logged as JSON (request ID, caller, path without the query, reason,
 never a token, key or body).
 
-## Turning it on (specialist agents only)
+## Protected routes and capabilities
 
-Off by default, so Compose, Stage and existing tests are unchanged. To enable on one specialist:
+Every non-health route of every agent service verifies the assertion when `VIHARBOT_SERVICE_AUTH`
+is on. Each route family has one capability. A route accepts only its own capability (403 for any
+other), and the registry entry for the caller's key must also list it. Capabilities are
+authentication scopes for a route family, not delegation grants.
+
+| Service (the `aud`) | Protected routes | Capability |
+| --- | --- | --- |
+| `fact-check`, `source-quality`, `privacy-review`, `synthesis` | `POST /process`, `POST /invocations` | `specialist.process` |
+| `research` | `POST /research`, `POST /research-and-assess`, `POST /invocations` | `research.run` |
+| `security` | `POST /assess`, `POST /invocations` | `security.assess` |
+| `sage` | `POST /process` | `sage.process` |
+| `pixel` | `POST /process` | `pixel.process` |
+| `pixel` | `GET /decks/{deck_id}.pptx`, `GET /decks/{deck_id}.html` | `pixel.read_deck` |
+
+Left open on every service: `/health`, `/ping` (Research, Security and the specialists) and
+`/model`. `/model` returns only the configured model alias, is what the web UI uses to show who uses
+what, and was already open on the specialists; this change keeps that. Protecting it is a
+follow-up: the web tier would sign a `GET /model` and would need a capability for it.
+
+Capability names are registry data, so the change is additive: `specialist.process` is unchanged and
+an existing registry keeps working. A registry that should call the new routes adds the new names to
+the relevant key. Least privilege in the development registry: `web` holds every capability,
+`research` holds only `security.assess` (it calls Security), and the `demo`-profile `orchestrator`
+holds the specialist, Research and Security capabilities.
+
+## Turning it on
+
+Off by default in code, so Stage and the existing tests are unchanged. To enable one service:
 
 - `VIHARBOT_SERVICE_AUTH=on`
 - `VIHARBOT_KEY_REGISTRY=/path/to/registry.toml`, a mounted file holding **public keys only**.
 
-The service refuses to start if the registry is missing, malformed or empty. Registry format:
+The service refuses to start if the registry is missing, malformed or empty (for Research, Security,
+Sage and Pixel as for the specialists). With authentication on, a body-size cap (below) also covers
+the protected POST routes of the four services added in #235.
+
+**Local Compose turns it on by default** (issue #235; Compose is the dev environment). Compose sets
+`VIHARBOT_SERVICE_AUTH` and `VIHARBOT_OUTBOUND_AUTH` to `on` unless you override them in `.env`.
+Generate development keys once, then start the stack as usual:
+
+```bash
+python scripts/dev_service_auth.py     # writes data/dev-auth/ (gitignored); needs only `cryptography`
+docker compose up --build -d
+```
+
+The script writes `registry.toml` (public keys) and one private seed each for `web`, `research` and
+`orchestrator`. Compose mounts the registry read-only into each verifying service and mounts each
+private seed only into the service that signs with it (`web`, `research`, and the `demo`-profile
+`orchestrator`). No key, seed or registry is in source or an image; `data/` is already gitignored.
+If the files are missing, Compose creates empty directories in their place and the services refuse to
+start (fail closed), so run the script first. To run without authentication set
+`VIHARBOT_SERVICE_AUTH=off` and `VIHARBOT_OUTBOUND_AUTH=off` in `.env`. The seeds are mode 0644 so the
+unprivileged container user can read them; they are development keys for a loopback-only stack.
+
+**Stage is deliberately not changed.** `deploy/digitalocean/app.yaml` does not set either variable, so
+Stage verifies and signs nothing. Stage key storage and distribution are open questions in ADR-006 and
+a Stage change needs the "promote this dev build to Stage" confirmation. The trigger to do it is
+recorded in `docs/deployment-strategy.md`.
+
+Registry format:
 
 ```toml
 [[keys]]
 kid = "web-2026-11"          # unique
 sub = "web"                  # the one subject this key may assert
 public_key = "<base64url of the 32 raw Ed25519 public-key bytes>"
-capabilities = ["specialist.process"]
+capabilities = ["specialist.process"]   # route capabilities this key may assert (table above)
 ```
 
 Two entries for one `sub` give a rotation overlap; removing a `kid` retires it. The file is re-read
@@ -67,19 +124,33 @@ Configuration (all unset means off; requests are byte-for-byte unchanged):
 When on and the key is unreadable, the kid is missing, or signing fails, the call raises and nothing
 is sent (fail closed; no unauthenticated fallback).
 
-Wired: every `demo.post_json` call to `fact-check`, `source-quality`, `privacy-review` and
-`synthesis` (capability `specialist.process`), which covers the iterative and identity-execution
-paths because they use `post_json`.
+Wired:
+
+- Every `demo.post_json` call to `fact-check`, `source-quality`, `privacy-review`, `synthesis`
+  (`specialist.process`), `research` (`research.run`), `security` (`security.assess`), `sage`
+  (`sage.process`) and `pixel` (`pixel.process`). This covers the fixed pipeline, the iterative and
+  identity-execution paths and the Pixel stage, because they use `post_json`. Sage has a client: the
+  web tier offers Sage to Charlie when `SAGE_URL` is set (`web_app.agent_urls`) and reaches it through
+  `post_json` with destination `sage`. (An earlier version of this document said no Sage client
+  existed; that was stale.)
+- Research to Security (`security_client.send_findings_to_security`, capability `security.assess`).
+  Research signs with **its own** key and subject: the call uses `VIHARBOT_SIGNING_KID`,
+  `VIHARBOT_SIGNING_KEY_FILE` and `VIHARBOT_SERVICE_SUBJECT` from the Research process, whose subject
+  defaults to `research` (not `web`). A key registered for `web` cannot be used for it: the verifier
+  binds each `kid` to one subject. Each service holds its own identity (ADR-006).
+- The deck download (`pixel_execution.fetch_deck`, `GET /decks/{deck_id}.pptx|.html`, capability
+  `pixel.read_deck`). It is a GET with an empty body: the assertion binds the method, the exact path
+  and the SHA-256 of the empty body, so a token for one deck is unusable for another deck or format.
+
+When minting is on and signing fails, none of these paths falls back to an unsigned request:
+`post_json` raises, Research reports a Security communication failure (502), and `fetch_deck`
+returns "missing".
 
 Not wired:
 
-- `research`, `security` and `pixel` via `post_json`: those services do not verify assertions yet and
-  define no route capability, so no token is minted for them.
-- `security_client.send_findings_to_security` (Research to Security) and `pixel_execution.fetch_deck`
-  (GET, no body): not wired. The Research process would need its own key and `sub` and Security has no
-  verifier yet.
-- AgentCore (`agentcore://`): untouched; the SigV4-plus-assertion carrier is separate work.
-- No Sage client exists in `src`; Sage is not called by the web tier.
+- AgentCore (`agentcore://`, and `SECURITY_AGENTCORE_ARN` for Research to Security): untouched; the
+  SigV4-plus-assertion carrier is separate work.
+- `GET /model`, which stays open.
 - Redirects: a signed request is sent through the no-redirect opener (`litellm_client.urlopen`), so the token is never forwarded to another origin; a redirecting callee surfaces as the 3xx `HTTPError`, and a loopback test with a real 302 asserts the target is never contacted. Unsigned calls keep the default behavior.
 - `eng` and `cls` are fixed placeholders (`unscoped`, `unclassified`); there is no `dlg` (A3).
 - No rotation tooling, no separate signer, no per-user identity.
@@ -101,37 +172,42 @@ The ADR text is not updated in this PR; a follow-up is needed.
 
 ## Known limitations of A2
 
-- **Outbound minting is partial** (see "Outbound assertions (A2b)"). Enabling authentication on a specialist works only while the caller also has outbound minting on.
-- Only the shared specialist factory is wired (`/process` and `/invocations`). `/health`, `/ping`
-  and `/model` stay open. Follow-ups: `/model`, Pixel, Sage, Research and Security services.
+- **A verifying service needs signed callers.** Enabling authentication on a service works only
+  while its callers also have outbound minting on and a key its registry lists. In Compose both are
+  on together; turning only one off breaks calls (they fail closed).
+- All eight services protect every non-health route (table above). `/health`, `/ping` and `/model`
+  stay open. Follow-up: `/model`.
 - `dlg` is optional and ignored; there is no grant, scope, redelegation or engagement/classification
-  check (A3, #95, #94). `eng` and `cls` are required but not enforced. The audit claim is "every call
-  to a protected route is authenticated while authentication is enabled", not "every call is
-  authenticated" and not "every call is authorized". Routes left open (see above) and any service
-  with authentication off make no such claim.
+  check (A3, #95, #94). `eng` and `cls` are required but not enforced. The audit claim is exactly:
+  **every call to a protected route is authenticated while authentication is enabled** on that
+  service. It is not "every call is authenticated" and not "every call is authorized". Routes left
+  open (see above), any service with authentication off (every service on Stage today) and the
+  AgentCore carriers make no such claim.
+- No key-rotation tooling and no separate signer (option A is accepted; `AssertionIssuer` is the
+  seam). The development key script creates keys once and does not rotate them.
 - The AgentCore fallback carrier (`assertion` in the `/invocations` envelope with a JCS body hash)
   is not implemented; the body hash is over the raw bytes received.
-- The replay cache is per process. A callee with several replicas needs shared state (ADR open
-  question 5). The 60 s registry refresh uses wall-clock time.
+- The replay cache is per process and in memory: a restart empties it, and a callee with several
+  replicas needs shared state (ADR open question 5). The 60 s registry refresh uses wall-clock time.
 - Query handling: the target is canonicalized as the ADR lists. Literal characters in the query are
   kept as received (never re-encoded) so `+`, `%20` and `%2B` stay distinct; percent-escape hex is
   upper-cased and an escape of an unreserved character is rejected. An empty query (`/x?`) is signed
   as no query because ASGI does not distinguish it. A space or a `#` in the target is rejected.
 - Plaintext HTTP on a private network is still an accepted interception risk (ADR-006, Transport).
 - **Body-size cap (issue #101): covered in the application, proxy limits unverified.** The cap
-  below refuses an over-limit request to `/process` or `/invocations` with 413 before the assertion
-  is checked, so an unauthenticated caller cannot make the specialist buffer more than the limit
-  (plus one chunk). It applies only to those two POST routes and only when authentication is on;
-  `/health`, `/ping` and `/model` and the other services (Pixel, Sage, Research, Security) are not
-  covered. What remains an assumption: whatever proxy sits in front of each runtime may buffer or
+  below refuses an over-limit request to a protected POST route (`/process`, `/invocations`,
+  `/research`, `/research-and-assess`, `/assess`) with 413 before the assertion is checked, so an
+  unauthenticated caller cannot make a service buffer more than the limit (plus one chunk). It
+  applies only to those routes and only when authentication is on; `/health`, `/ping`, `/model` and
+  the GET deck routes (no request body is expected) are not covered. What remains an assumption: whatever proxy sits in front of each runtime may buffer or
   cap bodies itself before the request reaches the app, and I have **not verified** the limits or
   buffering behavior of DigitalOcean App Platform, Amazon Bedrock AgentCore Runtime or any
   load balancer. Treat the in-app cap as the only guarantee and the proxy as unknown.
 
 ## Request body size cap
 
-Code: `src/viharbot/body_limit.py` (pure ASGI middleware, installed by the specialist factory only
-when `VIHARBOT_SERVICE_AUTH` is on; nothing changes when it is off).
+Code: `src/viharbot/body_limit.py` (pure ASGI middleware, installed by each service only when
+`VIHARBOT_SERVICE_AUTH` is on; nothing changes when it is off).
 
 - A request whose `Content-Length` exceeds the limit is answered `413` immediately, before the
   assertion check and without reading any of the body.
@@ -142,6 +218,11 @@ when `VIHARBOT_SERVICE_AUTH` is on; nothing changes when it is off).
   agent, reason and limit only, never body, headers or token.
 - Setting: `VIHARBOT_MAX_BODY_BYTES`, an integer from 1024 to 16777216 (invalid values stop startup).
   Default **262144 (256 KiB)**.
+
+The same default applies to Research, Security, Sage and Pixel. Their legitimate requests are
+smaller than the synthesis call (Research: a question; Security: one findings object; Sage and Pixel:
+a question plus results already bounded as above), but the Security and Pixel bodies are not length
+bounded by their schemas either, so raise the setting there if a real request is refused.
 
 Default rationale: the largest legitimate specialist request is the synthesis call, which carries
 the question (at most 6000 characters, so at most 24,000 bytes of UTF-8) plus the structured

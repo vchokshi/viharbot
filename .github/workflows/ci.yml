@@ -276,6 +276,18 @@ jobs:
           python .github/scripts/junit_summary.py reports/docker-test-results.xml
           --name "Docker tests" --fail-on-skipped
           --allow-skip 'RUN_LITELLM_(INTEGRATION|INFERENCE)=1 to|VIHARBOT_MEMORY_TEST_PG_(ADMIN_DSN|CONTAINER) is not set'
+      # Local Compose turns service authentication on by default (ADR-006 A2, issue #235), so every
+      # service fails closed without a key registry. Generate throwaway development keys exactly as a
+      # developer does (scripts/dev_service_auth.py). They are created on this runner only, are
+      # gitignored (data/), are never baked into an image, and are not used for Stage or production.
+      # The script needs only `cryptography`, installed with the same constraint as pyproject.toml.
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Generate development service-authentication keys
+        run: |
+          python -m pip install "cryptography>=43.0.0"
+          python scripts/dev_service_auth.py
       # Starts the stack with no LiteLLM key and no optional modes, then checks only things that
       # need no model: health, the page, and the stream route's refusal when iterative mode is off.
       - name: Start the stack and check health

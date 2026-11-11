@@ -57,6 +57,16 @@ MAX_TOKEN_BYTES = 8192
 MAX_JTI_LENGTH = 128
 MAX_JSON_NESTING = 16
 
+# Route capabilities, one per service route family (docs/service-authentication.md). A route accepts
+# only its own capability, and the registry must also list it for the caller's key. These are
+# authentication scopes, not delegation grants (A3 is separate work).
+SPECIALIST_CAPABILITY = "specialist.process"  # the four specialists' /process and /invocations
+RESEARCH_CAPABILITY = "research.run"  # Research: /research, /research-and-assess, /invocations
+SECURITY_CAPABILITY = "security.assess"  # Security: /assess, /invocations
+SAGE_CAPABILITY = "sage.process"  # Sage: /process
+PIXEL_PROCESS_CAPABILITY = "pixel.process"  # Pixel: POST /process
+PIXEL_READ_DECK_CAPABILITY = "pixel.read_deck"  # Pixel: GET /decks/{id}.pptx and .html
+
 ENABLE_ENV = "VIHARBOT_SERVICE_AUTH"
 REGISTRY_ENV = "VIHARBOT_KEY_REGISTRY"
 SIGNING_KEY_ENV = "VIHARBOT_SIGNING_KEY"
