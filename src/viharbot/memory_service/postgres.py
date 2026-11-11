@@ -331,6 +331,9 @@ class PostgresMemoryRepository(MemoryRepository):
         record = self._lock(tx, str(stored_id), ctx) if stored_id is not None else None
         if not ctx.guard():
             raise GuardRefusedError()
+        # Visibility is judged at a fresh service-clock time read after the lock (and the guard),
+        # not ctx.now: the reservation wait and the lock wait can outlast the record's expiry.
+        checked_at = ctx.clock()
         if erased:
             raise TombstonedError("key_tombstoned")
         if stored_operation != operation or stored_hash != ctx.request_hash:
@@ -339,7 +342,7 @@ class PostgresMemoryRepository(MemoryRepository):
             raise ConflictError("idempotency_unavailable")
         # Not visible now (retired, erased, expired, above the ceiling): return nothing stored.
         if (
-            record is None or record[1] != "active" or self._expired(record, ctx.now)
+            record is None or record[1] != "active" or self._expired(record, checked_at)
             or not self._in_class_range(record, ctx)
         ):
             raise NotFoundError()

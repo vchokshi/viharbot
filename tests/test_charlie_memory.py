@@ -612,6 +612,33 @@ def test_the_dev_script_adds_only_the_memory_files_to_an_older_key_directory(tmp
     assert (out / "memory-registry.toml").is_file() and (out / "registry.toml").read_text() == before
 
 
+def _tree_state(out: Path) -> dict[str, tuple[bytes, int]]:
+    return {str(p.relative_to(out)): (p.read_bytes(), p.stat().st_mode & 0o777)
+            for p in sorted(out.rglob("*")) if p.is_file()}
+
+
+def test_running_the_setup_command_twice_is_a_no_op_with_exit_zero(tmp_path, capsys):
+    script = _script("dev_service_auth")
+    out = tmp_path / "dev-auth"
+    assert script.main(["--output", str(out)]) == 0
+    first = _tree_state(out)
+    capsys.readouterr()
+    assert script.main(["--output", str(out)]) == 0  # intact and already configured
+    assert _tree_state(out) == first  # no file content or mode changed, nothing added
+    assert "nothing changed" in capsys.readouterr().out
+
+
+def test_an_incomplete_key_set_still_exits_non_zero_and_changes_nothing(tmp_path, capsys):
+    script = _script("dev_service_auth")
+    out = tmp_path / "dev-auth"
+    assert script.main(["--output", str(out)]) == 0
+    (out / "keys" / "research.key").unlink()
+    before = _tree_state(out)
+    assert script.main(["--output", str(out)]) == 1
+    assert _tree_state(out) == before
+    assert "incomplete" in capsys.readouterr().err
+
+
 # --- database passwords are never regenerated under an existing volume -------------------------
 
 
