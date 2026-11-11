@@ -945,6 +945,71 @@ def test_control_the_same_wait_without_expiry_succeeds(waiter, database, kind, o
     assert rows(database, "SELECT rev FROM memory.records") == [(2,)]
 
 
+# --- an idempotent replay judges visibility after the lock wait too (Sage review of PR 321) ---
+
+
+@pytest.fixture
+def replay_waiter(repo, database):
+    """Commit a keyed mutation, hold its record's lock, start the replay, and step the clock."""
+
+    def run_case(kind, operation, advance):
+        clock = Clock()
+        if kind == "session":
+            scope = Scope("session", "s-replay")
+            mid = "00000000-0000-7000-8000-0000000000d1"
+            record = new_record(mid, scope=scope, expires_in=30)
+        else:
+            scope = Scope("agent", "nova")
+            mid = "00000000-0000-7000-8000-0000000000d2"
+            record = new_record(mid, retention_in=timedelta(seconds=30))
+        key = "replay-" + operation + "-0001"
+
+        def call(context):
+            if operation == "create":
+                return repo.create(record, context)
+            if operation == "update":
+                return repo.update(mid, 1, version("again"), context)
+            return repo.classify(mid, 1, "confidential", context)
+
+        if operation != "create":
+            assert repo.create(record, ctx(scope=scope, key="seed-" + operation + "-0001")).status == 201
+        first = call(ctx(scope=scope, key=key, classes=None, now=clock(), clock=clock))
+        assert first.status in (200, 201) and not first.replayed
+        stored = rows(database, "SELECT rev, version, classification, lifecycle, updated_at FROM memory.records")
+        keys = rows(database, "SELECT count(*) FROM memory.idempotency")
+        # the replay starts at T0, well inside the record's life, with a clock that keeps moving
+        context = ctx(scope=scope, key=key, classes=None, now=clock(), clock=clock)
+        with psycopg.connect(database.service_dsn) as holder, ThreadPoolExecutor(1) as pool:
+            holder.execute("SELECT 1 FROM memory.records WHERE memory_id = %s FOR UPDATE", (mid,))
+            future = pool.submit(call, context)
+            assert blocked(future), "the replay must be waiting on the record lock"
+            if advance:
+                clock.advance(seconds=31)
+            holder.rollback()  # release the lock
+            outcome = future.exception(timeout=15) or future.result()
+        assert rows(database, "SELECT rev, version, classification, lifecycle, updated_at FROM memory.records") == stored
+        assert rows(database, "SELECT count(*) FROM memory.idempotency") == keys
+        return first, outcome
+
+    return run_case
+
+
+@pytest.mark.parametrize("kind", ["session", "agent"])
+@pytest.mark.parametrize("operation", ["create", "update", "classify"])
+def test_a_replay_that_waits_past_expiry_returns_nothing_stored(replay_waiter, kind, operation):
+    first, outcome = replay_waiter(kind, operation, advance=True)
+    assert isinstance(outcome, NotFoundError), outcome  # a 404: no stored metadata is returned
+    assert first.body["memory_id"] not in str(outcome.args)
+
+
+@pytest.mark.parametrize("kind", ["session", "agent"])
+@pytest.mark.parametrize("operation", ["create", "update", "classify"])
+def test_control_the_same_replay_wait_without_expiry_is_served(replay_waiter, kind, operation):
+    first, outcome = replay_waiter(kind, operation, advance=False)
+    assert not isinstance(outcome, Exception), outcome
+    assert outcome.replayed and outcome.status == first.status and outcome.body == first.body
+
+
 @pytest.mark.parametrize("kind", ["session", "agent"])
 @pytest.mark.parametrize("operation", ["retire", "erase"])
 def test_retire_and_erase_do_not_judge_expiry_so_an_expired_record_can_still_be_removed(waiter, database, kind, operation):
