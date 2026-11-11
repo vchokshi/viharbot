@@ -1,0 +1,108 @@
+# Memory policy table (ADR-009, issue #40). Deny by default: a caller that is not named here gets
+# nothing. Reviewed repository configuration, like bindings.toml; it is never changed at run time
+# and never inferred from a token, a request body or a prompt.
+#
+# Being named here is NECESSARY, NOT SUFFICIENT. The caller must also present a valid ADR-006 A2
+# assertion, signed by a key in the memory service's own key registry whose entry binds that key to
+# one `sub` and lists the route capability (memory.read or memory.write). Nothing in the
+# application calls the memory service yet, and no registry in any environment names these subs.
+#
+# Fields (all required):
+#   agent_id                  the logical agent identity. Memory is keyed by this, never by a
+#                             runtime instance, so two runtimes of one agent share one scope.
+#   subs                      the verified `sub` values that map to this agent_id.
+#   agent_private, session    operations the agent may perform on its own scope in that tier:
+#                             read, create, update, classify, retire, erase.
+#   classification_ceiling    the highest class the agent may write. Writers may raise a record's
+#                             class up to the ceiling and never lower it. "internal" matches the
+#                             existing knowledge broker, which refuses "confidential".
+#   allow_personal_data       false: a record that declares personal data is refused.
+#   default/max retention     days, for agent-private records (retention_until).
+#   session ttl               seconds, for session records (expires_at).
+#   max_content_bytes         largest record body, at most 65536.
+#
+# The retention, TTL and size numbers are PLACEHOLDERS: ADR-009 leaves retention periods and the
+# consent policy open for the founder. They are conservative, not decided.
+#
+# Engagement-shared memory (/memory/eng) and the institutional tier (/memory/inst) are reserved
+# and have no policy here. Kepler is not listed: it has its own steward and governance.
+
+version = 1
+
+[[agent]]
+agent_id = "nova"
+subs = ["nova"]
+agent_private = ["read", "create", "update", "classify", "retire", "erase"]
+session = ["read", "create", "update", "classify", "retire", "erase"]
+classification_ceiling = "internal"
+allow_personal_data = false
+default_retention_days = 90
+max_retention_days = 365
+session_default_ttl_seconds = 3600
+session_max_ttl_seconds = 86400
+max_content_bytes = 16384
+
+[[agent]]
+agent_id = "scout"
+subs = ["scout"]
+agent_private = ["read", "create", "update", "classify", "retire", "erase"]
+session = ["read", "create", "update", "classify", "retire", "erase"]
+classification_ceiling = "internal"
+allow_personal_data = false
+default_retention_days = 90
+max_retention_days = 365
+session_default_ttl_seconds = 3600
+session_max_ttl_seconds = 86400
+max_content_bytes = 16384
+
+[[agent]]
+agent_id = "cipher"
+subs = ["cipher"]
+agent_private = ["read", "create", "update", "classify", "retire", "erase"]
+session = ["read", "create", "update", "classify", "retire", "erase"]
+classification_ceiling = "internal"
+allow_personal_data = false
+default_retention_days = 90
+max_retention_days = 365
+session_default_ttl_seconds = 3600
+session_max_ttl_seconds = 86400
+max_content_bytes = 16384
+
+[[agent]]
+agent_id = "charlie"
+subs = ["charlie"]
+agent_private = ["read", "create", "update", "classify", "retire", "erase"]
+session = ["read", "create", "update", "classify", "retire", "erase"]
+classification_ceiling = "internal"
+allow_personal_data = false
+default_retention_days = 90
+max_retention_days = 365
+session_default_ttl_seconds = 3600
+session_max_ttl_seconds = 86400
+max_content_bytes = 16384
+
+[[agent]]
+agent_id = "pixel"
+subs = ["pixel"]
+agent_private = ["read", "create", "update", "classify", "retire", "erase"]
+session = ["read", "create", "update", "classify", "retire", "erase"]
+classification_ceiling = "internal"
+allow_personal_data = false
+default_retention_days = 90
+max_retention_days = 365
+session_default_ttl_seconds = 3600
+session_max_ttl_seconds = 86400
+max_content_bytes = 16384
+
+[[agent]]
+agent_id = "sage"
+subs = ["sage"]
+agent_private = ["read", "create", "update", "classify", "retire", "erase"]
+session = ["read", "create", "update", "classify", "retire", "erase"]
+classification_ceiling = "internal"
+allow_personal_data = false
+default_retention_days = 90
+max_retention_days = 365
+session_default_ttl_seconds = 3600
+session_max_ttl_seconds = 86400
+max_content_bytes = 16384

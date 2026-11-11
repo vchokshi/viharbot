@@ -1,0 +1,27 @@
+# syntax=docker/dockerfile:1
+# Memory service and its migration job (ADR-009, issue #40). One image, two commands: the service
+# (default) and `python -m viharbot.memory_service.migrate` (run by the memory-migrate job with the
+# migration role). It is the only image that installs the PostgreSQL driver (the `memory` extra).
+FROM python:3.12-slim-bookworm AS build
+
+WORKDIR /build
+COPY pyproject.toml README.md ./
+COPY src ./src
+RUN python -m pip install --no-cache-dir --prefix=/install ".[memory]"
+
+FROM python:3.12-slim-bookworm AS runtime
+WORKDIR /app
+
+RUN addgroup --system --gid 1001 appgroup \
+    && adduser --system --uid 1001 --ingroup appgroup appuser
+
+COPY --from=build --chown=1001:1001 /install /usr/local
+
+ENV PYTHONUNBUFFERED=1
+ARG APP_PORT=8000
+ENV PORT=${APP_PORT}
+EXPOSE 8000
+LABEL org.opencontainers.image.title="ViharBot memory service"
+
+USER 1001:1001
+CMD ["sh", "-c", "uvicorn viharbot.memory_service.app:create_app_from_environment --factory --host 0.0.0.0 --port \"$PORT\""]

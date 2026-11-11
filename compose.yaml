@@ -289,6 +289,85 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # Governed memory (ADR-009, issue #40, PR 1). Opt-in: `docker compose --profile memory up -d`.
+  # Nothing calls the memory service yet. Credentials come from the environment (.env, never in
+  # source) and there are no defaults: an empty value makes the service fail to start. No agent
+  # holds a database credential; only `memory` and `memory-migrate` do, each its own role.
+  postgres:
+    profiles: ["memory"]
+    image: postgres:17.11-alpine3.24
+    environment:
+      # Bootstrap superuser: used by the image and the init script only, never by a service.
+      POSTGRES_USER: ${MEMORY_PG_BOOTSTRAP_USER:-}
+      POSTGRES_PASSWORD: ${MEMORY_PG_BOOTSTRAP_PASSWORD:-}
+      MEMORY_DB_NAME: ${MEMORY_DB_NAME:-viharbot_memory}
+      MEMORY_DB_MIGRATOR_PASSWORD: ${MEMORY_DB_MIGRATOR_PASSWORD:-}
+      MEMORY_DB_SERVICE_PASSWORD: ${MEMORY_DB_SERVICE_PASSWORD:-}
+    volumes:
+      - memory_pg_data:/var/lib/postgresql/data
+      - ./deploy/postgres/init:/docker-entrypoint-initdb.d:ro
+    expose:
+      - "5432"
+    networks:
+      - agent-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  # One-shot job: applies the numbered SQL migrations as the migration role, then exits.
+  memory-migrate:
+    profiles: ["memory"]
+    build:
+      context: .
+      dockerfile: Dockerfile.memory
+    command: ["python", "-m", "viharbot.memory_service.migrate"]
+    environment:
+      MEMORY_MIGRATE_DB_HOST: postgres
+      MEMORY_MIGRATE_DB_PORT: "5432"
+      MEMORY_MIGRATE_DB_NAME: ${MEMORY_DB_NAME:-viharbot_memory}
+      MEMORY_MIGRATE_DB_USER: memory_migrator
+      MEMORY_MIGRATE_DB_PASSWORD: ${MEMORY_DB_MIGRATOR_PASSWORD:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - agent-network
+    restart: "no"
+
+  memory:
+    profiles: ["memory"]
+    build:
+      context: .
+      dockerfile: Dockerfile.memory
+    environment:
+      MEMORY_DB_HOST: postgres
+      MEMORY_DB_PORT: "5432"
+      MEMORY_DB_NAME: ${MEMORY_DB_NAME:-viharbot_memory}
+      MEMORY_DB_USER: memory_service
+      MEMORY_DB_PASSWORD: ${MEMORY_DB_SERVICE_PASSWORD:-}
+      # Public keys only. The service has no unauthenticated mode and refuses to start without it.
+      VIHARBOT_KEY_REGISTRY: /run/memory/key-registry.toml
+    volumes:
+      - ${MEMORY_KEY_REGISTRY_FILE:-./data/memory/key-registry.toml}:/run/memory/key-registry.toml:ro
+    expose:
+      - "8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      memory-migrate:
+        condition: service_completed_successfully
+    networks:
+      - agent-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
   orchestrator:
     profiles: ["demo"]
     build:
@@ -352,3 +431,4 @@ volumes:
   synthesis_data:
   pixel_data:
   sage_data:
+  memory_pg_data:
