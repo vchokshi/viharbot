@@ -199,9 +199,8 @@ APPLICATIONS = (
         "researches, checks evidence, reviews security and privacy, and synthesizes a "
         "recommendation.",
         "charlie",
-        ("charlie", "nova", "scout", "cipher", "pixel", "sage", "kepler", "orbit", "atlas"),
-        "Six roles run in the live chat today. Kepler runs on a schedule in AWS; Orbit and Atlas "
-        "are not running."),
+        ("charlie", "nova", "scout", "cipher", "pixel", "sage", "atlas"),
+        "Six roles run in the live chat today. Atlas is planned and does not run."),
     Application(
         "knowledge-learning", "Knowledge and Learning", "Engineering knowledge, kept and explained",
         "Keeps the history and reasoning behind the platform's engineering and turns it into "
@@ -215,6 +214,16 @@ APPLICATIONS = (
         "ada", ("ada",),
         "A separate application in its own repository, not run by ViharBot."),
 )
+
+
+# Identities that look after the platform itself rather than any one application.
+PLATFORM = Application(
+    "platform", "ViharBot Platform", "Shared agents that support every application",
+    "Agents that look after the platform itself: Kepler stewards first-time contributors to the "
+    "project, and Orbit covers automation and cloud engineering.",
+    "kepler", ("kepler", "orbit"),
+    "Kepler runs on a schedule in AWS and is not in the chat. Orbit is platform support and "
+    "does not run.")
 
 
 @dataclass(frozen=True)
@@ -349,11 +358,12 @@ def render_profiles(profiles: tuple[Profile, ...]) -> str:
 
     by_id = {p.id: p for p in profiles}
     sections = []
-    for app in APPLICATIONS:
+    for app in (*APPLICATIONS, PLATFORM):
+        css = "app-group" if app in APPLICATIONS else "app-group platform-group"
         members = [by_id[i] for i in app.members if i in by_id]
         count = f"{len(members)} {'identity' if len(members) == 1 else 'identities'}"
         sections.append(
-            f'<section class="app-group" id="app-{escape(app.id)}" '
+            f'<section class="{css}" id="app-{escape(app.id)}" '
             f'aria-labelledby="app-{escape(app.id)}-name">'
             f'<header class="app-head"><h2 id="app-{escape(app.id)}-name">{escape(app.name)}</h2>'
             f'<p class="app-tagline">{escape(app.tagline)} · {escape(count)}</p>'

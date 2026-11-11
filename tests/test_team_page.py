@@ -278,10 +278,15 @@ def test_the_team_page_is_framed_as_three_applications_on_one_platform():
 
 
 def test_every_card_sits_in_exactly_one_application():
+    platform_ids = {"Kepler", "Orbit"}  # these two sit in the platform group, checked below
     names = {n: [app for app, body in application_sections().items() if f"<h3 id=\"team-{i}-name\">" in body]
-             for n, i in {**DISPLAY_TO_ID, **EXTERNAL_DISPLAY}.items()}
+             for n, i in {**DISPLAY_TO_ID, **EXTERNAL_DISPLAY}.items() if n not in platform_ids}
     assert all(len(apps) == 1 for apps in names.values()), names
-    assert names["Charlie Chatwin"] == names["Kepler"] == ["Super Consulting"]
+    assert names["Charlie Chatwin"] == names["Atlas"] == ["Super Consulting"]
+    platform = re.search(r'<section class="app-group platform-group".*?</section>', PAGE, re.S).group(0)
+    assert "ViharBot Platform" in platform
+    assert 'id="team-kepler"' in platform and 'id="team-orbit"' in platform
+    assert 'id="team-atlas"' not in platform
     assert names["Professor Archibald"] == ["Knowledge and Learning"]
     assert names["Dr. Ada Lovewell"] == ["Training and Instruction"]
 
