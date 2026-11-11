@@ -16,3 +16,8 @@ af3c1b8a91a1bc71ac5499e77a48b78c271109e2:tests/test_steward_units.py:generic-api
 # Same reviewed fixture again (join form, still matched on its entropy). The test now uses a low-entropy
 # value. Covers only that historical commit.
 1b5cc931ef1e014c87023a2c23a6fbf93821f5cf:tests/test_archie_confidentiality.py:generic-api-key:86
+# Reviewed false positive: a memory-service unit test uses a fixed canary string (not a credential) to
+# prove error bodies never echo the request. The variable was named `secret`, which the rule matched on
+# entropy. The test now builds the canary at runtime under another name; this entry only covers the
+# historical commit the PR-range scan still reads. Narrow on purpose: one commit, one file, one line.
+cbaa40f4390a47a63b72936b0ce7332d499bff7a:tests/test_memory_service_unit.py:generic-api-key:317
