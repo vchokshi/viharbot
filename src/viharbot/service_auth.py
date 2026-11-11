@@ -66,6 +66,10 @@ SECURITY_CAPABILITY = "security.assess"  # Security: /assess, /invocations
 SAGE_CAPABILITY = "sage.process"  # Sage: /process
 PIXEL_PROCESS_CAPABILITY = "pixel.process"  # Pixel: POST /process
 PIXEL_READ_DECK_CAPABILITY = "pixel.read_deck"  # Pixel: GET /decks/{id}.pptx and .html
+# Memory service (ADR-009). The service keeps the same literals in its own app module, which this
+# module must not import; a test asserts the two agree.
+MEMORY_READ_CAPABILITY = "memory.read"  # GET /memory/...
+MEMORY_WRITE_CAPABILITY = "memory.write"  # POST /memory/...
 
 ENABLE_ENV = "VIHARBOT_SERVICE_AUTH"
 REGISTRY_ENV = "VIHARBOT_KEY_REGISTRY"

@@ -36,6 +36,8 @@ authentication scopes for a route family, not delegation grants.
 | `sage` | `POST /process` | `sage.process` |
 | `pixel` | `POST /process` | `pixel.process` |
 | `pixel` | `GET /decks/{deck_id}.pptx`, `GET /decks/{deck_id}.html` | `pixel.read_deck` |
+| `memory` | `GET /memory/...` (get, list) | `memory.read` |
+| `memory` | `POST /memory/...` (create, update, classify, retire, erase) | `memory.write` |
 
 Left open on every service: `/health`, `/ping` (Research, Security and the specialists) and
 `/model`. `/model` returns only the configured model alias, is what the web UI uses to show who uses
@@ -141,6 +143,18 @@ Wired:
 - The deck download (`pixel_execution.fetch_deck`, `GET /decks/{deck_id}.pptx|.html`, capability
   `pixel.read_deck`). It is a GET with an empty body: the assertion binds the method, the exact path
   and the SHA-256 of the empty body, so a token for one deck is unusable for another deck or format.
+
+- The memory calls of Charlie (the synthesis service, issue #40 PR 2; `memory_client.py`). The
+  outbound capability table maps destination `memory` to `memory.write` for a POST and, in the GET
+  table beside Pixel's, to `memory.read` for a GET. Charlie signs with **its own key and subject
+  `charlie`**, never the web key: the client refuses to start if `VIHARBOT_SERVICE_SUBJECT` is set
+  to anything else, and it refuses to send a request when no assertion was produced (outbound
+  signing off is a skip, not an unsigned call). The memory service verifies with its **own
+  registry**, which lists one key (`charlie-dev-1`, subject `charlie`, capabilities `memory.read`
+  and `memory.write` only). `scripts/dev_service_auth.py` writes that registry
+  (`data/dev-auth/memory-registry.toml`, public key only) and the private seed
+  (`data/dev-auth/memory-client/charlie.key`, mounted into the synthesis container only). The web
+  key is not in the memory registry. There is no memory feature flag: the client is active where `VIHARBOT_MEMORY_URL` is set (local Compose), and the setup command is the same `python scripts/dev_service_auth.py`.
 
 When minting is on and signing fails, none of these paths falls back to an unsigned request:
 `post_json` raises, Research reports a Security communication failure (502), and `fetch_deck`

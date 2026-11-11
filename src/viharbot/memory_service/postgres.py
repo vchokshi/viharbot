@@ -132,11 +132,15 @@ SQL: dict[str, str] = {
     "record_update_content": (
         "UPDATE memory.records SET rev = rev + 1, version = version + 1, updated_at = %s, "
         "classification = %s, tags = COALESCE(%s::text[], tags) "
-        "WHERE memory_id = %s AND rev = %s AND lifecycle = 'active'"
+        "WHERE memory_id = %s AND rev = %s AND lifecycle = 'active' "
+        "AND (retention_until IS NULL OR retention_until > %s) "
+        "AND (expires_at IS NULL OR expires_at > %s)"
     ),
     "record_update_classification": (
         "UPDATE memory.records SET rev = rev + 1, classification = %s, updated_at = %s "
-        "WHERE memory_id = %s AND rev = %s AND lifecycle <> 'erased'"
+        "WHERE memory_id = %s AND rev = %s AND lifecycle <> 'erased' "
+        "AND (retention_until IS NULL OR retention_until > %s) "
+        "AND (expires_at IS NULL OR expires_at > %s)"
     ),
     "record_retire": (
         "UPDATE memory.records SET rev = rev + 1, lifecycle = 'retired', retired_at = %s, "
@@ -402,7 +406,10 @@ class PostgresMemoryRepository(MemoryRepository):
             if replay:
                 return replay
             row = self._lock(tx, memory_id, ctx)
-            if row is None or row[1] == "erased" or self._expired(row, ctx.now) or not self._in_class_range(row, ctx):
+            # Expiry is judged at a fresh service-clock time read after the lock, not ctx.now: the
+            # lock wait can last up to lock_timeout, and the record may expire while we wait.
+            checked_at = ctx.clock()
+            if row is None or row[1] == "erased" or self._expired(row, checked_at) or not self._in_class_range(row, ctx):
                 raise NotFoundError()
             _, lifecycle, rev, version, classification = row[:5]
             if lifecycle != "active":
@@ -417,7 +424,7 @@ class PostgresMemoryRepository(MemoryRepository):
             updated = tx.execute(
                 "record_update_content",
                 (ctx.now, new_class, list(change.tags) if change.tags is not None else None,
-                 memory_id, expected_rev),
+                 memory_id, expected_rev, checked_at, checked_at),
             )
             if updated.rowcount != 1:  # the writer lost: re-read and re-authorize
                 raise ConflictError("rev_mismatch")
@@ -434,7 +441,8 @@ class PostgresMemoryRepository(MemoryRepository):
             if replay:
                 return replay
             row = self._lock(tx, memory_id, ctx)
-            if row is None or row[1] == "erased" or self._expired(row, ctx.now) or not self._in_class_range(row, ctx):
+            checked_at = ctx.clock()  # fresh, after the lock: see update
+            if row is None or row[1] == "erased" or self._expired(row, checked_at) or not self._in_class_range(row, ctx):
                 raise NotFoundError()
             _, lifecycle, rev, version, current = row[:5]
             if rev != expected_rev:
@@ -443,7 +451,8 @@ class PostgresMemoryRepository(MemoryRepository):
             if not ctx.guard():
                 raise GuardRefusedError()
             updated = tx.execute(
-                "record_update_classification", (classification, ctx.now, memory_id, expected_rev)
+                "record_update_classification",
+                (classification, ctx.now, memory_id, expected_rev, checked_at, checked_at),
             )
             if updated.rowcount != 1:
                 raise ConflictError("rev_mismatch")
