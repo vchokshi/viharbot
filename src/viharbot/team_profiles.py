@@ -41,6 +41,11 @@ NOT_LIVE_STATUS = {
     "kepler": ("development", "Deployed on AWS"),
 }
 
+# Archie and Ada are separate applications (issue #293): they are not in the identity registry, run
+# nothing here, and appear only as the leads of applications two and three.
+EXTERNAL_STATUS = ("external", "Separate application")
+EXTERNAL_IDS = ("archie", "ada")
+
 # Roster order on the page: live chat roles first, then everyone else.
 ORDER = ("charlie", "nova", "scout", "cipher", "pixel", "sage",
          "atlas", "orbit", "kepler")
@@ -54,6 +59,7 @@ class Portrait:
 
 
 KEPLER_PORTRAIT = "Kepler, Director of Analytics & Foresight.png"
+SHARED_LEARNING_PORTRAIT = "Professor_and_Assistant.png"
 
 PORTRAITS = {
     "charlie": Portrait("Charlie_Chatwin_headshot.png", "Charlie Chatwin portrait"),
@@ -66,6 +72,10 @@ PORTRAITS = {
     "orbit": Portrait("Orbit_headshot.png", "Orbit portrait"),
     "kepler": Portrait(KEPLER_PORTRAIT, "Kepler portrait: a robed robot beside a telescope and "
                                         "an orbit chart, wearing a First-Contributor Steward badge"),
+    "archie": Portrait(SHARED_LEARNING_PORTRAIT, "Professor Archibald, from the shared portrait "
+                                                 "of Archie and Ada", "0% 20%"),
+    "ada": Portrait(SHARED_LEARNING_PORTRAIT, "Dr. Ada Lovewell, from the shared portrait "
+                                              "of Archie and Ada", "100% 20%"),
 }
 
 # Proposed public copy (reviewed by the founder before it is final). ``short`` is the one-line
@@ -136,6 +146,77 @@ COPY = {
 }
 
 
+# Archie and Ada have no registry identity here, so their title, personality and skills live in
+# this module as website copy. The applications themselves are developed in their own repositories.
+EXTERNAL = {
+    "archie": dict(
+        name="Professor Archibald",
+        title="Chief Knowledge & Learning Officer",
+        personality="Scholarly but approachable, patient, methodical, intellectually curious, "
+                    "and honest about uncertainty.",
+        skills=("Computer science education", "Distributed systems", "AI systems",
+                "Software architecture", "Engineering history", "Technical explanation"),
+        short="Engineering history and knowledge",
+        bio="Professor Archibald is the patient technical historian behind the Knowledge and "
+            "Learning application. He turns verified engineering decisions into clear "
+            "explanations and instructor material, connecting how systems work with why they "
+            "were built that way.",
+        note="Archie is a separate application in its own repository. It reads ViharBot's merged "
+             "pull requests over GitHub as untrusted data; ViharBot does not run it."),
+    "ada": dict(
+        name="Dr. Ada Lovewell",
+        title="Director of Curriculum & Learning Experience",
+        personality="Energetic, highly organized, encouraging, practical, detail-oriented, and "
+                    "creative.",
+        skills=("Curriculum design", "Instructional sequencing", "Exercise and assessment design",
+                "Learning progression", "Technical onboarding"),
+        short="Training and instruction",
+        bio="Dr. Ada Lovewell leads the Training and Instruction application. She turns approved "
+            "technical knowledge into practical learning journeys, designing lessons, exercises "
+            "and assessments that help learners demonstrate understanding by doing.",
+        note="Ada is a separate application in its own repository. ViharBot does not run it and "
+             "grants it no student-record or execution access."),
+}
+
+
+@dataclass(frozen=True)
+class Application:
+    id: str
+    name: str
+    tagline: str
+    summary: str
+    lead: str  # the identity that leads or anchors the application
+    members: tuple[str, ...]
+    status: str  # a plain statement of what exists today
+
+
+# The ViharBot agentic-AI platform hosts three applications. Membership is website framing, not an
+# authorization: an identity here does not gain any capability from belonging to an application.
+APPLICATIONS = (
+    Application(
+        "super-consulting", "Super Consulting", "AI security consulting",
+        "A consulting crew for AI security and the data and decisions around it. The team "
+        "researches, checks evidence, reviews security and privacy, and synthesizes a "
+        "recommendation.",
+        "charlie",
+        ("charlie", "nova", "scout", "cipher", "pixel", "sage", "kepler", "orbit", "atlas"),
+        "Six roles run in the live chat today. Kepler runs on a schedule in AWS; Orbit and Atlas "
+        "are not running."),
+    Application(
+        "knowledge-learning", "Knowledge and Learning", "Engineering knowledge, kept and explained",
+        "Keeps the history and reasoning behind the platform's engineering and turns it into "
+        "instructor material.",
+        "archie", ("archie",),
+        "A separate application in its own repository, not run by ViharBot."),
+    Application(
+        "training-instruction", "Training and Instruction", "Learning journeys led by Ada",
+        "Turns approved knowledge into lessons, exercises and assessments, led by Dr. Ada "
+        "Lovewell.",
+        "ada", ("ada",),
+        "A separate application in its own repository, not run by ViharBot."),
+)
+
+
 @dataclass(frozen=True)
 class Profile:
     id: str
@@ -194,6 +275,14 @@ def team_profiles() -> tuple[Profile, ...]:
     missing = {i.id for i in registry.list()} - set(ORDER)
     if missing:
         raise RuntimeError(f"identities without website profiles: {sorted(missing)}")
+    for identity_id in EXTERNAL_IDS:
+        data = EXTERNAL[identity_id]
+        kind, status = EXTERNAL_STATUS
+        profiles.append(Profile(
+            id=identity_id, name=data["name"], title=data["title"], short=data["short"],
+            bio=data["bio"], note=data["note"], personality=data["personality"],
+            skills=data["skills"], status_kind=kind, status=status,
+            portrait=PORTRAITS[identity_id]))
     return tuple(profiles)
 
 
@@ -210,7 +299,8 @@ def _img(profile: Profile, css: str, decorative: bool = False) -> str:
 
 def render_sidebar(profiles: tuple[Profile, ...]) -> str:
     live = [p for p in profiles if p.live]
-    others = [p for p in profiles if not p.live]
+    external = [p for p in profiles if p.status_kind == "external"]
+    others = [p for p in profiles if not p.live and p.status_kind != "external"]
 
     def agent(p: Profile) -> str:
         skills = " · ".join(p.skills)
@@ -236,7 +326,8 @@ def render_sidebar(profiles: tuple[Profile, ...]) -> str:
                 + "".join(agent(p) for p in members) + "</div></section>")
 
     return (group("In the live chat", f"{len(live)} agents", live)
-            + group("Established, not in the chat", f"{len(others)} identities", others))
+            + group("Established, not in the chat", f"{len(others)} identities", others)
+            + group("Separate applications", f"{len(external)} leads", external))
 
 
 def render_profiles(profiles: tuple[Profile, ...]) -> str:
@@ -256,4 +347,17 @@ def render_profiles(profiles: tuple[Profile, ...]) -> str:
             f'<p class="profile-note"><strong>Worth knowing:</strong> {escape(p.note)}</p>'
             f'</details></div></article>')
 
-    return "".join(card(p) for p in profiles)
+    by_id = {p.id: p for p in profiles}
+    sections = []
+    for app in APPLICATIONS:
+        members = [by_id[i] for i in app.members if i in by_id]
+        count = f"{len(members)} {'identity' if len(members) == 1 else 'identities'}"
+        sections.append(
+            f'<section class="app-group" id="app-{escape(app.id)}" '
+            f'aria-labelledby="app-{escape(app.id)}-name">'
+            f'<header class="app-head"><h2 id="app-{escape(app.id)}-name">{escape(app.name)}</h2>'
+            f'<p class="app-tagline">{escape(app.tagline)} · {escape(count)}</p>'
+            f'<p class="app-summary">{escape(app.summary)}</p>'
+            f'<p class="app-status"><strong>Today:</strong> {escape(app.status)}</p></header>'
+            f'<div class="app-members">' + "".join(card(p) for p in members) + "</div></section>")
+    return "".join(sections)

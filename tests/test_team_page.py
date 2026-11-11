@@ -38,6 +38,7 @@ PAGE = rendered_page()
 NODE = shutil.which("node")
 needs_node = pytest.mark.skipif(NODE is None, reason="Node.js is not installed")
 
+EXTERNAL_DISPLAY = {"Professor Archibald": "archie", "Dr. Ada Lovewell": "ada"}
 DISPLAY_TO_ID = {"Charlie Chatwin": "charlie", "Nova": "nova", "Atlas": "atlas", "Pixel": "pixel",
                  "Sage": "sage", "Cipher": "cipher", "Scout": "scout", "Orbit": "orbit",
                  "Kepler": "kepler"}
@@ -71,7 +72,7 @@ PORTRAIT_FILE = {"charlie": "Charlie_Chatwin_headshot.png", "kepler": "Kepler, D
 
 def test_every_registered_identity_has_a_profile_card_with_a_bio_and_a_real_portrait():
     registry = default_registry()
-    assert len(CARDS) == 9 == len(registry)
+    assert len(registry) == 9 and len(CARDS) == 11  # nine identities plus two external leads
     for display, identity_id in DISPLAY_TO_ID.items():
         assert display in CARDS, display
         card = CARDS[display]
@@ -261,3 +262,37 @@ def test_the_team_page_does_not_interfere_with_sending_a_message():
                            "uncertainties": []}}
     page = run_page({"message": "hi", "response": {"status": 200, "body": body}, "initialHash": "#team"})
     assert page["final"]["sendDisabled"] is False and page["fetchCalls"][0]["url"] == "/api/chat"
+
+
+# three applications on one platform
+def application_sections() -> dict[str, str]:
+    return {html.unescape(m[1]): m[2] for m in re.findall(
+        r'<section class="app-group" id="(app-[\w-]+)"[^>]*><header class="app-head"><h2[^>]*>(.*?)</h2>'
+        r'(.*?)</section>', PAGE, re.S)}
+
+
+def test_the_team_page_is_framed_as_three_applications_on_one_platform():
+    sections = application_sections()
+    assert list(sections) == ["Super Consulting", "Knowledge and Learning", "Training and Instruction"]
+    assert "agentic-AI platform" in PAGE and "led by Ada" in PAGE
+
+
+def test_every_card_sits_in_exactly_one_application():
+    names = {n: [app for app, body in application_sections().items() if f"<h3 id=\"team-{i}-name\">" in body]
+             for n, i in {**DISPLAY_TO_ID, **EXTERNAL_DISPLAY}.items()}
+    assert all(len(apps) == 1 for apps in names.values()), names
+    assert names["Charlie Chatwin"] == names["Kepler"] == ["Super Consulting"]
+    assert names["Professor Archibald"] == ["Knowledge and Learning"]
+    assert names["Dr. Ada Lovewell"] == ["Training and Instruction"]
+
+
+def test_archie_and_ada_are_external_applications_never_live_or_registry_identities():
+    registry = default_registry()
+    for display, identity_id in EXTERNAL_DISPLAY.items():
+        assert identity_id not in {i.id for i in registry.list()}  # #293: not ViharBot identities
+        card = CARDS[display]
+        assert card["status"] == "Separate application" and "Live" not in card["status"]
+        assert len(card["bio"]) >= 60 and len(card["skills"]) >= 3
+        assert card["image"][0] == "/images/Professor_and_Assistant.png" and card["image"][1].strip()
+    assert "Professor_and_Assistant.png" in web_app.TEAM_IMAGES
+    assert "ViharBot does not run it" in PAGE
