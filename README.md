@@ -119,6 +119,7 @@ Every model call goes through `build_agent()` (`src/viharbot/model_agent.py`), w
 
 ```bash
 cp .env.example .env     # set LITELLM_API_KEY and aliases your account can use
+python scripts/dev_service_auth.py   # once: development keys for service authentication (data/dev-auth/, gitignored)
 docker compose up --build -d
 ```
 
@@ -171,14 +172,14 @@ Pushing to `main` updates source only; nothing deploys automatically.
 ## Security boundaries
 
 * All web routes except `/health` use the same shared Basic Auth when enabled (`/`, `/images/*` when served locally, `/api/chat`, `/api/chat/stream`, `/api/development/*`); images loaded from `WEB_IMAGES_BASE_URL` are public and bypass it (docs/image-storage.md). It is not per-user identity.
-* Agent services rely on the private network. The four specialist services can verify signed service assertions, but only when `VIHARBOT_SERVICE_AUTH` is set, and nothing sets it by default. Research, Security, Pixel and Sage verify nothing. Do not publish agent ports. Extending authentication is deferred for Stage ([#235](https://github.com/vchokshi/viharbot/issues/235)).
+* Agent services rely on the private network. All eight agent services can verify signed service assertions on their non-health routes, when `VIHARBOT_SERVICE_AUTH` is set. Local Compose turns it on (run `python scripts/dev_service_auth.py` first); code defaults and Stage leave it off ([#235](https://github.com/vchokshi/viharbot/issues/235), [service authentication](docs/service-authentication.md)). It is authentication only, not authorization. Do not publish agent ports.
 * The browser never receives an agent key. Logs hold agent, request ID, destination, alias, duration and error type, never prompts, findings or keys.
 * Model output is untrusted: the page renders it with `textContent`, and Markdown answers produce no links or HTML.
 
 ## Known limitations
 
 * Agent memory is append-only JSONL, written but never read back, and ephemeral on App Platform.
-* Agent-to-agent REST is unauthenticated; identities do not have separate cloud permissions.
+* Agent-to-agent REST is authenticated only where `VIHARBOT_SERVICE_AUTH` is on (local Compose, not Stage) and never authorized per delegation (A3); identities do not have separate cloud permissions.
 * Calls run one at a time, and cancelling a browser request does not stop work already in flight.
 * Planned, not built: per-user accounts, durable sessions and memory, authenticated inter-agent calls, distributed runtimes, Atlas, Sage and Orbit. Pixel's slide decks are built only in local Compose and are unverified against a live model; see [Pixel slide service](docs/pixel-slide-service.md).
 

@@ -1,6 +1,6 @@
 # Development status
 
-> **Reconciliation note (2026-11-06, `main` at `9e149d2`).** The tables below were last measured on 2026-10-28 and were not re-measured; no tests were run for this update. Known changes since then: service authentication is implemented and opt-in on the four specialist services (not on Research, Security, Pixel or Sage); Pixel and Sage run in the dev stack; the identity-routing and delegation flags no longer exist and their modules are unreachable from the web app; nine identities are defined (the design envelope is 8 to 12); the Kepler steward core and AWS lab foundation exist (not deployed); a fourth flag, `VIHARBOT_PERSONA_PROMPT_ENABLED`, was added (set nowhere); the Stage template has six agents and no Pixel or Sage. Open follow-ups are on the [issue tracker](https://github.com/vchokshi/viharbot/issues), starting with [#225](https://github.com/vchokshi/viharbot/issues/225) (dev-stack flags) and [#239](https://github.com/vchokshi/viharbot/issues/239) (documentation).
+> **Reconciliation note (2026-11-06, `main` at `9e149d2`).** The tables below were last measured on 2026-10-28 and were not re-measured; no tests were run for this update. Known changes since then: service authentication was implemented opt-in on the four specialist services and is now (#235) on all eight agent services and on by default in local Compose only; Pixel and Sage run in the dev stack; the identity-routing and delegation flags no longer exist and their modules are unreachable from the web app; nine identities are defined (the design envelope is 8 to 12); the Kepler steward core and AWS lab foundation exist (not deployed); a fourth flag, `VIHARBOT_PERSONA_PROMPT_ENABLED`, was added (set nowhere); the Stage template has six agents and no Pixel or Sage. Open follow-ups are on the [issue tracker](https://github.com/vchokshi/viharbot/issues), starting with [#225](https://github.com/vchokshi/viharbot/issues/225) (dev-stack flags) and [#239](https://github.com/vchokshi/viharbot/issues/239) (documentation).
 
 An evidence-based snapshot. Maturity levels are kept separate, because each says something different:
 
@@ -90,7 +90,7 @@ Assets: `scripts/fact_check_eval/cases.json` (31 cases, 37 claims) and `run.py` 
 
 ## Known limitations and defects
 
-* Agents have no authentication; the web uses one shared Basic credential.
+* Agent services verify signed assertions only where `VIHARBOT_SERVICE_AUTH` is on (local Compose; not Stage), with no delegation grants; the web uses one shared Basic credential.
 * Agent memory is written and never read, and is ephemeral on App Platform.
 * Execution is sequential; cancellation is cooperative and does not stop in-flight model or agent calls.
 * The live stream cannot send a terminal event after a lost connection, and would also end without one if the emitter hit an internal contract error (untested path).

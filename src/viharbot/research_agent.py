@@ -7,9 +7,10 @@ import os
 import time
 from uuid import uuid4
 
-from fastapi import FastAPI, Header, HTTPException, Response
+from fastapi import Depends, FastAPI, Header, HTTPException, Response
 from pydantic import BaseModel, Field
 
+from .body_limit import BodySizeLimitMiddleware, max_body_bytes_from_environment
 from .contracts import ResearchResponse
 from .inference_config import effective_inference, legacy_inference
 from .memory import remember
@@ -18,11 +19,27 @@ from .model_agent import build_agent
 from .nova_contract import nova_log_fields
 from .observability import configure_logging, get_request_id
 from .schemas import ResearchFindings, SecurityAssessment
+from .service_auth import RESEARCH_CAPABILITY, authenticator_from_environment, require_assertion
 from .security_client import SecurityClientError, send_findings_to_security
 
 configure_logging()
 logger = logging.getLogger("research")
 app = FastAPI(title="ViharBot ResearchAgent", version="2.3")
+
+# Service authentication (ADR-006 A2) is off unless VIHARBOT_SERVICE_AUTH is set. When it is on, a
+# missing or empty key registry raises here and the service refuses to start. /health, /ping and
+# /model stay open (follow-up: /model). Authentication only: no delegation grant (A3).
+_authenticator = authenticator_from_environment("research")
+_auth_dependencies = (
+    [Depends(require_assertion(_authenticator, RESEARCH_CAPABILITY))] if _authenticator else []
+)
+if _authenticator:
+    app.add_middleware(
+        BodySizeLimitMiddleware,
+        max_bytes=max_body_bytes_from_environment(),
+        paths=frozenset({"/research", "/research-and-assess", "/invocations"}),
+        agent="research",
+    )
 
 RESEARCH_SYSTEM_PROMPT = (
     "You are a research assistant. Return concise, structured findings. "
@@ -53,7 +70,7 @@ def model() -> dict[str, str | None]:
     return {"agent": "research", "model_alias": os.getenv("RESEARCH_MODEL", "").strip() or None}
 
 
-@app.post("/research", response_model=ResearchResponse)
+@app.post("/research", response_model=ResearchResponse, dependencies=_auth_dependencies)
 def research(
     body: ResearchRequest,
     response: Response,
@@ -111,7 +128,11 @@ def research(
         ) from None
 
 
-@app.post("/research-and-assess", response_model=ResearchAndAssessmentResponse)
+@app.post(
+    "/research-and-assess",
+    response_model=ResearchAndAssessmentResponse,
+    dependencies=_auth_dependencies,
+)
 def research_and_assess(
     body: ResearchRequest,
     response: Response,
@@ -149,4 +170,6 @@ def research_and_assess(
     )
 
 
-add_agentcore_routes(app, ResearchRequest, research, logical_agent="nova")
+add_agentcore_routes(
+    app, ResearchRequest, research, dependencies=_auth_dependencies, logical_agent="nova"
+)

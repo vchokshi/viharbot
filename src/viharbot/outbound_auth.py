@@ -35,16 +35,21 @@ OUTBOUND_LIFETIME_SECONDS = 30
 PLACEHOLDER_ENGAGEMENT = "unscoped"
 PLACEHOLDER_CLASSIFICATION = "unclassified"
 
-# Destination service (the ``aud``) to the capability its authenticated route requires. Only the
-# shared specialist factory enforces assertions today (``specialist_agent.SPECIALIST_CAPABILITY``).
-# Research, Security and Pixel do not verify assertions yet, so no token is minted for them.
-SPECIALIST_CAPABILITY = "specialist.process"
+# Destination service (the ``aud``) to the capability its authenticated POST route requires.
+SPECIALIST_CAPABILITY = service_auth.SPECIALIST_CAPABILITY
 DESTINATION_CAPABILITIES: dict[str, str] = {
     "fact-check": SPECIALIST_CAPABILITY,
     "source-quality": SPECIALIST_CAPABILITY,
     "privacy-review": SPECIALIST_CAPABILITY,
     "synthesis": SPECIALIST_CAPABILITY,
+    "research": service_auth.RESEARCH_CAPABILITY,
+    "security": service_auth.SECURITY_CAPABILITY,
+    "sage": service_auth.SAGE_CAPABILITY,
+    "pixel": service_auth.PIXEL_PROCESS_CAPABILITY,
 }
+# GET requests use their own table: Pixel's deck downloads are a different route family from its
+# POST /process. A GET to any other destination is not signed (no such route is protected).
+GET_CAPABILITIES: dict[str, str] = {"pixel": service_auth.PIXEL_READ_DECK_CAPABILITY}
 
 
 class OutboundAuthError(RuntimeError):
@@ -85,8 +90,15 @@ class InProcessIssuer:
         )
 
 
-def issuer_from_environment(environ: Mapping[str, str] | None = None) -> AssertionIssuer | None:
-    """None when outbound minting is off (the default). Raises OutboundAuthError when misconfigured."""
+def issuer_from_environment(
+    environ: Mapping[str, str] | None = None, default_subject: str = DEFAULT_SUBJECT
+) -> AssertionIssuer | None:
+    """None when outbound minting is off (the default). Raises OutboundAuthError when misconfigured.
+
+    ``default_subject`` is the ``sub`` used when ``VIHARBOT_SERVICE_SUBJECT`` is unset. A service
+    that signs with its own identity (Research calling Security) passes its own name so it never
+    signs as ``web``.
+    """
     env = os.environ if environ is None else environ
     setting = env.get(ENABLE_ENV, "").strip().lower()
     if setting in ("", "0", "off", "false"):
@@ -96,7 +108,7 @@ def issuer_from_environment(environ: Mapping[str, str] | None = None) -> Asserti
     kid = env.get(KID_ENV, "").strip()
     if not kid:
         raise OutboundAuthError(f"{KID_ENV} is required when outbound authentication is on")
-    subject = env.get(SUBJECT_ENV, "").strip() or DEFAULT_SUBJECT
+    subject = env.get(SUBJECT_ENV, "").strip() or default_subject
     return InProcessIssuer(kid=kid, subject=subject, key_path=env.get(KEY_FILE_ENV, "").strip() or None)
 
 
@@ -109,6 +121,8 @@ def outbound_headers(
     request_id: str = "",
     issuer: AssertionIssuer | None = None,
     environ: Mapping[str, str] | None = None,
+    default_subject: str = DEFAULT_SUBJECT,
+    agent: str = "orchestrator",
 ) -> dict[str, str]:
     """Headers to add to an outbound request: ``{}`` when minting is off or the destination does
     not verify assertions; otherwise ``{X-Viharbot-Assertion: token}``.
@@ -117,13 +131,14 @@ def outbound_headers(
     query exactly as sent, and the exact body bytes. Raises OutboundAuthError (fail closed).
     """
     try:
-        issuer = issuer if issuer is not None else issuer_from_environment(environ)
+        issuer = issuer if issuer is not None else issuer_from_environment(environ, default_subject)
     except OutboundAuthError:
-        _log(request_id, destination, "error", "misconfigured")
+        _log(request_id, destination, "error", "misconfigured", agent)
         raise
     if issuer is None:
         return {}
-    capability = DESTINATION_CAPABILITIES.get(destination)
+    table = GET_CAPABILITIES if method.upper() == "GET" else DESTINATION_CAPABILITIES
+    capability = table.get(destination)
     if capability is None:
         return {}
     parts = urlsplit(url)
@@ -133,18 +148,20 @@ def outbound_headers(
             audience=destination, capability=capability, method=method, target=target, body=body
         )
     except Exception as exc:  # unreadable or invalid key, bad target, signer failure: all fail closed
-        _log(request_id, destination, "error", type(exc).__name__)
+        _log(request_id, destination, "error", type(exc).__name__, agent)
         raise OutboundAuthError("could not mint a service assertion") from None
-    _log(request_id, destination, "minted", "ok")
+    _log(request_id, destination, "minted", "ok", agent)
     return {service_auth.ASSERTION_HEADER: token}
 
 
-def _log(request_id: str, destination: str, decision: str, reason: str) -> None:
+def _log(
+    request_id: str, destination: str, decision: str, reason: str, agent: str = "orchestrator"
+) -> None:
     log = logger.info if decision == "minted" else logger.error
     log(
         "outbound assertion",
         extra={
-            "agent": "orchestrator",
+            "agent": agent,
             "request_id": request_id,
             "destination_agent": destination,
             "decision": decision,

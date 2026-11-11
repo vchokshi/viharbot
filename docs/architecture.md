@@ -149,7 +149,7 @@ Each agent appends its own structured result to a JSONL file under its `MEMORY_D
 
 ## Authentication boundaries
 
-The web app uses one shared HTTP Basic credential when `WEB_AUTH_ENABLED` is on, applied to `/`, `/images/*`, `/api/chat` and `/api/chat/stream`; `/health` is open. Agent-to-agent traffic relies on the private network. The four specialist services can verify Ed25519-signed assertions (`service_auth.py`, ADR-006 step A2) when `VIHARBOT_SERVICE_AUTH` is set, and the web process can sign outbound calls to them when `VIHARBOT_OUTBOUND_AUTH` is set; both are off by default. Research, Security, Pixel and Sage verify nothing. Extending authentication is deferred for Stage ([#235](https://github.com/vchokshi/viharbot/issues/235)). Request IDs correlate logs and are not credentials. Separate containers do not yet have separate cloud permissions.
+The web app uses one shared HTTP Basic credential when `WEB_AUTH_ENABLED` is on, applied to `/`, `/images/*`, `/api/chat` and `/api/chat/stream`; `/health` is open. Agent-to-agent traffic relies on the private network. All eight agent services can verify Ed25519-signed assertions on their non-health routes (`service_auth.py`, ADR-006 step A2) when `VIHARBOT_SERVICE_AUTH` is set, and the web process, Research (to Security) and the demo orchestrator sign outbound calls when `VIHARBOT_OUTBOUND_AUTH` is set. Both are on by default in local Compose and off by default in code and on Stage ([#235](https://github.com/vchokshi/viharbot/issues/235); the Stage trigger is in `docs/deployment-strategy.md`). This is authentication, not authorization: there is no delegation grant (A3), and `/health` and `/model` stay open. Request IDs correlate logs and are not credentials. Separate containers do not yet have separate cloud permissions.
 
 ## Deployment topology
 
@@ -179,7 +179,7 @@ A push to `main` deploys nothing. See [deployment strategy](deployment-strategy.
 | Orchestration | Live team or fixed pipeline, stateless planner, policy, freshness, budgets, deadline | Persistent planner state; parallel execution ([#234](https://github.com/vchokshi/viharbot/issues/234)) |
 | Observability | Request ID, structured logs, live SSE events, model labels | Persisted run traces ([#228](https://github.com/vchokshi/viharbot/issues/228)); token and cost metrics ([#231](https://github.com/vchokshi/viharbot/issues/231)); a hosted log destination |
 | Memory | Write-only JSONL per agent | Retention guardrail and engagement id ([#229](https://github.com/vchokshi/viharbot/issues/229)); durable, isolated, retrievable memory (ADR-009, accepted 2026-11-10; not implemented) |
-| Communication | Plain JSON REST, validated contracts; opt-in signed assertions on four services | Authentication on all services ([#235](https://github.com/vchokshi/viharbot/issues/235)) |
+| Communication | Plain JSON REST, validated contracts; signed assertions on all eight agent services (on in Compose, off on Stage) | Stage enablement ([#235](https://github.com/vchokshi/viharbot/issues/235)); delegation grants (A3, [#95](https://github.com/vchokshi/viharbot/issues/95)) |
 | Runtimes | Docker Compose; DigitalOcean template (six agents) | One placement file ([#226](https://github.com/vchokshi/viharbot/issues/226)); Kepler on AgentCore ([#198](https://github.com/vchokshi/viharbot/issues/198)); other AWS deployment |
 | Identities | Nine defined; six connected to services (Pixel and Sage in the dev stack) | Behavior for Atlas and Orbit; Kepler agent runtime ([#198](https://github.com/vchokshi/viharbot/issues/198)) |
 

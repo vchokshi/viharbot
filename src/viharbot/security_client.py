@@ -8,6 +8,8 @@ import time
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from .litellm_client import urlopen as no_redirect_urlopen
+from .outbound_auth import OutboundAuthError, outbound_headers
 from .schemas import ResearchFindings, SecurityAssessment
 
 
@@ -51,14 +53,26 @@ def send_findings_to_security(
         return SecurityResponseModel(request_id=returned_request_id, assessment=assessment)
 
     url = os.getenv("SECURITY_AGENT_URL", "http://security:8000/assess")
-    request = Request(
-        url,
-        data=json.dumps({"findings": findings.model_dump()}).encode("utf-8"),
-        headers={"Content-Type": "application/json", "X-Request-ID": request_id},
-    )
+    data = json.dumps({"findings": findings.model_dump()}).encode("utf-8")
+    headers = {"Content-Type": "application/json", "X-Request-ID": request_id}
     started = time.perf_counter()
     try:
-        with urlopen(request, timeout=90) as response:
+        # Off by default (adds nothing). When on, Research signs with its own key and sub ("research"),
+        # never the web key. A signing failure stops the call: there is no unsigned fallback.
+        assertion = outbound_headers(
+            url, destination="security", method="POST", body=data, request_id=request_id,
+            default_subject="research", agent="research",
+        )
+    except OutboundAuthError:
+        raise SecurityClientError(
+            "OutboundAuthError", round((time.perf_counter() - started) * 1000, 2)
+        ) from None
+    headers.update(assertion)
+    # A signed request never follows redirects, so the token cannot be forwarded to another origin.
+    opener = no_redirect_urlopen if assertion else urlopen
+    request = Request(url, data=data, headers=headers)
+    try:
+        with opener(request, timeout=90) as response:
             result = json.loads(response.read().decode("utf-8"))
         returned_request_id = result["request_id"]
         assessment = SecurityAssessment.model_validate(result["assessment"])
