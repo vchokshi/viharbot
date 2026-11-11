@@ -1,0 +1,24 @@
+# syntax=docker/dockerfile:1
+# THROWAWAY probe image for the DigitalOcean unknowns (deploy/digitalocean-probe/RUNBOOK.md).
+# One image, four components selected by the PROBE_ROLE environment variable. No secret is baked
+# in: the certificate, key, CA and tokens arrive as encrypted environment variables at run time.
+# psycopg is pinned to the same version the repository pins for the memory extra (pyproject.toml).
+FROM python:3.12-slim-bookworm
+
+RUN addgroup --system --gid 1001 appgroup \
+    && adduser --system --uid 1001 --ingroup appgroup appuser \
+    && python -m pip install --no-cache-dir "psycopg[binary]==3.3.8"
+
+WORKDIR /app
+# gen_probe_cert.py is deliberately not copied: it runs on the founder's machine, not in the app.
+COPY --chown=1001:1001 deploy/digitalocean-probe/probe_common.py \
+     deploy/digitalocean-probe/probe_service.py \
+     deploy/digitalocean-probe/probe_client.py \
+     deploy/digitalocean-probe/probe_job.py \
+     deploy/digitalocean-probe/probe_outsider.py \
+     deploy/digitalocean-probe/probe_entry.py /app/
+
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+LABEL org.opencontainers.image.title="ViharBot DigitalOcean probe (throwaway)"
+USER 1001:1001
+CMD ["python", "probe_entry.py"]
