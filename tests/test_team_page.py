@@ -296,7 +296,8 @@ def test_archie_and_ada_are_external_applications_never_live_or_registry_identit
     for display, identity_id in EXTERNAL_DISPLAY.items():
         assert identity_id not in {i.id for i in registry.list()}  # #293: not ViharBot identities
         card = CARDS[display]
-        assert card["status"] == "Separate application" and "Live" not in card["status"]
+        expected = {"archie": "Deployed in GCP", "ada": "Separate application"}[identity_id]
+        assert card["status"] == expected and "Live" not in card["status"]
         assert len(card["bio"]) >= 60 and len(card["skills"]) >= 3
         assert card["image"][0] == "/images/Professor_and_Assistant.png" and card["image"][1].strip()
     assert "Professor_and_Assistant.png" in web_app.TEAM_IMAGES

@@ -43,7 +43,10 @@ NOT_LIVE_STATUS = {
 
 # Archie and Ada are separate applications (issue #293): they are not in the identity registry, run
 # nothing here, and appear only as the leads of applications two and three.
-EXTERNAL_STATUS = ("external", "Separate application")
+EXTERNAL_STATUS = {
+    "archie": ("external", "Deployed in GCP"),
+    "ada": ("external", "Separate application"),
+}
 EXTERNAL_IDS = ("archie", "ada")
 
 # Roster order on the page: live chat roles first, then everyone else.
@@ -161,8 +164,9 @@ EXTERNAL = {
             "Learning application. He turns verified engineering decisions into clear "
             "explanations and instructor material, connecting how systems work with why they "
             "were built that way.",
-        note="Archie is a separate application in its own repository. It reads ViharBot's merged "
-             "pull requests over GitHub as untrusted data; ViharBot does not run it."),
+        note="Archie is a separate application in its own repository, deployed in GCP. It reads "
+             "ViharBot's merged pull requests over GitHub as untrusted data; ViharBot does not "
+             "run it."),
     "ada": dict(
         name="Dr. Ada Lovewell",
         title="Director of Curriculum & Learning Experience",
@@ -206,7 +210,7 @@ APPLICATIONS = (
         "Keeps the history and reasoning behind the platform's engineering and turns it into "
         "instructor material.",
         "archie", ("archie",),
-        "A separate application in its own repository, not run by ViharBot."),
+        "Deployed in GCP as a separate application in its own repository. ViharBot does not run it."),
     Application(
         "training-instruction", "Training and Instruction", "Learning journeys led by Ada",
         "Turns approved knowledge into lessons, exercises and assessments, led by Dr. Ada "
@@ -286,7 +290,7 @@ def team_profiles() -> tuple[Profile, ...]:
         raise RuntimeError(f"identities without website profiles: {sorted(missing)}")
     for identity_id in EXTERNAL_IDS:
         data = EXTERNAL[identity_id]
-        kind, status = EXTERNAL_STATUS
+        kind, status = EXTERNAL_STATUS[identity_id]
         profiles.append(Profile(
             id=identity_id, name=data["name"], title=data["title"], short=data["short"],
             bio=data["bio"], note=data["note"], personality=data["personality"],
