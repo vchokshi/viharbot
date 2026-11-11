@@ -158,11 +158,22 @@ class MemoryService:
         *, idempotency_key: str | None = None, request_hash: str = "", any_class: bool = False,
     ) -> WriteContext:
         def guard() -> bool:
+            """Runs inside the write transaction, after the record lock, against the live policy.
+
+            Authorization alone is not enough: the request was validated and sized against
+            ``policy`` (ceiling, content and retention limits, personal-data permission, which
+            agent the sub maps to), and the write keeps using those values. If the policy for this
+            caller changed after that, the write is refused and a retry validates against the new
+            policy. Retire and erase carry no validated payload, so they need only the same agent
+            to still own the caller's identity; an unrelated limit change must not stop an erasure.
+            """
             try:
-                self._policies.current().authorize(sub, path.tier, path.scope_key, operation)
+                current = self._policies.current().authorize(sub, path.tier, path.scope_key, operation)
             except Denied:
                 return False
-            return True
+            if any_class:
+                return current.agent_id == policy.agent_id
+            return current == policy
 
         return WriteContext(
             principal=sub,

@@ -18,6 +18,7 @@ from memory_helpers import (
     build_world,
     create_body,
     session_path,
+    update_body,
 )
 
 from viharbot import service_auth as sa
@@ -36,6 +37,7 @@ from viharbot.memory_service.policy import (
     load_policy,
     parse_policy,
 )
+from viharbot.memory_service.repository import GuardRefusedError, MutationResult
 from viharbot.memory_service.service import new_memory_id
 
 MID = "01234567-89ab-7def-8123-456789abcdef"
@@ -433,6 +435,159 @@ def test_remember_and_its_jsonl_traces_are_unchanged(tmp_path, monkeypatch):
 def test_replace_helper_is_available_for_policy_variants():
     changed = replace(load_policy().agents[0], classification_ceiling="confidential")
     assert changed.classification_ceiling == "confidential"
+
+
+# --- the in-transaction guard is bound to the policy the request was validated against ---------
+
+
+class GuardProbe(ExplodingRepository):
+    """Stands in for the storage transaction.
+
+    Before the guard runs it lets a policy change land (``race``), as if the policy file reloaded
+    after authorization and before the record lock was taken. It then reports whether the guard
+    let the write through, exactly as the PostgreSQL adapter does after locking the row.
+    """
+
+    def __init__(self) -> None:
+        self.race = None
+        self.landed: list[str] = []
+
+    def _mutate(self, name: str, status: int, ctx) -> MutationResult:
+        if self.race:
+            self.race()
+        if not ctx.guard():
+            raise GuardRefusedError()
+        self.landed.append(name)
+        return MutationResult(status, {"memory_id": MID, "state": "ok"})
+
+    def create(self, new, ctx):
+        return self._mutate("create", 201, ctx)
+
+    def update(self, memory_id, expected_rev, change, ctx):
+        return self._mutate("update", 200, ctx)
+
+    def classify(self, memory_id, expected_rev, classification, ctx):
+        return self._mutate("classify", 200, ctx)
+
+    def retire(self, memory_id, ctx):
+        return self._mutate("retire", 200, ctx)
+
+    def erase(self, memory_id, reason, ctx):
+        return self._mutate("erase", 200, ctx)
+
+
+def _nova(**changes) -> MemoryPolicy:
+    """The shipped policy with Nova's fields changed."""
+    agents = [replace(a, **changes) if a.agent_id == "nova" else a for a in load_policy().agents]
+    return MemoryPolicy(agents)
+
+
+def _nova_sub_now_belongs_to_scout() -> MemoryPolicy:
+    """A remap: the sub that was Nova's now resolves to Scout, and Nova names no sub."""
+    agents = []
+    for agent in load_policy().agents:
+        if agent.agent_id == "nova":
+            agent = replace(agent, subs=frozenset())
+        elif agent.agent_id == "scout":
+            agent = replace(agent, subs=agent.subs | {"nova"})
+        agents.append(agent)
+    return MemoryPolicy(agents)
+
+
+def _request(operation: str, tier: str = "agent") -> tuple[str, dict]:
+    path = (lambda *a: agent_path("nova", *a)) if tier == "agent" else (lambda *a: session_path("s1", *a))
+    if operation == "create":
+        return path(), create_body("a plain note", classification="internal")
+    if operation == "update":
+        return path(MID, "update"), update_body(1, "a revised note", classification="internal")
+    if operation == "classify":
+        return path(MID, "classify"), {
+            "idempotency_key": "ceiling-0001", "expected_rev": 1, "classification": "internal",
+        }
+    if operation == "retire":
+        return path(MID, "retire"), {}
+    return path(MID, "erase"), {"reason": "other"}
+
+
+def _drive(tmp_path, operation, tier, start: MemoryPolicy, race: MemoryPolicy | None):
+    probe = GuardProbe()
+    world = build_world(tmp_path, probe, policies=PolicyProvider(start))
+    if race is not None:
+        probe.race = lambda: world.policies.replace(race)
+    path, body = _request(operation, tier)
+    response = world.call("nova", "POST", path, body)
+    return response, probe
+
+
+REFUSED = (403, {"detail": "forbidden"})
+
+
+@pytest.mark.parametrize("operation", ["create", "update", "classify", "retire", "erase"])
+@pytest.mark.parametrize("tier", ["agent", "session"])
+def test_an_unchanged_policy_lets_every_write_through(tmp_path, operation, tier):
+    response, probe = _drive(tmp_path, operation, tier, load_policy(), None)
+    assert response.status_code in (200, 201) and probe.landed == [operation]
+
+
+@pytest.mark.parametrize("operation", ["create", "update", "classify"])
+def test_a_lowered_classification_ceiling_refuses_the_write(tmp_path, operation):
+    response, probe = _drive(tmp_path, operation, "agent", load_policy(), _nova(classification_ceiling="public"))
+    assert (response.status_code, response.json()) == REFUSED and probe.landed == []
+
+
+def test_a_lowered_content_limit_refuses_the_write(tmp_path):
+    response, probe = _drive(tmp_path, "create", "agent", load_policy(), _nova(max_content_bytes=4))
+    assert (response.status_code, response.json()) == REFUSED and probe.landed == []
+    response, probe = _drive(tmp_path, "update", "agent", load_policy(), _nova(max_content_bytes=4))
+    assert (response.status_code, response.json()) == REFUSED and probe.landed == []
+
+
+def test_a_revoked_personal_data_permission_refuses_the_write(tmp_path):
+    permissive = _nova(allow_personal_data=True)
+    probe = GuardProbe()
+    world = build_world(tmp_path, probe, policies=PolicyProvider(permissive))
+    probe.race = lambda: world.policies.replace(_nova(allow_personal_data=False))
+    body = create_body(
+        "a note about a named person", personal_data=True,
+        consent={"basis": "consent_recorded", "reference": "consent-1"},
+    )
+    response = world.call("nova", "POST", agent_path(), body)
+    assert (response.status_code, response.json()) == REFUSED and probe.landed == []
+
+
+def test_a_lowered_retention_limit_refuses_an_agent_record_write(tmp_path):
+    response, probe = _drive(tmp_path, "create", "agent", load_policy(), _nova(max_retention_days=1))
+    assert (response.status_code, response.json()) == REFUSED and probe.landed == []
+
+
+def test_a_lowered_session_ttl_limit_refuses_a_session_record_write(tmp_path):
+    response, probe = _drive(tmp_path, "create", "session", load_policy(), _nova(session_max_ttl_seconds=1))
+    assert (response.status_code, response.json()) == REFUSED and probe.landed == []
+
+
+@pytest.mark.parametrize("operation", ["create", "update", "classify", "retire", "erase"])
+def test_a_sub_remapped_to_another_agent_is_refused_on_a_session_path(tmp_path, operation):
+    """A session id only partitions the caller's own records, so authorization alone would pass
+    for the new agent while the write still targets the former owner's partition."""
+    response, probe = _drive(tmp_path, operation, "session", load_policy(), _nova_sub_now_belongs_to_scout())
+    assert (response.status_code, response.json()) == REFUSED and probe.landed == []
+
+
+@pytest.mark.parametrize("operation", ["retire", "erase"])
+@pytest.mark.parametrize("tier", ["agent", "session"])
+def test_an_unrelated_limit_change_does_not_stop_a_retire_or_an_erase(tmp_path, operation, tier):
+    """These carry no payload validated against limits, so a tighter limit must not block them."""
+    response, probe = _drive(
+        tmp_path, operation, tier, load_policy(), _nova(max_content_bytes=4, classification_ceiling="public"),
+    )
+    assert response.status_code == 200 and probe.landed == [operation]
+
+
+def test_a_revoked_operation_still_refuses_every_write(tmp_path):
+    revoked = _nova(agent_private=frozenset(), session=frozenset())
+    for operation in ("create", "update", "classify", "retire", "erase"):
+        response, probe = _drive(tmp_path, operation, "agent", load_policy(), revoked)
+        assert (response.status_code, response.json()) == REFUSED and probe.landed == [], operation
 
 
 def test_an_unexpected_error_is_a_generic_500_that_never_echoes_its_message(tmp_path):
