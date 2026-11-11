@@ -219,8 +219,20 @@ services:
       LITELLM_API_KEY: ${LITELLM_API_KEY:-}
       SYNTHESIS_MODEL: ${SYNTHESIS_MODEL:-openai/gpt-5.4-mini}
       MEMORY_DIR: /data
+      # Governed memory (ADR-009, issue #40 PR 2): Charlie only, OFF by default. With it off the
+      # service makes no memory call. Turning it on needs `--profile memory` and the dev keys and
+      # certificates (docs/memory-service.md). Signs with its own key and subject, never the web key.
+      VIHARBOT_MEMORY_ENABLED: ${VIHARBOT_MEMORY_ENABLED:-off}
+      VIHARBOT_MEMORY_URL: https://memory:8000
+      VIHARBOT_MEMORY_CA_FILE: /run/viharbot-memory/tls/ca.pem
+      VIHARBOT_OUTBOUND_AUTH: ${VIHARBOT_OUTBOUND_AUTH:-on}
+      VIHARBOT_SIGNING_KID: charlie-dev-1
+      VIHARBOT_SERVICE_SUBJECT: charlie
+      VIHARBOT_SIGNING_KEY_FILE: /run/viharbot-memory/auth/charlie.key
     volumes:
       - ./data/dev-auth/registry.toml:/run/viharbot-auth/registry.toml:ro
+      - ./data/dev-auth/memory-client:/run/viharbot-memory/auth:ro
+      - ./data/dev-tls/ca:/run/viharbot-memory/tls:ro
       - synthesis_data:/data
     expose:
       - "8000"
@@ -290,7 +302,7 @@ services:
     restart: unless-stopped
 
   # Governed memory (ADR-009, issue #40, PR 1). Opt-in: `docker compose --profile memory up -d`.
-  # Nothing calls the memory service yet. Credentials come from the environment (.env, never in
+  # Only Charlie (the synthesis service) calls it, and only with VIHARBOT_MEMORY_ENABLED on. Credentials come from the environment (.env, never in
   # source) and there are no defaults: an empty value makes the service fail to start. No agent
   # holds a database credential; only `memory` and `memory-migrate` do, each its own role.
   postgres:
@@ -350,8 +362,13 @@ services:
       MEMORY_DB_PASSWORD: ${MEMORY_DB_SERVICE_PASSWORD:-}
       # Public keys only. The service has no unauthenticated mode and refuses to start without it.
       VIHARBOT_KEY_REGISTRY: /run/memory/key-registry.toml
+      # HTTPS with the development certificate from scripts/dev_memory_tls.py (ADR-009 requires
+      # TLS on every non-loopback connection). Development certificates only; see docs.
+      MEMORY_TLS_CERT_FILE: /run/memory/tls/memory.pem
+      MEMORY_TLS_KEY_FILE: /run/memory/tls/memory.key
     volumes:
-      - ${MEMORY_KEY_REGISTRY_FILE:-./data/memory/key-registry.toml}:/run/memory/key-registry.toml:ro
+      - ${MEMORY_KEY_REGISTRY_FILE:-./data/dev-auth/memory-registry.toml}:/run/memory/key-registry.toml:ro
+      - ./data/dev-tls/server:/run/memory/tls:ro
     expose:
       - "8000"
     depends_on:
@@ -362,7 +379,8 @@ services:
     networks:
       - agent-network
     healthcheck:
-      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      # In-container loopback check of the HTTPS listener; the certificate is not verified here.
+      test: ["CMD", "python", "-c", "import ssl; from urllib.request import urlopen; urlopen('https://127.0.0.1:8000/health', timeout=2, context=ssl._create_unverified_context())"]
       interval: 10s
       timeout: 3s
       retries: 5

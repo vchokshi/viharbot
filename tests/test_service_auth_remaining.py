@@ -484,12 +484,15 @@ def test_post_json_signs_calls_to_each_new_destination(fleet, service, capabilit
     assert (caller.sub, caller.kid, caller.capability) == ("web", "web-1", capability)
 
 
-def test_destination_capabilities_cover_all_eight_services():
+def test_destination_capabilities_cover_all_eight_services_and_the_memory_service():
     assert set(oa.DESTINATION_CAPABILITIES) == {
         "research", "security", "sage", "pixel", "fact-check", "source-quality",
-        "privacy-review", "synthesis",
+        "privacy-review", "synthesis", "memory",
     }
-    assert oa.GET_CAPABILITIES == {"pixel": sa.PIXEL_READ_DECK_CAPABILITY}
+    assert oa.DESTINATION_CAPABILITIES["memory"] == sa.MEMORY_WRITE_CAPABILITY
+    assert oa.GET_CAPABILITIES == {
+        "pixel": sa.PIXEL_READ_DECK_CAPABILITY, "memory": sa.MEMORY_READ_CAPABILITY,
+    }
 
 
 def _security_reply(request_id: str) -> bytes:
@@ -671,8 +674,13 @@ def test_compose_turns_authentication_on_and_carries_no_key_material():
         assert "*auth-verify" in blocks[name] and "registry.toml:/run/viharbot-auth/registry.toml:ro" in blocks[name], name
     for name in ("web", "research", "orchestrator"):  # the services that call others sign
         assert "VIHARBOT_OUTBOUND_AUTH" in blocks[name] and "signing.key:ro" in blocks[name], name
-    for name in ("security", "fact-check", "source-quality", "privacy-review", "synthesis", "pixel", "sage"):
+    for name in ("security", "fact-check", "source-quality", "privacy-review", "pixel", "sage"):
         assert "VIHARBOT_SIGNING_KID" not in blocks[name], name  # callees hold no signing key
+    # Synthesis (Charlie) is the one specialist that calls another service: the memory service, with
+    # its own key and subject. It never mounts the web key. Memory itself is off by default.
+    synthesis = blocks["synthesis"]
+    assert "VIHARBOT_SIGNING_KID: charlie-dev-1" in synthesis and "VIHARBOT_SERVICE_SUBJECT: charlie" in synthesis
+    assert "keys/web.key" not in synthesis and "VIHARBOT_MEMORY_ENABLED: ${VIHARBOT_MEMORY_ENABLED:-off}" in synthesis
     assert "keys/web.key" in blocks["web"] and "keys/web.key" not in blocks["research"]
     assert "data/dev-auth/keys" not in text.replace("./data/dev-auth/keys/", "")  # no directory mount
 

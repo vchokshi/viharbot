@@ -11,6 +11,7 @@ from uuid import uuid4
 from fastapi import Depends, FastAPI, Header, HTTPException, Response
 from pydantic import BaseModel, Field
 
+from . import charlie_memory
 from .body_limit import BodySizeLimitMiddleware, max_body_bytes_from_environment
 from .contracts import SpecialistResponse
 from .fact_check_guard import guard_fact_check
@@ -145,6 +146,11 @@ if _authenticator:
     )
 
 
+# Governed memory (ADR-009, issue #40 PR 2): Charlie only, off unless VIHARBOT_MEMORY_ENABLED is on.
+# None means no memory activity at all and an unchanged request path.
+_memory = charlie_memory.load_client(AGENT_KIND)
+
+
 def _make_prompt(body: SpecialistRequest) -> str:
     if AGENT_KIND in {"fact-check", "source-quality"}:
         if body.findings is None:
@@ -215,8 +221,12 @@ def process(
         agent = build_agent(
             model_alias=inference.model_alias, system_prompt=inference.system_prompt
         )
+        prompt = _make_prompt(body)
+        if _memory is not None:
+            # Appended to the user message only, never the system prompt. Any failure adds nothing.
+            prompt += charlie_memory.prior_block(_memory, request_id, AGENT_KIND)
         result = agent(
-            _make_prompt(body),
+            prompt,
             structured_output_model=definition.output_model,
         ).structured_output
         if not isinstance(result, definition.output_model):
@@ -225,6 +235,8 @@ def process(
             result = guard_fact_check(result, body.findings)
         serialized = result.model_dump()
         remember(AGENT_KIND, request_id, serialized)
+        if _memory is not None:
+            charlie_memory.store(_memory, body.context, result, request_id, AGENT_KIND)
         logger.info(
             "specialist completed",
             extra={
