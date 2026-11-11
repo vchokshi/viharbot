@@ -8,11 +8,13 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
 from memory_helpers import (
     AGENTS,
+    T0,
     ExplodingRepository,
     agent_path,
     build_world,
@@ -599,3 +601,70 @@ def test_an_unexpected_error_is_a_generic_500_that_never_echoes_its_message(tmp_
     response = world.call("nova", "GET", agent_path("nova", MID))
     assert response.status_code == 500 and response.json() == {"detail": "internal error"}
     assert "LEAK-CANARY" not in response.text
+
+
+# --- expiry is judged on a fresh service-clock read after the row lock (Sage review, PR 1) -------
+
+
+def test_the_write_context_carries_the_service_clock_and_a_fresh_read_is_not_the_captured_now(tmp_path):
+    from memory_helpers import Clock
+
+    seen = []
+
+    class Capture(ExplodingRepository):
+        def update(self, memory_id, expected_rev, change, ctx):
+            seen.append(ctx)
+            return MutationResult(200, {"memory_id": memory_id, "state": "updated"})
+
+    world = build_world(tmp_path, Capture(), clock=Clock())
+    world.call("nova", "POST", agent_path("nova", MID, "update"), update_body(1))
+    ctx = seen[0]
+    started = ctx.now
+    world.clock.advance(seconds=45)
+    assert ctx.now == started  # the stamp for creation and audit does not move
+    assert ctx.clock() == started + timedelta(seconds=45)  # the carried clock is the live one
+
+
+def test_the_adapter_reads_the_clock_after_the_lock_never_before(monkeypatch):
+    from viharbot.memory_service.postgres import PostgresMemoryRepository
+
+    order = []
+
+    class Tx:
+        def execute(self, name, params=()):
+            order.append(name)
+            return self
+
+        def fetchone(self):
+            # memory_id, lifecycle, rev, version, classification, retention_until, expires_at
+            return ("m", "active", 1, 1, "internal", None, None) if order[-1] == "record_lock" else (1,)
+
+        rowcount = 1
+
+    class Boundary:
+        def __enter__(self):
+            return Tx()
+
+        def __exit__(self, *exc):
+            return False
+
+    repo = PostgresMemoryRepository("postgresql://unused")
+    monkeypatch.setattr(repo, "_transaction", lambda operation: Boundary())
+
+    def clock():
+        order.append("CLOCK")
+        return T0
+
+    from viharbot.memory_service.repository import NewVersion, Provenance, Scope, WriteContext
+
+    ctx = WriteContext(
+        principal="nova", owner="nova", scope=Scope("agent", "nova"), request_id="r", now=T0,
+        clock=clock, guard=lambda: True, allowed_classes=None, idempotency_key="k" * 12, request_hash="h",
+    )
+    prov = Provenance("agent_memory", "s", "nova", "r")
+    repo.update("m", 1, NewVersion("c", prov, None, None), ctx)
+    assert order.index("CLOCK") > order.index("record_lock")
+    assert order.count("CLOCK") == 1
+    order.clear()
+    repo.classify("m", 1, "confidential", ctx)
+    assert order.index("CLOCK") > order.index("record_lock")
