@@ -62,6 +62,7 @@ def probe_target(host: str, port: int, timeout: float = 5.0) -> dict[str, Any]:
         return result
     result["connects"] = True
     context = ssl.create_default_context()
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE  # reachability only; nothing secret is sent
     try:

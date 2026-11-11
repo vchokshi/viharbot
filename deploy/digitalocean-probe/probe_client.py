@@ -408,6 +408,7 @@ def run_probe(environ: Mapping[str, str], state: ProbeState, *,
         echo["cases"] = run_echo_suite(chosen["host"], chosen["port"], context, large_kb=large_kb)
     elif fallback is not None:
         unverified = ssl.create_default_context()
+        unverified.minimum_version = ssl.TLSVersion.TLSv1_2
         unverified.check_hostname = False
         unverified.verify_mode = ssl.CERT_NONE  # routing test only; no secret is sent
         echo["transport"] = {"host": fallback["host"], "port": fallback["port"],
