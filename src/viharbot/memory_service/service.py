@@ -181,6 +181,7 @@ class MemoryService:
             scope=Scope(path.tier, path.scope_key),
             request_id=request_id,
             now=self._clock(),
+            clock=self._clock,
             guard=guard,
             allowed_classes=None if any_class else classes_up_to(policy.classification_ceiling),
             idempotency_key=idempotency_key,

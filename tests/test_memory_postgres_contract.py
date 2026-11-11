@@ -98,20 +98,22 @@ def rows(database, sql, params=()):
 
 
 def ctx(*, owner="nova", scope=None, guard=None, key=None, request_hash="h", now=T0,
-        classes=("public", "internal"), principal=None) -> WriteContext:
+        classes=("public", "internal"), principal=None, clock=None) -> WriteContext:
     return WriteContext(
         principal=principal or owner, owner=owner, scope=scope or Scope("agent", owner),
-        request_id="req-1", now=now, guard=guard or (lambda: True), allowed_classes=classes,
+        request_id="req-1", now=now, clock=clock or (lambda: now), guard=guard or (lambda: True),
+        allowed_classes=classes,
         idempotency_key=key, request_hash=request_hash,
     )
 
 
-def new_record(memory_id, content="note", classification="internal", scope=None, expires_in=None):
+def new_record(memory_id, content="note", classification="internal", scope=None, expires_in=None,
+               retention_in=None):
     scope = scope or Scope("agent", "nova")
     return NewRecord(
         memory_id=memory_id, content=content, provenance=PROV, classification=classification,
         tags=(), personal_data=False, consent_basis="not_applicable", consent_reference=None,
-        retention_until=None if scope.tier == "session" else T0 + timedelta(days=30),
+        retention_until=None if scope.tier == "session" else T0 + (retention_in or timedelta(days=30)),
         expires_at=(T0 + timedelta(seconds=expires_in or 3600)) if scope.tier == "session" else None,
     )
 
@@ -142,7 +144,8 @@ def make(repo, memory_id=None, **kwargs):
     from viharbot.memory_service.service import new_memory_id
 
     memory_id = memory_id or new_memory_id()
-    result = repo.create(new_record(memory_id, **kwargs), ctx(key="create-" + memory_id[:12]))
+    scope = kwargs.get("scope")
+    result = repo.create(new_record(memory_id, **kwargs), ctx(key="create-" + memory_id[:12], scope=scope))
     assert result.status == 201
     return memory_id
 
@@ -597,18 +600,18 @@ def test_the_guarded_update_itself_refuses_a_stale_or_erased_writer_even_if_the_
     mid = make(repo)
     repo.erase(mid, "owner_request", ctx())  # lifecycle erased, rev 2
     with psycopg.connect(database.service_dsn) as conn:
-        stale = conn.execute(SQL["record_update_content"], (T0, "internal", None, mid, 1))
+        stale = conn.execute(SQL["record_update_content"], (T0, "internal", None, mid, 1, T0, T0))
         assert stale.rowcount == 0  # wrong rev
-        erased = conn.execute(SQL["record_update_content"], (T0, "internal", None, mid, 2))
+        erased = conn.execute(SQL["record_update_content"], (T0, "internal", None, mid, 2, T0, T0))
         assert erased.rowcount == 0  # right rev, but lifecycle is not active
-        classify = conn.execute(SQL["record_update_classification"], ("restricted", T0, mid, 2))
+        classify = conn.execute(SQL["record_update_classification"], ("restricted", T0, mid, 2, T0, T0))
         assert classify.rowcount == 0  # a policy update is refused on an erased record too
         retire = conn.execute(SQL["record_retire"], (T0, T0, mid))
         assert retire.rowcount == 0
         conn.rollback()
     live = make(repo)
     with psycopg.connect(database.service_dsn) as conn:
-        assert conn.execute(SQL["record_update_content"], (T0, "internal", None, live, 1)).rowcount == 1
+        assert conn.execute(SQL["record_update_content"], (T0, "internal", None, live, 1, T0, T0)).rowcount == 1
         conn.rollback()
 
 
@@ -845,6 +848,10 @@ def test_each_mutation_locks_before_it_writes_and_every_write_is_guarded():
     assert "rev = %s" in classify and "lifecycle <> 'erased'" in classify and "rev = rev + 1" in classify
     retire = SQL["record_retire"]
     assert "lifecycle = 'active'" in retire and "rev = rev + 1" in retire
+    # expiry and retention are enforced in the statement too, against a time the caller binds
+    for statement in (update, classify):
+        assert "retention_until IS NULL OR retention_until > %s" in statement
+        assert "expires_at IS NULL OR expires_at > %s" in statement
     erase = SQL["record_erase_mark"]  # the barrier: not conditioned on rev, so it cannot lose
     assert "lifecycle <> 'erased'" in erase and "rev = rev + 1" in erase
     assert not re.search(r"\brev = %s", erase) and not re.search(r"\brev = %s", retire)
@@ -877,6 +884,87 @@ def test_a_mutation_really_holds_the_row_lock_while_it_is_in_flight(repo, databa
                 probe.execute("SELECT 1 FROM memory.records WHERE memory_id = %s FOR UPDATE NOWAIT", (mid,))
         gate.release.set()
         assert future.result(timeout=15).status in (200, 202)
+
+
+# --- expiry is judged after the lock wait, not before it (Sage review of PR 1, MEDIUM) -------
+
+
+@pytest.fixture
+def waiter(repo, database):
+    """Hold a record's row lock on a second connection while a mutation waits; step the clock."""
+
+    def run_case(kind, operation, advance):
+        clock = Clock()
+        if kind == "session":
+            scope = Scope("session", "s-exp")
+            mid = make(repo, scope=scope, expires_in=30)
+            gap = timedelta(seconds=31)
+        else:
+            scope = Scope("agent", "nova")
+            mid = make(repo, retention_in=timedelta(seconds=30))
+            gap = timedelta(seconds=31)
+        before = rows(database, "SELECT rev, version, classification, lifecycle, updated_at FROM memory.records")
+        versions = rows(database, "SELECT count(*) FROM memory.record_versions")
+        calls = {
+            "update": lambda c: repo.update(mid, 1, version("late"), c),
+            "classify": lambda c: repo.classify(mid, 1, "confidential", c),
+            "retire": lambda c: repo.retire(mid, c),
+            "erase": lambda c: repo.erase(mid, "owner_request", c),
+        }
+        # the request starts at T0, well inside the record's life, with a clock that keeps moving
+        context = ctx(scope=scope, key="late-" + operation if operation in ("update", "classify") else None,
+                      now=clock(), clock=clock, classes=None)
+        with psycopg.connect(database.service_dsn) as holder, ThreadPoolExecutor(1) as pool:
+            holder.execute("SELECT 1 FROM memory.records WHERE memory_id = %s FOR UPDATE", (mid,))
+            future = pool.submit(calls[operation], context)
+            assert blocked(future), "the mutation must be waiting on the record lock"
+            if advance:
+                clock.advance(seconds=gap.total_seconds())
+            holder.rollback()  # release the lock
+            outcome = future.exception(timeout=15) or future.result()
+        return mid, outcome, before, versions
+
+    return run_case
+
+
+@pytest.mark.parametrize("kind", ["session", "agent"])
+@pytest.mark.parametrize("operation", ["update", "classify"])
+def test_a_mutation_that_waits_past_expiry_is_refused_and_changes_nothing(waiter, database, kind, operation):
+    mid, outcome, before, versions = waiter(kind, operation, advance=True)
+    assert isinstance(outcome, NotFoundError)
+    assert rows(database, "SELECT rev, version, classification, lifecycle, updated_at FROM memory.records") == before
+    assert rows(database, "SELECT count(*) FROM memory.record_versions") == versions
+
+
+@pytest.mark.parametrize("kind", ["session", "agent"])
+@pytest.mark.parametrize("operation", ["update", "classify"])
+def test_control_the_same_wait_without_expiry_succeeds(waiter, database, kind, operation):
+    mid, outcome, before, versions = waiter(kind, operation, advance=False)
+    assert not isinstance(outcome, Exception), outcome
+    assert outcome.status == 200
+    assert rows(database, "SELECT rev FROM memory.records") == [(2,)]
+
+
+@pytest.mark.parametrize("kind", ["session", "agent"])
+@pytest.mark.parametrize("operation", ["retire", "erase"])
+def test_retire_and_erase_do_not_judge_expiry_so_an_expired_record_can_still_be_removed(waiter, database, kind, operation):
+    """Intentional: the owner may retire or erase an expired record (the erase right). Unchanged."""
+    mid, outcome, _, _ = waiter(kind, operation, advance=True)
+    assert not isinstance(outcome, Exception), outcome
+    assert outcome.status in (200, 202)
+
+
+@pytest.mark.parametrize("operation", ["update", "classify"])
+def test_the_statement_refuses_an_expired_record_even_if_the_python_check_is_bypassed(repo, database, operation):
+    mid = make(repo, scope=Scope("session", "s-stmt"), expires_in=30)
+    late = T0 + timedelta(seconds=31)
+    with psycopg.connect(database.service_dsn) as conn:
+        if operation == "update":
+            done = conn.execute(SQL["record_update_content"], (late, "internal", None, mid, 1, late, late))
+        else:
+            done = conn.execute(SQL["record_update_classification"], ("confidential", late, mid, 1, late, late))
+        assert done.rowcount == 0
+        conn.rollback()
 
 
 # --- roles, migrations and failure handling --------------------------------------------------

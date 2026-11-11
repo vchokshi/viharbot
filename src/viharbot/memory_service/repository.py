@@ -140,7 +140,10 @@ class WriteContext:
     owner: str  # the derived agent id
     scope: Scope
     request_id: str
-    now: datetime  # supplied by the service clock, never by the database
+    now: datetime  # service clock at request start: creation, audit and updated_at stamps only
+    # The service clock itself, never the database's. A mutation that evaluates expiry or retention
+    # on an existing row calls this AFTER it holds the row lock, because the lock wait can be long.
+    clock: Callable[[], datetime]
     guard: Callable[[], bool]  # re-checks authorization inside the transaction
     allowed_classes: Sequence[str] | None  # classes the caller may touch; None means any
     idempotency_key: str | None = None
