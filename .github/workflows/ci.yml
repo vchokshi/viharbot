@@ -268,12 +268,14 @@ jobs:
           docker compose --profile tests run --rm -v "$PWD/reports:/reports" tests \
             python -m pytest -ra -q -p no:cacheprovider --junitxml=/reports/docker-test-results.xml
       # A skip means a test did not run. The only skips allowed are the opt-in live LiteLLM checks,
-      # which are off by design (they make billable calls). A skipped Node test fails this step.
+      # which are off by design (they make billable calls), and the memory-service PostgreSQL contract
+      # tests, which need a throwaway database this no-network test container does not have (they run
+      # where VIHARBOT_MEMORY_TEST_PG_ADMIN_DSN is set). A skipped Node test fails this step.
       - name: Require that only the opt-in live checks were skipped
         run: >
           python .github/scripts/junit_summary.py reports/docker-test-results.xml
           --name "Docker tests" --fail-on-skipped
-          --allow-skip 'RUN_LITELLM_(INTEGRATION|INFERENCE)=1 to'
+          --allow-skip 'RUN_LITELLM_(INTEGRATION|INFERENCE)=1 to|VIHARBOT_MEMORY_TEST_PG_(ADMIN_DSN|CONTAINER) is not set'
       # Starts the stack with no LiteLLM key and no optional modes, then checks only things that
       # need no model: health, the page, and the stream route's refusal when iterative mode is off.
       - name: Start the stack and check health
