@@ -21,3 +21,12 @@ af3c1b8a91a1bc71ac5499e77a48b78c271109e2:tests/test_steward_units.py:generic-api
 # entropy. The test now builds the canary at runtime under another name; this entry only covers the
 # historical commit the PR-range scan still reads. Narrow on purpose: one commit, one file, one line.
 cbaa40f4390a47a63b72936b0ce7332d499bff7a:tests/test_memory_service_unit.py:generic-api-key:317
+# Reviewed false positive: a memory contract test seeds three legacy idempotency-key labels (not
+# credentials) into a pre-migration database. One keyword argument holding such a label matched on
+# entropy. The test now builds the labels at runtime; this entry only covers the historical commit the
+# PR-range scan still reads. Narrow on purpose: one commit, one file, one line.
+d4e460c53227d06ccd0faa7cd93fd5c22a454124:tests/test_memory_postgres_contract.py:generic-api-key:1130
+# Reviewed false positive, second-order: the explanatory comment for the entry above quoted the flagged
+# label, so the scanner matched the comment in the commit that added it. The comment has been reworded
+# and no longer quotes it; this entry covers only that one historical line of that one commit.
+f86f5c7b19ea4e1521d345c52e5d5415fe91d0b2:.gitleaksignore:generic-api-key:25
