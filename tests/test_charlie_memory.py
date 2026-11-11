@@ -11,6 +11,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import re
+import threading
 import time
 from pathlib import Path
 
@@ -611,6 +612,74 @@ def test_the_dev_script_adds_only_the_memory_files_to_an_older_key_directory(tmp
     assert (out / "memory-registry.toml").is_file() and (out / "registry.toml").read_text() == before
 
 
+# --- database passwords are never regenerated under an existing volume -------------------------
+
+
+def _db_state(out: Path) -> dict[str, str]:
+    return {p.name: p.read_text() for p in sorted((out / "memory-db").glob("*.env"))}
+
+
+def test_database_credentials_all_present_are_kept_even_by_force(tmp_path, capsys):
+    script = _script("dev_service_auth")
+    out = tmp_path / "dev-auth"
+    script.generate(out)
+    before, key_before = _db_state(out), (out / "memory-client" / "charlie.key").read_text()
+    assert script.main(["--output", str(out), "--force"]) == 0
+    assert _db_state(out) == before  # --force does not touch the passwords...
+    assert (out / "memory-client" / "charlie.key").read_text() != key_before  # ...but replaces keys
+    assert script.database_credentials(out) == []
+
+
+def test_database_credentials_none_present_are_all_generated(tmp_path):
+    script = _script("dev_service_auth")
+    out = tmp_path / "dev-auth"
+    written = script.database_credentials(out)
+    assert sorted(p.name for p in written) == ["migrate.env", "postgres.env", "service.env"]
+    assert set(_db_state(out)) == {"migrate.env", "postgres.env", "service.env"}
+
+
+@pytest.mark.parametrize("missing", ["postgres.env", "migrate.env", "service.env"])
+def test_partial_database_credentials_are_refused_with_the_recovery_steps_and_nothing_is_written(tmp_path, capsys, missing):
+    script = _script("dev_service_auth")
+    out = tmp_path / "dev-auth"
+    script.generate(out)
+    (out / "memory-db" / missing).unlink()
+    remaining = _db_state(out)
+    key_before = (out / "memory-client" / "charlie.key").read_text()
+    for argv in ([], ["--force"]):
+        assert script.main(["--output", str(out), *argv]) == 2
+        error = capsys.readouterr().err
+        assert missing in error and "no longer match" in error
+        assert "restore the missing" in error and "memory data volume" in error and "down -v" in error
+        assert _db_state(out) == remaining  # the missing file was not regenerated, the others not changed
+    assert (out / "memory-client" / "charlie.key").read_text() == key_before  # nothing else was replaced either
+    with pytest.raises(script.PartialDatabaseCredentials):
+        script.database_credentials(out)
+    # Restoring the file (here by writing one back) makes the state valid again.
+    (out / "memory-db" / missing).write_text("X=1\n")
+    assert script.database_credentials(out) == []
+
+
+def test_the_rotate_option_replaces_the_passwords_only_and_warns_about_existing_volumes(tmp_path, capsys):
+    script = _script("dev_service_auth")
+    out = tmp_path / "dev-auth"
+    script.generate(out)
+    capsys.readouterr()
+    before, key_before = _db_state(out), (out / "memory-client" / "charlie.key").read_text()
+    assert script.main(["--output", str(out), "--rotate-database-passwords"]) == 0
+    after = _db_state(out)
+    assert after != before and all(after[name] != before[name] for name in before)
+    boot = dict(line.split("=", 1) for line in after["postgres.env"].split())
+    assert boot["MEMORY_DB_SERVICE_PASSWORD"] == after["service.env"].split("=", 1)[1].strip()  # still consistent
+    assert (out / "memory-client" / "charlie.key").read_text() == key_before  # keys untouched
+    warning = capsys.readouterr().err
+    assert "OLD role passwords" in warning and "down -v" in warning and "ALTER ROLE" in warning
+    # Rotating also works from a partial state (it is the explicit way out, and it says what it costs).
+    (out / "memory-db" / "migrate.env").unlink()
+    assert script.main(["--output", str(out), "--rotate-database-passwords"]) == 0
+    assert set(_db_state(out)) == {"migrate.env", "postgres.env", "service.env"}
+
+
 # --- compose and Stage -----------------------------------------------------------------------
 
 
@@ -811,6 +880,148 @@ def test_an_expired_budget_makes_no_request(monkeypatch, tmp_path, world):
         with pytest.raises(mc.MemoryClientError) as caught:
             client._call("GET", mc.RECORDS_PATH, None, "req-late-00001", "synthesis", time.monotonic() - 1)
     assert caught.value.reason == "timeout" and fake.seen == []
+
+
+# --- the connect phase is inside the one deadline ---------------------------------------------
+
+
+class _FakeSocket:
+    """A socket whose connect blocks like a blackholed address. ``honors_timeout`` says whether the
+    connect gives up at its own settimeout (a real one does); otherwise only close() or shutdown()
+    from the watchdog wakes it, which is what proves the socket was registered before it blocked."""
+
+    def __init__(self, honors_timeout: bool = True) -> None:
+        self.honors_timeout, self.timeout, self.woken = honors_timeout, None, threading.Event()
+        self.connected_to = None
+
+    def settimeout(self, value):
+        self.timeout = value
+
+    def connect(self, address):
+        self.connected_to = address
+        wait = min(self.timeout, 5.0) if self.honors_timeout and self.timeout else 5.0
+        if self.woken.wait(wait):
+            raise OSError("woken by the watchdog")
+        raise TimeoutError
+
+    def shutdown(self, how):
+        self.woken.set()
+
+    def close(self):
+        self.woken.set()
+
+    def dup(self):
+        return self
+
+
+def _address(port: int = 80, host: str = "192.0.2.1"):
+    import socket
+
+    return (socket.AF_INET, socket.SOCK_STREAM, 6, "", (host, port))
+
+
+def _bare_client(budget: float = 0.4) -> mc.MemoryClient:
+    return mc.MemoryClient("http://memory.invalid:80", ssl_context=None, timeout=budget)
+
+
+def _signed_environment(monkeypatch, world) -> None:
+    for name, value in memory_env("x", key_file(world)).items():
+        monkeypatch.setenv(name, value)
+
+
+def test_a_connect_that_never_returns_is_interrupted_at_the_deadline(monkeypatch, world):
+    """The connect ignores its own timeout; only the watchdog can end it, so the socket must be
+    registered before it blocks."""
+    _signed_environment(monkeypatch, world)
+    sockets: list[_FakeSocket] = []
+
+    def factory(*args):
+        sockets.append(_FakeSocket(honors_timeout=False))
+        return sockets[-1]
+
+    monkeypatch.setattr(mc.MemoryClient, "_resolve", staticmethod(lambda *a, **k: [_address()]))
+    monkeypatch.setattr(mc.MemoryClient, "_new_socket", staticmethod(factory))
+    started = time.monotonic()
+    with pytest.raises(mc.MemoryClientError) as caught:
+        _bare_client(0.4).recent("req-conn-0001")
+    elapsed = time.monotonic() - started
+    assert caught.value.reason == "timeout" and elapsed < 1.5, f"took {elapsed:.2f}s"
+    assert len(sockets) == 1
+
+
+def test_an_attempt_gets_only_the_time_left_and_a_slow_resolver_uses_up_the_budget(monkeypatch, world):
+    _signed_environment(monkeypatch, world)
+    sockets: list[_FakeSocket] = []
+
+    def slow_resolver(*args, **kwargs):
+        time.sleep(0.5)  # name resolution cannot be interrupted, but the deadline is checked after it
+        return [_address()]
+
+    def factory(*args):
+        sockets.append(_FakeSocket())
+        return sockets[-1]
+
+    monkeypatch.setattr(mc.MemoryClient, "_resolve", staticmethod(slow_resolver))
+    monkeypatch.setattr(mc.MemoryClient, "_new_socket", staticmethod(factory))
+    with pytest.raises(mc.MemoryClientError) as caught:
+        _bare_client(0.3).recent("req-dns-00001")
+    assert caught.value.reason == "timeout" and sockets == []  # no connection was even started
+
+
+def test_with_several_addresses_the_first_blocking_one_cannot_exceed_the_total_budget(monkeypatch, world):
+    _signed_environment(monkeypatch, world)
+    sockets: list[_FakeSocket] = []
+
+    def factory(*args):
+        sockets.append(_FakeSocket())  # each one blocks until its own timeout, as a blackhole does
+        return sockets[-1]
+
+    monkeypatch.setattr(mc.MemoryClient, "_resolve", staticmethod(
+        lambda *a, **k: [_address(host="192.0.2.1"), _address(host="192.0.2.2"), _address(host="192.0.2.3")]))
+    monkeypatch.setattr(mc.MemoryClient, "_new_socket", staticmethod(factory))
+    started = time.monotonic()
+    with pytest.raises(mc.MemoryClientError) as caught:
+        _bare_client(0.4).recent("req-addr-00001")
+    elapsed = time.monotonic() - started
+    assert caught.value.reason == "timeout" and elapsed < 1.2, f"took {elapsed:.2f}s"
+    # The first attempt was given the whole remaining budget (not a fresh per-address timeout), so
+    # the later addresses were never tried after it spent it.
+    assert len(sockets) == 1 and sockets[0].timeout <= 0.4
+
+
+def test_a_refusing_first_address_falls_through_to_the_next_within_the_same_budget(monkeypatch, tmp_path, world, memory_url):
+    import socket
+
+    from charlie_memory_helpers import free_port
+
+    _signed_environment(monkeypatch, world)
+    real_port = int(memory_url.rsplit(":", 1)[1])
+    monkeypatch.setattr(mc.MemoryClient, "_resolve", staticmethod(lambda *a, **k: [
+        (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", free_port())),  # nothing listens: refused
+        (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", real_port)),
+    ]))
+    client = mc.MemoryClient(f"http://memory.invalid:{real_port}", ssl_context=None, timeout=1.5)
+    assert client.recent("req-fall-00001") == []  # the second address answered
+
+
+def test_a_tls_handshake_that_never_completes_is_bounded_by_the_deadline(monkeypatch, tmp_path, world, tls):
+    """A server that accepts the TCP connection and never speaks TLS."""
+    import socket
+
+    good, _ = tls
+    _signed_environment(monkeypatch, world)
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+    try:
+        context = __import__("ssl").create_default_context(cafile=str(good / "ca" / "ca.pem"))
+        client = mc.MemoryClient(f"https://localhost:{listener.getsockname()[1]}", ssl_context=context, timeout=0.5)
+        started = time.monotonic()
+        with pytest.raises(mc.MemoryClientError) as caught:
+            client.recent("req-tls-00001")
+        assert caught.value.reason == "timeout" and time.monotonic() - started < 1.5
+    finally:
+        listener.close()
 
 
 # --- PostgreSQL: write, restart, retrieve (skips without a throwaway server) -----------------

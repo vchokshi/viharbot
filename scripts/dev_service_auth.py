@@ -28,6 +28,12 @@ Written under the output directory:
                          is discarded). ca.pem goes to the synthesis service, the server key only
                          to the memory service.
 
+Database passwords are handled apart from keys and certificates, because Postgres applies a role's
+password only when it first initializes a data volume: all three files present are kept (also by
+--force); none present are all generated; only some present is refused with the recovery steps; and
+--rotate-database-passwords is the one explicit way to replace them (existing volumes then need to
+be recreated or the roles altered).
+
 This is the ONE setup command for the default local stack (service-auth keys, memory service
 registry and key, TLS, and database passwords). Compose reads the passwords from memory-db/*.env and
 fails closed, with a message pointing here, if they are missing.
@@ -101,8 +107,8 @@ def generate_memory(output: Path, *, force: bool = False) -> list[Path]:
 
     Each group is skipped when it already exists and ``force`` is not set, so a running stack keeps
     working and an older checkout can add just what it lacks: Charlie's memory-client key with the
-    memory service's registry (public key only), the throwaway database passwords, and the
-    development TLS material.
+    memory service's registry (public key only) and the development TLS material. ``force`` replaces
+    those. It never touches the database passwords: see ``database_credentials``.
     """
     written: list[Path] = []
     subject, capabilities = MEMORY_IDENTITY
@@ -130,22 +136,60 @@ def generate_memory(output: Path, *, force: bool = False) -> list[Path]:
         registry.chmod(0o644)
         tomllib.loads(registry.read_text(encoding="utf-8"))
         written += [key_path, registry]
-    db = output / MEMORY_DB_DIR
-    db_files = [db / "postgres.env", db / "migrate.env", db / "service.env"]
-    if force or not all(path.is_file() for path in db_files):
-        migrator, service = secrets.token_hex(16), secrets.token_hex(16)  # 32 characters each
-        _write_secret_env(db_files[0], {
-            "POSTGRES_USER": BOOTSTRAP_USER, "POSTGRES_PASSWORD": secrets.token_hex(16),
-            "MEMORY_DB_MIGRATOR_PASSWORD": migrator, "MEMORY_DB_SERVICE_PASSWORD": service,
-        })
-        _write_secret_env(db_files[1], {"MEMORY_MIGRATE_DB_PASSWORD": migrator})
-        _write_secret_env(db_files[2], {"MEMORY_DB_PASSWORD": service})
-        written += db_files
     tls = output / TLS_DIR
     tls_files = [tls / "ca" / "ca.pem", tls / "server" / "memory.pem", tls / "server" / "memory.key"]
     if force or not all(path.is_file() for path in tls_files):
         written += dev_memory_tls.generate(tls, force=True)
     return written
+
+
+class PartialDatabaseCredentials(RuntimeError):
+    """Some but not all of the database credential files exist. Generating new ones is refused."""
+
+
+def _db_files(output: Path) -> list[Path]:
+    db = output / MEMORY_DB_DIR
+    return [db / "postgres.env", db / "migrate.env", db / "service.env"]
+
+
+def check_database_credentials(output: Path) -> None:
+    """Raise PartialDatabaseCredentials (with the recovery steps) if only some files exist."""
+    files = _db_files(output)
+    present = [path for path in files if path.is_file()]
+    if present and len(present) != len(files):
+        missing = ", ".join(str(path) for path in files if not path.is_file())
+        raise PartialDatabaseCredentials(
+            f"some but not all database credential files exist (missing: {missing}). A role password is "
+            "applied only when Postgres first initializes its data volume, so generating new passwords now "
+            "could leave the containers with passwords that no longer match the roles in an existing "
+            "volume. Nothing was changed. Either restore the missing file(s) from a backup, or start "
+            "fresh: remove the memory data volume (`docker compose down -v` removes every volume of the "
+            "stack, or `docker volume rm <project>_memory_pg_data` removes only this one), delete the "
+            f"remaining files in {output / MEMORY_DB_DIR}, and run this script again."
+        )
+
+
+def database_credentials(output: Path, *, rotate: bool = False) -> list[Path]:
+    """The throwaway database passwords, kept apart from keys and certificates on purpose.
+
+    All three files present: kept (returns []). None present: all three generated. Only some
+    present: refused (PartialDatabaseCredentials), because new passwords would silently stop
+    matching an existing volume. ``rotate`` regenerates all three and is the only way to replace
+    existing ones; it does not change the roles inside an existing Postgres volume.
+    """
+    files = _db_files(output)
+    if not rotate:
+        check_database_credentials(output)
+        if all(path.is_file() for path in files):
+            return []
+    migrator, service = secrets.token_hex(16), secrets.token_hex(16)  # 32 characters each
+    _write_secret_env(files[0], {
+        "POSTGRES_USER": BOOTSTRAP_USER, "POSTGRES_PASSWORD": secrets.token_hex(16),
+        "MEMORY_DB_MIGRATOR_PASSWORD": migrator, "MEMORY_DB_SERVICE_PASSWORD": service,
+    })
+    _write_secret_env(files[1], {"MEMORY_MIGRATE_DB_PASSWORD": migrator})
+    _write_secret_env(files[2], {"MEMORY_DB_PASSWORD": service})
+    return files
 
 
 def generate(output: Path, *, force: bool = False) -> list[Path]:
@@ -154,6 +198,7 @@ def generate(output: Path, *, force: bool = False) -> list[Path]:
     Refuses to overwrite existing files unless ``force`` is set, so a running stack keeps working.
     """
     keys_dir = output / "keys"
+    check_database_credentials(output)  # refuse before writing anything else
     targets = [output / "registry.toml"] + [keys_dir / f"{stem}.key" for _, stem, _ in IDENTITIES]
     existing = [path for path in targets if path.exists()]
     if existing and not force:
@@ -189,19 +234,41 @@ def generate(output: Path, *, force: bool = False) -> list[Path]:
     registry.write_text("\n".join(blocks), encoding="utf-8")
     registry.chmod(0o644)
     tomllib.loads(registry.read_text(encoding="utf-8"))  # a registry that does not parse never ships
-    return targets + generate_memory(output, force=force)
+    return targets + generate_memory(output, force=force) + database_credentials(output)
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT, help="default: data/dev-auth")
-    parser.add_argument("--force", action="store_true", help="replace existing keys and registry")
+    parser.add_argument("--force", action="store_true",
+                        help="replace the existing keys, registry and certificates (never the database passwords)")
+    parser.add_argument("--rotate-database-passwords", action="store_true",
+                        help="replace the database passwords ONLY; an existing Postgres volume keeps the "
+                             "old role passwords, so recreate the volume or ALTER the roles afterwards")
     args = parser.parse_args(argv)
+    if args.rotate_database_passwords:
+        for path in database_credentials(args.output, rotate=True):
+            print(f"wrote {path}")
+        print(
+            "dev_service_auth: database passwords rotated. WARNING: an existing Postgres volume still has "
+            "the OLD role passwords (they are set only when the volume is first initialized), so the memory "
+            "containers will fail to log in until you remove the volume (docker compose down -v) or run "
+            "ALTER ROLE memory_migrator / memory_service with the new values.",
+            file=sys.stderr,
+        )
+        return 0
     try:
         written = generate(args.output, force=args.force)
+    except PartialDatabaseCredentials as error:
+        print(f"dev_service_auth: {error}", file=sys.stderr)
+        return 2
     except FileExistsError as error:
         # The main keys exist and are kept. An older checkout may still lack the memory files.
-        added = generate_memory(args.output, force=args.force)
+        try:
+            added = generate_memory(args.output, force=args.force) + database_credentials(args.output)
+        except PartialDatabaseCredentials as partial:
+            print(f"dev_service_auth: {partial}", file=sys.stderr)
+            return 2
         for path in added:
             print(f"wrote {path}")
         if added:

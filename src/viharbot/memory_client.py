@@ -16,7 +16,9 @@ Rules enforced here:
 * Time: every call has ONE monotonic deadline (``VIHARBOT_MEMORY_TIMEOUT_SECONDS``, default 1.5 s)
   covering connect, TLS handshake, request and body read. A watchdog closes the socket at the
   deadline, so a server that trickles bytes cannot stretch a call. A write and its single retry share
-  one such budget. Name resolution (one lookup of a Compose service name) is not interruptible.
+  one such budget; each connection attempt (several addresses may be tried) and the TLS handshake
+  get only the time left, and the deadline is rechecked between steps. Name resolution (one lookup
+  of a Compose service name) is not interruptible: the deadline is checked as soon as it returns.
 * Auth: every call is signed with this service's own key and subject ``charlie`` through
   ``outbound_auth``. There is no unsigned fallback: if no assertion can be produced the call is not
   made. The subject is pinned to ``charlie``, never the web key's ``web``.
@@ -120,6 +122,10 @@ class MemoryClient:
         self._context = ssl_context
         self._budget = timeout  # the total time one operation (a read, or a write and its retry) may take
 
+    # Seams for tests; the production values are the standard library's.
+    _resolve = staticmethod(socket.getaddrinfo)
+    _new_socket = staticmethod(socket.socket)
+
     def _call(self, method: str, target: str, payload: dict | None, request_id: str, agent: str,
               deadline: float) -> tuple[int, Any]:
         body = json.dumps(payload, separators=(",", ":")).encode("utf-8") if payload is not None else b""
@@ -141,9 +147,23 @@ class MemoryClient:
             raise MemoryClientError("timeout")
         connection = http.client.HTTPConnection(self._host, self._port)
         held: list[socket.socket] = []  # every socket this call opened, so the watchdog can reach it
+        lock = threading.Lock()
+        expired = threading.Event()
+
+        def register(sock: socket.socket) -> None:
+            """Make a socket reachable by the watchdog BEFORE any blocking call on it. If the deadline
+            already passed (the watchdog ran while nothing was registered), refuse it at once."""
+            with lock:
+                if expired.is_set():
+                    sock.close()
+                    raise TimeoutError
+                held.append(sock)
 
         def abort() -> None:  # the deadline passed: close the sockets, which wakes any blocked operation
-            for sock in list(held):
+            with lock:
+                expired.set()
+                sockets = list(held)
+            for sock in sockets:
                 try:
                     sock.shutdown(socket.SHUT_RDWR)
                 except OSError:
@@ -153,20 +173,51 @@ class MemoryClient:
                 except OSError:
                     pass
 
+        def time_left() -> float:
+            left = deadline - time.monotonic()
+            if left < MIN_REMAINING or expired.is_set():
+                raise TimeoutError
+            return left
+
         watchdog = threading.Timer(remaining, abort)
         watchdog.daemon = True
         watchdog.start()
         try:
             # Connect and handshake by hand (not through http.client) so the watchdog can see the
             # socket the whole time: HTTPConnection drops its reference once the response is handed
-            # over, which would leave the body read unguarded.
-            sock = socket.create_connection((self._host, self._port), timeout=remaining)
+            # over, which would leave the body read unguarded. Every blocking step gets only what is
+            # left of the one deadline, and the deadline is rechecked between steps.
+            infos = self._resolve(self._host, self._port, type=socket.SOCK_STREAM)  # not interruptible
+            time_left()
+            sock = None
+            last_error: OSError = OSError("no address")
+            for family, kind, proto, _canon, address in infos:  # all addresses share the same budget
+                attempt = self._new_socket(family, kind, proto)
+                register(attempt)
+                try:
+                    attempt.settimeout(time_left())
+                    attempt.connect(address)
+                except OSError as error:  # includes this attempt's timeout: try the next address
+                    last_error = error
+                    attempt.close()
+                    time_left()  # raises TimeoutError when no budget remains
+                    continue
+                sock = attempt
+                break
+            if sock is None:
+                raise last_error
+            time_left()
             # A duplicate descriptor of the same connection: shutting it down at the deadline wakes a
             # blocked handshake, send or read, and stays valid after http.client closes `sock` when
             # it hands the response body over (an SSL socket cannot be duplicated, hence the raw one).
-            held.append(sock.dup())
+            register(sock.dup())
             if self._https:
-                sock = self._context.wrap_socket(sock, server_hostname=self._host)  # type: ignore[union-attr]
+                sock.settimeout(time_left())
+                sock = self._context.wrap_socket(  # type: ignore[union-attr]
+                    sock, server_hostname=self._host, do_handshake_on_connect=False)
+                sock.settimeout(time_left())
+                sock.do_handshake()  # bounded by the time left, and by the watchdog
+            sock.settimeout(time_left())
             connection.sock = sock
             connection.request(method, target, body=body if payload is not None else None, headers=headers)
             response = connection.getresponse()
