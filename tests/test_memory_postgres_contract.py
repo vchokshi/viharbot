@@ -38,7 +38,7 @@ from memory_helpers import (
 )
 from psycopg import errors as pg_errors
 
-from viharbot.memory_service.migrate import MigrationError, migrate
+from viharbot.memory_service.migrate import MigrationError, discover, migrate
 from viharbot.memory_service.policy import MemoryPolicy, PolicyProvider, load_policy
 from viharbot.memory_service.postgres import (
     ISOLATION_NAME,
@@ -905,7 +905,9 @@ def test_migrations_apply_once_and_a_changed_applied_file_is_refused(database, t
     changed.write_text("SELECT 1;\n")
     with pytest.raises(MigrationError):
         migrate(database.migrator_dsn, tmp_path)
-    assert rows(database, "SELECT version, name FROM memory.schema_migrations") == [(1, "0001_memory_schema.sql")]
+    assert rows(database, "SELECT version, name FROM memory.schema_migrations ORDER BY version") == [
+        (version, name) for version, name, _ in discover()
+    ]
 
 
 def test_a_database_failure_is_a_generic_503_that_carries_no_detail(tmp_path, database):
@@ -922,3 +924,209 @@ def test_a_database_failure_is_a_generic_503_that_carries_no_detail(tmp_path, da
 def test_health_is_open_and_reports_the_primary(world):
     response = world.client.get("/health")
     assert response.status_code == 200 and response.json() == {"status": "ok", "agent": "memory"}
+
+
+# --- idempotent replay is authorized like a fresh write (security finding on PR 1) -------------
+#
+# A replay passes the in-transaction guard against the live policy, must belong to the derived
+# owner that created the entry, and is returned only while the record is still visible. A refusal
+# before the guard passes is the same generic 403 and says nothing about the stored result.
+
+
+def _remap_nova_to_scout() -> MemoryPolicy:
+    from dataclasses import replace
+
+    agents = []
+    for agent in load_policy().agents:
+        if agent.agent_id == "nova":
+            agent = replace(agent, subs=frozenset())
+        elif agent.agent_id == "scout":
+            agent = replace(agent, subs=agent.subs | {"nova"})
+        agents.append(agent)
+    return MemoryPolicy(agents)
+
+
+@pytest.mark.parametrize("operation", ["create", "update", "classify"])
+def test_a_policy_revocation_while_a_duplicate_waits_refuses_the_replay(repo, database, operation):
+    flag = {"allowed": True}
+    gate = Gate()
+    mid = make(repo) if operation != "create" else None
+    classes = ("public", "internal", "confidential")
+
+    def call(guard, new_id):
+        if operation == "create":
+            return repo.create(new_record(new_id), ctx(guard=guard, key="wait-key-0001"))
+        if operation == "update":
+            return repo.update(mid, 1, version(), ctx(guard=guard, key="wait-key-0001", classes=classes))
+        return repo.classify(mid, 1, "confidential", ctx(guard=guard, key="wait-key-0001", classes=classes))
+
+    with ThreadPoolExecutor(2) as pool:
+        one = pool.submit(call, gate.guard, "00000000-0000-7000-8000-0000000000c1")
+        assert gate.entered.wait(15)
+        # the guard reads the flag live, as the service guard reads the live policy
+        two = pool.submit(call, lambda: flag["allowed"], "00000000-0000-7000-8000-0000000000c2")
+        assert blocked(two), "the duplicate must wait on the idempotency entry"
+        flag["allowed"] = False  # the policy revocation lands while the duplicate waits
+        gate.release.set()
+        assert one.result().status in (200, 201)
+        with pytest.raises(GuardRefusedError):
+            two.result()
+    assert rows(database, "SELECT count(*) FROM memory.idempotency WHERE idempotency_key = 'wait-key-0001'") == [(1,)]
+
+
+def test_a_lowered_ceiling_between_the_first_request_and_its_replay_returns_nothing_above_it(tmp_path, repo, database):
+    world = build_world(tmp_path, repo)
+    internal = create_body("kept", classification="internal")
+    public = create_body("kept too", classification="public")
+    first = world.call("nova", "POST", agent_path(), internal)
+    other = world.call("nova", "POST", agent_path(), public)
+    assert first.status_code == other.status_code == 201
+    world.policies.replace(only_policy(classification_ceiling="public").current())
+    # the replay is validated against the live policy first: above the new ceiling is a 403
+    replay = world.call("nova", "POST", agent_path(), internal)
+    assert replay.status_code == 403 and "idempotent-replay" not in replay.headers
+    assert first.json()["memory_id"] not in replay.text
+    # a request the new policy still allows keeps the idempotency guarantee
+    again = world.call("nova", "POST", agent_path(), public)
+    assert again.status_code == 201 and again.json() == other.json() and again.headers["idempotent-replay"] == "true"
+
+
+@pytest.mark.parametrize("operation", ["create", "update", "classify"])
+def test_a_sub_remapped_to_another_agent_cannot_replay_the_previous_owners_entry(tmp_path, repo, database, operation):
+    world = build_world(tmp_path, repo)
+    first = world.call("nova", "POST", session_path("s1"), create_body("nova session note", classification="public"))
+    assert first.status_code == 201
+    mid = first.json()["memory_id"]
+    if operation == "create":
+        path, body = session_path("s1"), create_body("nova session note two", classification="public")
+        assert world.call("nova", "POST", path, body).status_code == 201
+    elif operation == "update":
+        path, body = session_path("s1", mid, "update"), update_body(1, "nova v2")
+        assert world.call("nova", "POST", path, body).status_code == 200
+    else:
+        path = session_path("s1", mid, "classify")
+        body = {"idempotency_key": "remap-classify-0001", "expected_rev": 1, "classification": "internal"}
+        assert world.call("nova", "POST", path, body).status_code == 200
+    world.policies.replace(_remap_nova_to_scout())  # the sub nova now belongs to scout
+    replay = world.call("nova", "POST", path, body)
+    assert (replay.status_code, replay.json()) == (403, {"detail": "forbidden"})
+    assert mid not in replay.text and "idempotent-replay" not in replay.headers
+    # even with a guard that always passes, the entry is bound to the owner that created it
+    owner_only = ctx(
+        owner="scout", principal="nova", scope=Scope("session", "s1"), key=body["idempotency_key"],
+        request_hash=rows(database, "SELECT request_hash FROM memory.idempotency WHERE idempotency_key = %s", (body["idempotency_key"],))[0][0],
+        classes=("public", "internal", "confidential"),
+    )
+    with pytest.raises(GuardRefusedError):
+        if operation == "create":
+            repo.create(new_record("00000000-0000-7000-8000-0000000000d1", scope=Scope("session", "s1")), owner_only)
+        elif operation == "update":
+            repo.update(mid, 1, version(), owner_only)
+        else:
+            repo.classify(mid, 1, "internal", owner_only)
+
+
+def test_the_idempotency_entry_records_the_derived_owner(repo, database):
+    repo.create(new_record("00000000-0000-7000-8000-0000000000e1"), ctx(key="owner-key-0001"))
+    assert rows(database, "SELECT owner_agent_id FROM memory.idempotency WHERE idempotency_key = 'owner-key-0001'") == [("nova",)]
+
+
+def test_a_replay_after_retire_returns_nothing_stored(world, database):
+    body = create_body("soon retired")
+    mid = world.call("nova", "POST", agent_path(), body).json()["memory_id"]
+    assert world.call("nova", "POST", agent_path("nova", mid, "retire"), {}).status_code == 200
+    replay = world.call("nova", "POST", agent_path(), body)
+    assert replay.status_code == 404 and replay.json() == {"detail": "not found"}
+    assert mid not in replay.text and "idempotent-replay" not in replay.headers
+
+
+def test_a_replay_after_erase_returns_nothing_stored_before_and_after_physical_deletion(world, repo, database, monkeypatch):
+    body = create_body("soon erased")
+    mid = world.call("nova", "POST", agent_path(), body).json()["memory_id"]
+    with monkeypatch.context() as patch:  # stage two fails: the barrier is up, deletion is pending
+        patch.setattr(repo, "complete_erasure", lambda *a, **k: (_ for _ in ()).throw(StorageUnavailableError()))
+        assert world.call("nova", "POST", agent_path("nova", mid, "erase"), {"reason": "other"}).status_code == 202
+    barrier = world.call("nova", "POST", agent_path(), body)
+    assert barrier.status_code == 404 and mid not in barrier.text
+    assert repo.complete_erasure(mid, T0)
+    done = world.call("nova", "POST", agent_path(), body)  # scrubbed key tombstone
+    assert (done.status_code, done.json()["code"]) == (409, "key_tombstoned") and mid not in done.text
+
+
+def test_a_replay_after_expiry_returns_nothing_stored(world, database):
+    body = create_body("a short session note", ttl_seconds=60)
+    first = world.call("nova", "POST", session_path("s1"), body)
+    assert first.status_code == 201
+    live = world.call("nova", "POST", session_path("s1"), body)
+    assert live.status_code == 201 and live.json() == first.json()  # still visible: the original result
+    world.clock.advance(seconds=61)
+    replay = world.call("nova", "POST", session_path("s1"), body)
+    assert replay.status_code == 404 and first.json()["memory_id"] not in replay.text
+
+
+def test_a_replay_is_refused_when_the_record_is_now_above_the_callers_ceiling(repo, database):
+    mid = "00000000-0000-7000-8000-0000000000f1"
+    repo.create(new_record(mid, classification="internal"), ctx(key="class-key-0001"))
+    repo.classify(mid, 1, "confidential", ctx(key="class-key-0002", classes=("public", "internal")))
+    with pytest.raises(NotFoundError):
+        repo.create(new_record(mid, classification="internal"), ctx(key="class-key-0001"))
+
+
+def test_a_legitimate_replay_is_unchanged_when_the_record_has_moved_on(world, database):
+    body = create_body("original")
+    first = world.call("nova", "POST", agent_path(), body)
+    mid = first.json()["memory_id"]
+    assert world.call("nova", "POST", agent_path("nova", mid, "update"), update_body(1, "newer")).status_code == 200
+    replay = world.call("nova", "POST", agent_path(), body)  # lost response, retried after a later update
+    assert replay.status_code == 201 and replay.json() == first.json()
+    assert replay.headers["idempotent-replay"] == "true"
+
+
+def test_a_database_with_pre_migration_idempotency_rows_still_replays_for_its_original_owner():
+    admin = admin_dsn_or_skip()
+    db = provision_database(admin)  # all migrations applied
+    try:
+        live, gone, orphan = (f"00000000-0000-7000-8000-00000000a{n:03d}" for n in (1, 2, 3))
+        with psycopg.connect(db.admin_dsn, autocommit=True) as conn:
+            # put the database back in its pre-0002 shape: no owner column, version 2 unrecorded
+            conn.execute("ALTER TABLE memory.idempotency DROP COLUMN owner_agent_id")
+            conn.execute("DELETE FROM memory.schema_migrations WHERE version = 2")
+            conn.execute(
+                "INSERT INTO memory.records (memory_id, memory_type, scope_key, owner_agent_id, classification, "
+                "lifecycle, rev, version, retention_until, created_at, updated_at) VALUES "
+                "(%s, 'agent_private', 'nova', 'nova', 'internal', 'active', 1, 1, %s, %s, %s)",
+                (live, T0 + timedelta(days=30), T0, T0),
+            )
+            conn.execute(
+                "INSERT INTO memory.tombstones (memory_id, owner_agent_id, memory_type, scope_key, erased_at) "
+                "VALUES (%s, 'scout', 'agent_private', 'scout', %s)", (gone, T0),
+            )
+            result = json.dumps({"memory_id": live, "state": "created", "rev": 1, "version": 1, "classification": "internal"})
+            for key, mid, principal, erased in (
+                ("legacy-live-01", live, "nova", False),
+                ("legacy-gone-01", gone, "scout", True),
+                ("legacy-orphan1", orphan, "nova", False),
+            ):
+                conn.execute(
+                    "INSERT INTO memory.idempotency (principal, scope_type, scope_key, idempotency_key, operation, "
+                    "request_hash, memory_id, status_code, result, erased, created_at) "
+                    "VALUES (%s, 'agent', %s, %s, 'create', %s, %s, %s, %s::jsonb, %s, %s)",
+                    (principal, principal, key, "" if erased else "h", mid, None if erased else 201,
+                     None if erased else result, erased, T0),
+                )
+        assert migrate(db.migrator_dsn) == ["0002_idempotency_owner.sql"]
+        assert migrate(db.migrator_dsn) == []  # the runner applies it once
+        repository = PostgresMemoryRepository(db.service_dsn)
+        replay = repository.create(new_record(live), ctx(key="legacy-live-01"))  # the original owner
+        assert (replay.status, replay.replayed, replay.body["memory_id"]) == (201, True, live)
+        with pytest.raises(GuardRefusedError):  # another agent's entry is not served
+            repository.create(new_record(live), ctx(owner="scout", principal="nova", scope=Scope("agent", "nova"), key="legacy-live-01"))
+        with pytest.raises(TombstonedError):  # the erased entry kept its owner through the backfill
+            repository.create(new_record(gone, scope=Scope("agent", "scout")), ctx(owner="scout", scope=Scope("agent", "scout"), key="legacy-gone-01"))
+        with psycopg.connect(db.admin_dsn, autocommit=True) as conn:
+            owners = conn.execute("SELECT idempotency_key, owner_agent_id FROM memory.idempotency ORDER BY 1").fetchall()
+        assert owners == [("legacy-gone-01", "scout"), ("legacy-live-01", "nova"), ("legacy-orphan1", None)]
+        with pytest.raises(GuardRefusedError):  # no recoverable owner: fail closed
+            repository.create(new_record(orphan), ctx(key="legacy-orphan1"))
+    finally:
+        drop_database(admin, db.name)

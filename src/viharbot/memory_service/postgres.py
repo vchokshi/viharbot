@@ -10,7 +10,9 @@ needs more; the outcome is recorded in docs/memory-service.md. Mechanics, per mu
 * content writes publish with ``UPDATE ... WHERE rev = $n AND lifecycle = 'active'`` and zero rows
   updated means the writer lost;
 * the erase barrier is conditioned on ``lifecycle <> 'erased'`` and deliberately not on ``rev``;
-* a unique constraint on (principal, scope, idempotency key) holds the original result;
+* a unique constraint on (principal, scope, idempotency key) holds the original result, bound to
+  the derived owner that created it; a replay passes the same in-transaction guard as a fresh
+  write, must match that owner, and is returned only while the record is still visible;
 * create inserts the row first and checks tombstones second, because under READ COMMITTED a check
   made before the insert can miss an erase that commits while the insert waits on the key.
 
@@ -86,11 +88,12 @@ SQL: dict[str, str] = {
     # --- idempotency ---
     "idem_reserve": (
         "INSERT INTO memory.idempotency "
-        "(principal, scope_type, scope_key, idempotency_key, operation, request_hash, created_at) "
-        "VALUES (%s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING RETURNING 1"
+        "(principal, scope_type, scope_key, idempotency_key, operation, request_hash, created_at, "
+        "owner_agent_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING RETURNING 1"
     ),
     "idem_read": (
-        "SELECT operation, request_hash, status_code, result, erased FROM memory.idempotency "
+        "SELECT operation, request_hash, status_code, result, erased, memory_id, owner_agent_id "
+        "FROM memory.idempotency "
         f"WHERE {_IDEM_KEY}"
     ),
     "idem_complete": (
@@ -299,12 +302,18 @@ class PostgresMemoryRepository(MemoryRepository):
     # --- shared pieces of a mutation --------------------------------------------------------
 
     def _idempotency_begin(self, tx: _Transaction, ctx: WriteContext, operation: str) -> MutationResult | None:
-        """Reserve the key in this transaction, or return the original committed result."""
+        """Reserve the key in this transaction, or return the original committed result.
+
+        A replay is authorized like a fresh write before anything stored is returned: the entry
+        must belong to the current derived owner, the record is locked, the in-transaction guard
+        runs against the live policy, and only then are the stored result and the record's current
+        visibility checked. Any refusal before the guard passes is the same generic guard refusal.
+        """
         if ctx.idempotency_key is None:
             return None
         key = (ctx.principal, ctx.scope.tier, ctx.scope.key, ctx.idempotency_key)
         reserved = tx.execute(
-            "idem_reserve", (*key, operation, ctx.request_hash, ctx.now)
+            "idem_reserve", (*key, operation, ctx.request_hash, ctx.now, ctx.owner)
         ).fetchone()
         if reserved:
             return None
@@ -312,13 +321,24 @@ class PostgresMemoryRepository(MemoryRepository):
         existing = tx.execute("idem_read", key).fetchone()
         if existing is None:  # cannot happen: the conflicting row was committed
             raise ConflictError("idempotency_unavailable")
-        stored_operation, stored_hash, status, result, erased = existing
+        stored_operation, stored_hash, status, result, erased, stored_id, stored_owner = existing
+        if stored_owner != ctx.owner:  # includes a row with no recorded owner: fail closed
+            raise GuardRefusedError()
+        record = self._lock(tx, str(stored_id), ctx) if stored_id is not None else None
+        if not ctx.guard():
+            raise GuardRefusedError()
         if erased:
             raise TombstonedError("key_tombstoned")
         if stored_operation != operation or stored_hash != ctx.request_hash:
             raise ConflictError("idempotency_key_reuse")
         if status is None or result is None:
             raise ConflictError("idempotency_unavailable")
+        # Not visible now (retired, erased, expired, above the ceiling): return nothing stored.
+        if (
+            record is None or record[1] != "active" or self._expired(record, ctx.now)
+            or not self._in_class_range(record, ctx)
+        ):
+            raise NotFoundError()
         return MutationResult(status, result, replayed=True)
 
     def _idempotency_complete(self, tx: _Transaction, ctx: WriteContext, memory_id: str, result: MutationResult) -> None:
