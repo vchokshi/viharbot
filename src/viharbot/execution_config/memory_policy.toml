@@ -4,8 +4,9 @@
 #
 # Being named here is NECESSARY, NOT SUFFICIENT. The caller must also present a valid ADR-006 A2
 # assertion, signed by a key in the memory service's own key registry whose entry binds that key to
-# one `sub` and lists the route capability (memory.read or memory.write). Nothing in the
-# application calls the memory service yet, and no registry in any environment names these subs.
+# one `sub` and lists the route capability (memory.read or memory.write). Only Charlie
+# (the synthesis service) calls the memory service, and only where a registry names its key (local
+# Compose); no registry elsewhere names these subs.
 #
 # Fields (all required):
 #   agent_id                  the logical agent identity. Memory is keyed by this, never by a
@@ -72,7 +73,8 @@ max_content_bytes = 16384
 agent_id = "charlie"
 subs = ["charlie"]
 agent_private = ["read", "create", "update", "classify", "retire", "erase"]
-session = ["read", "create", "update", "classify", "retire", "erase"]
+# Charlie is wired to the agent-private tier only (issue #40 PR 2): no session operations.
+session = []
 classification_ceiling = "internal"
 allow_personal_data = false
 default_retention_days = 90

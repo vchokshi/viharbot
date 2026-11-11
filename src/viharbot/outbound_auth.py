@@ -46,10 +46,14 @@ DESTINATION_CAPABILITIES: dict[str, str] = {
     "security": service_auth.SECURITY_CAPABILITY,
     "sage": service_auth.SAGE_CAPABILITY,
     "pixel": service_auth.PIXEL_PROCESS_CAPABILITY,
+    "memory": service_auth.MEMORY_WRITE_CAPABILITY,  # every POST (create, update, ...) writes
 }
 # GET requests use their own table: Pixel's deck downloads are a different route family from its
 # POST /process. A GET to any other destination is not signed (no such route is protected).
-GET_CAPABILITIES: dict[str, str] = {"pixel": service_auth.PIXEL_READ_DECK_CAPABILITY}
+GET_CAPABILITIES: dict[str, str] = {
+    "pixel": service_auth.PIXEL_READ_DECK_CAPABILITY,
+    "memory": service_auth.MEMORY_READ_CAPABILITY,  # get and list
+}
 
 
 class OutboundAuthError(RuntimeError):

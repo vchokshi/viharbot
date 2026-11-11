@@ -10,8 +10,8 @@
 # source. This script does not re-run: to change a password later, ALTER ROLE it.
 set -eu
 
-: "${MEMORY_DB_MIGRATOR_PASSWORD:?MEMORY_DB_MIGRATOR_PASSWORD is required}"
-: "${MEMORY_DB_SERVICE_PASSWORD:?MEMORY_DB_SERVICE_PASSWORD is required}"
+: "${MEMORY_DB_MIGRATOR_PASSWORD:?MEMORY_DB_MIGRATOR_PASSWORD is required (local Compose: run python scripts/dev_service_auth.py)}"
+: "${MEMORY_DB_SERVICE_PASSWORD:?MEMORY_DB_SERVICE_PASSWORD is required (local Compose: run python scripts/dev_service_auth.py)}"
 if [ "${#MEMORY_DB_MIGRATOR_PASSWORD}" -lt 16 ] || [ "${#MEMORY_DB_SERVICE_PASSWORD}" -lt 16 ]; then
     echo "memory database passwords must be at least 16 characters" >&2
     exit 1

@@ -119,7 +119,7 @@ Every model call goes through `build_agent()` (`src/viharbot/model_agent.py`), w
 
 ```bash
 cp .env.example .env     # set LITELLM_API_KEY and aliases your account can use
-python scripts/dev_service_auth.py   # once: development keys for service authentication (data/dev-auth/, gitignored)
+python scripts/dev_service_auth.py   # once: development keys, TLS certificates and database passwords for service authentication and the memory service (data/dev-auth/, gitignored)
 docker compose up --build -d
 ```
 
