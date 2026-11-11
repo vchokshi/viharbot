@@ -680,7 +680,7 @@ def test_compose_turns_authentication_on_and_carries_no_key_material():
     # its own key and subject. It never mounts the web key. Memory itself is off by default.
     synthesis = blocks["synthesis"]
     assert "VIHARBOT_SIGNING_KID: charlie-dev-1" in synthesis and "VIHARBOT_SERVICE_SUBJECT: charlie" in synthesis
-    assert "keys/web.key" not in synthesis and "VIHARBOT_MEMORY_ENABLED: ${VIHARBOT_MEMORY_ENABLED:-off}" in synthesis
+    assert "web.key" not in synthesis and "VIHARBOT_MEMORY_ENABLED" not in synthesis  # no flag exists
     assert "keys/web.key" in blocks["web"] and "keys/web.key" not in blocks["research"]
     assert "data/dev-auth/keys" not in text.replace("./data/dev-auth/keys/", "")  # no directory mount
 

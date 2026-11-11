@@ -154,7 +154,7 @@ Wired:
   and `memory.write` only). `scripts/dev_service_auth.py` writes that registry
   (`data/dev-auth/memory-registry.toml`, public key only) and the private seed
   (`data/dev-auth/memory-client/charlie.key`, mounted into the synthesis container only). The web
-  key is not in the memory registry. Memory itself is off unless `VIHARBOT_MEMORY_ENABLED` is on.
+  key is not in the memory registry. There is no memory feature flag: the client is active where `VIHARBOT_MEMORY_URL` is set (local Compose), and the setup command is the same `python scripts/dev_service_auth.py`.
 
 When minting is on and signing fails, none of these paths falls back to an unsigned request:
 `post_json` raises, Research reports a Security communication failure (502), and `fetch_deck`

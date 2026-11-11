@@ -6,10 +6,11 @@ networks included. For local Docker Compose this script creates what that needs:
 and a server certificate for the hostname `memory` (also `localhost` and 127.0.0.1). The memory
 service serves HTTPS with the server certificate; Charlie's client verifies it against the CA.
 
-    python scripts/dev_memory_tls.py            # create the files if they are not there yet
+    python scripts/dev_service_auth.py          # the one setup command; it calls this script too
+    python scripts/dev_memory_tls.py            # or just the TLS half, if the files are not there yet
     python scripts/dev_memory_tls.py --force    # replace them with a fresh CA and certificate
 
-Written under the output directory (default data/dev-tls, gitignored, never baked into an image):
+Written under the output directory (default data/dev-auth/tls, gitignored, never baked into an image):
 
     ca/ca.pem            the CA certificate (public). Mounted into the synthesis service only.
     server/memory.pem    the server certificate (public). Mounted into the memory service.
@@ -39,7 +40,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
-DEFAULT_OUTPUT = Path("data") / "dev-tls"
+DEFAULT_OUTPUT = Path("data") / "dev-auth" / "tls"
 VALID_DAYS = 30
 SERVER_NAMES = ("memory", "localhost")
 
@@ -114,7 +115,7 @@ def generate(output: Path, *, force: bool = False) -> list[Path]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT, help="default: data/dev-tls")
+    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT, help="default: data/dev-auth/tls")
     parser.add_argument("--force", action="store_true", help="replace the existing CA and certificate")
     args = parser.parse_args(argv)
     try:

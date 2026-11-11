@@ -146,8 +146,9 @@ if _authenticator:
     )
 
 
-# Governed memory (ADR-009, issue #40 PR 2): Charlie only, off unless VIHARBOT_MEMORY_ENABLED is on.
-# None means no memory activity at all and an unchanged request path.
+# Governed memory (ADR-009, issue #40 PR 2): Charlie only, active when VIHARBOT_MEMORY_URL is set.
+# None (no URL, a refused configuration, or another agent) means no memory activity at all and an
+# unchanged request path.
 _memory = charlie_memory.load_client(AGENT_KIND)
 
 

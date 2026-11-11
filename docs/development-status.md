@@ -91,7 +91,7 @@ Assets: `scripts/fact_check_eval/cases.json` (31 cases, 37 claims) and `run.py` 
 ## Known limitations and defects
 
 * Agent services verify signed assertions only where `VIHARBOT_SERVICE_AUTH` is on (local Compose; not Stage), with no delegation grants; the web uses one shared Basic credential.
-* Agent memory (`remember()` JSONL) is written and never read, and is ephemeral on App Platform. The governed memory service is wired for Charlie (synthesis) only, off by default, local Compose only, with development TLS certificates; no other agent has memory, and Stage and Production have no memory service or TLS design ([memory service](memory-service.md)). Issue #40 and its gates are not complete.
+* Agent memory (`remember()` JSONL) is written and never read, and is ephemeral on App Platform. The governed memory service is wired for Charlie (synthesis) only, with no feature flag: it is active where a memory URL is set, which is local Compose (it is part of the default stack, with development TLS certificates and generated throwaway credentials) and not Stage, which has no memory service and no URL; no other agent has memory, and Stage and Production have no memory service or TLS design ([memory service](memory-service.md)). Issue #40 and its gates are not complete.
 * Execution is sequential; cancellation is cooperative and does not stop in-flight model or agent calls.
 * The live stream cannot send a terminal event after a lost connection, and would also end without one if the emitter hit an internal contract error (untested path).
 * The failure code `cancelled` is declared, reserved and never emitted; the emitter refuses it (issue #22, pull request pending merge).

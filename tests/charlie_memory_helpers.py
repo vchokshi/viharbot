@@ -138,8 +138,9 @@ class FakeMemoryHttp:
     """A scripted loopback server. ``status``, ``body``, ``delay`` and ``headers`` shape every reply."""
 
     def __init__(self, status: int = 200, body: bytes = b"{}", delay: float = 0.0,
-                 headers: dict[str, str] | None = None) -> None:
+                 headers: dict[str, str] | None = None, trickle: float = 0.0) -> None:
         self.status, self.body, self.delay, self.extra = status, body, delay, headers or {}
+        self.trickle = trickle  # seconds between single body bytes (headers promise the full length)
         self.seen: list[Seen] = []
         outer = self
 
@@ -154,7 +155,13 @@ class FakeMemoryHttp:
                         self.send_header(name, value)
                     self.send_header("Content-Length", str(len(outer.body)))
                     self.end_headers()
-                    self.wfile.write(outer.body)
+                    if outer.trickle:
+                        for byte in outer.body:
+                            self.wfile.write(bytes([byte]))
+                            self.wfile.flush()
+                            time.sleep(outer.trickle)
+                    else:
+                        self.wfile.write(outer.body)
                 except OSError:
                     pass  # the client gave up (a timeout test)
 
@@ -235,7 +242,7 @@ def standard_result(answer: str = "A normal answer.") -> FinalSynthesis:
 def charlie(monkeypatch, tmp_path: Path, env: dict[str, str] | None = None, *,
             result: FinalSynthesis | None = None, agent_kind: str = "synthesis") -> Charlie:
     """The real synthesis service module, imported fresh with ``env``, and a stub in place of the model."""
-    for name in ("VIHARBOT_SERVICE_AUTH", "VIHARBOT_KEY_REGISTRY", "VIHARBOT_MEMORY_ENABLED", "VIHARBOT_MEMORY_URL",
+    for name in ("VIHARBOT_SERVICE_AUTH", "VIHARBOT_KEY_REGISTRY", "VIHARBOT_MEMORY_URL",
                  "VIHARBOT_MEMORY_CA_FILE", "VIHARBOT_MEMORY_LOCAL_DEV", "VIHARBOT_MEMORY_TIMEOUT_SECONDS",
                  "VIHARBOT_OUTBOUND_AUTH", "VIHARBOT_SIGNING_KID", "VIHARBOT_SERVICE_SUBJECT",
                  "VIHARBOT_SIGNING_KEY_FILE", "VIHARBOT_SIGNING_KEY"):
@@ -267,7 +274,7 @@ def charlie(monkeypatch, tmp_path: Path, env: dict[str, str] | None = None, *,
 def memory_env(url: str, key_file: str, kid: str = "charlie-test", **extra: str) -> dict[str, str]:
     """Charlie's settings for a loopback http memory service (local development configuration)."""
     env = {
-        "VIHARBOT_MEMORY_ENABLED": "on", "VIHARBOT_MEMORY_URL": url, "VIHARBOT_MEMORY_LOCAL_DEV": "on",
+        "VIHARBOT_MEMORY_URL": url, "VIHARBOT_MEMORY_LOCAL_DEV": "on",
         "VIHARBOT_OUTBOUND_AUTH": "on", "VIHARBOT_SIGNING_KID": kid, "VIHARBOT_SIGNING_KEY_FILE": key_file,
         "VIHARBOT_SERVICE_SUBJECT": "charlie", "VIHARBOT_MEMORY_TIMEOUT_SECONDS": "1.5",
     }

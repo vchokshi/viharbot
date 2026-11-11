@@ -27,7 +27,7 @@ from typing import Any, Mapping
 
 from .knowledge.models import NOT_INSTRUCTIONS
 from .memory_client import (
-    ENABLE_ENV,
+    URL_ENV,
     MAX_RECORDS,
     MemoryClient,
     MemoryClientError,
@@ -50,19 +50,22 @@ END = "<<<END UNTRUSTED PRIOR MEMORY>>>"
 def load_client(agent: str, environ: Mapping[str, str] | None = None) -> MemoryClient | None:
     """The client, or None (memory off, or refused with a logged reason). Never raises.
 
-    Only the synthesis service is integrated. The flag is ignored, with one logged line, by any
-    other agent kind, so setting it elsewhere changes nothing.
+    Only the synthesis service is integrated, and there is no flag: it is active whenever a memory
+    URL is configured. With none it is inactive (one logged line). Any other agent kind ignores a
+    configured URL and logs ``agent_not_integrated``.
     """
     env = os.environ if environ is None else environ
     try:
-        if env.get(ENABLE_ENV, "").strip().lower() in ("", "0", "off", "false"):
-            return None
+        configured = bool(env.get(URL_ENV, "").strip())
         if agent != "synthesis":
-            log_event(agent, "-", "startup", "skipped", "agent_not_integrated")
+            if configured:
+                log_event(agent, "-", "startup", "skipped", "agent_not_integrated")
+            return None
+        if not configured:
+            log_event(agent, "-", "startup", "inactive", "no_memory_url")
             return None
         client = client_from_environment(env)
-        if client is not None:
-            log_event(agent, "-", "startup", "ok", "enabled")
+        log_event(agent, "-", "startup", "ok", "enabled")
         return client
     except MemoryClientError as error:
         log_event(agent, "-", "startup", "refused", error.reason)
@@ -85,6 +88,7 @@ def build_metadata(context: Mapping[str, Any], result: Any) -> str:
 
 
 def _safe_text(text: str) -> str:
+    """Applied to every serialized field, as defense in depth on top of the format checks."""
     return text[:MAX_TEXT_CHARS].replace("<<<", "<< <").replace(">>>", "> >>")
 
 
@@ -98,7 +102,8 @@ def render_block(records: list[MemoryRecord]) -> str:
         return ""
     lines = [
         json.dumps(
-            {"memory_id": r.memory_id, "created_at": r.created_at, "text": _safe_text(r.text)},
+            {"memory_id": _safe_text(r.memory_id), "created_at": _safe_text(r.created_at),
+             "text": _safe_text(r.text)},
             separators=(",", ":"),
         )
         for r in records
