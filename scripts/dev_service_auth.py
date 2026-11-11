@@ -6,6 +6,7 @@ creates the keys it needs. Nothing it writes is committed or baked into an image
 output directory (data/dev-auth) is gitignored, and Compose mounts the files at run time.
 
     python scripts/dev_service_auth.py            # create the files if they are not there yet
+                                                  # (exit 0 and no change when all are already in place)
     python scripts/dev_service_auth.py --force    # replace them with fresh keys
 
 Written under the output directory:
@@ -273,8 +274,19 @@ def main(argv: list[str] | None = None) -> int:
             print(f"wrote {path}")
         if added:
             print("dev_service_auth: existing service keys kept; added the missing memory material.")
-        print(f"dev_service_auth: {error}", file=sys.stderr)
-        return 0 if added else 1
+        # Intact (the registry and every main key exist): the documented idempotent no-op, exit 0.
+        # Partial (some main files missing): not safe to continue silently, exit 1 with the way out.
+        targets = [args.output / "registry.toml"] + [args.output / "keys" / f"{stem}.key" for _, stem, _ in IDENTITIES]
+        missing = [path for path in targets if not path.exists()]
+        if missing:
+            print(f"dev_service_auth: {error}", file=sys.stderr)
+            print("dev_service_auth: the key set is incomplete (missing: "
+                  + ", ".join(str(p) for p in missing) + "); use --force to replace it with a fresh set.",
+                  file=sys.stderr)
+            return 1
+        if not added:
+            print("dev_service_auth: already configured; nothing changed.")
+        return 0
     for path in written:
         print(f"wrote {path}")
     print("Development keys, certificates and passwords only. Start the stack with: docker compose up --build -d")

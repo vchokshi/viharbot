@@ -75,7 +75,7 @@ def record(*, lifecycle="active", classification="internal", retention_until=Non
 def context(*, owner="nova", guard=None, now=T0, classes=("public", "internal")):
     return WriteContext(
         principal="nova", owner=owner, scope=Scope("agent", "nova"), request_id="r", now=now,
-        guard=guard or (lambda: True), allowed_classes=classes, idempotency_key="k-0000001", request_hash="h",
+        clock=lambda: now, guard=guard or (lambda: True), allowed_classes=classes, idempotency_key="k-0000001", request_hash="h",
     )
 
 
