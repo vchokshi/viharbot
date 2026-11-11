@@ -38,7 +38,7 @@ CAPABILITY_WORD = {
 NOT_LIVE_STATUS = {
     "atlas": ("planned", "Planned"),
     "orbit": ("support", "Platform support"),
-    "kepler": ("development", "In development"),
+    "kepler": ("development", "Deployed on AWS"),
 }
 
 # Roster order on the page: live chat roles first, then everyone else.
@@ -125,13 +125,14 @@ COPY = {
         "is not deployed and has no infrastructure privileges."),
     "kepler": (
         "First-contributor steward",
-        "Kepler is a governed first-contributor steward being built for AWS AgentCore. It "
+        "Kepler is a governed first-contributor steward deployed on AWS AgentCore. It "
         "monitors first-time contributor pull-request onboarding and status, checks CLA, "
         "third-party rights, commit identity, branch, CI and review evidence, prepares "
         "approved-template follow-up drafts, and alerts the founder.",
         "Kepler does not write code, push branches, merge, deploy, change permissions or post "
-        "contributor-facing messages without approval, and it does not run in the chat. Its "
-        "offline components are built; that is not a live service. See issue #198."),
+        "contributor-facing messages without approval, and it does not run in the chat. It runs "
+        "in the AWS lab account on a six-hourly schedule, reads GitHub read-only and emails the "
+        "founder. See issue #198."),
 }
 
 

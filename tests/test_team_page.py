@@ -92,7 +92,7 @@ def test_no_stale_roster_claims_or_proposed_kepler_coding_agent_remain():
 
 def test_kepler_matches_the_steward_mission_and_is_not_called_live():
     card = CARDS["Kepler"]
-    assert card["status"] == "In development" and "Live" not in card["status"]
+    assert card["status"] == "Deployed on AWS" and "Live" not in card["status"]
     text = card["bio"].lower()
     for need in ("first-contributor steward", "agentcore", "cla", "alerts the founder"):
         assert need in text, need
@@ -126,10 +126,10 @@ def test_status_chips_match_which_agents_are_actually_live():
             assert "Live" not in status, (display, status)  # no live role, so never "Live"
 
 
-def test_the_identities_without_a_live_role_say_planned_support_or_in_development():
+def test_the_identities_without_a_live_role_say_planned_support_or_deployed():
     assert CARDS["Atlas"]["status"] == "Planned"
     assert CARDS["Orbit"]["status"] == "Platform support"
-    assert CARDS["Kepler"]["status"] == "In development"
+    assert CARDS["Kepler"]["status"] == "Deployed on AWS"
 
 
 # the page structure and the link
