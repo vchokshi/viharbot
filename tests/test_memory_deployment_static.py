@@ -28,15 +28,31 @@ def test_postgres_is_private_pinned_persistent_and_healthchecked():
     assert re.search(r"^  memory_pg_data:$", COMPOSE, re.M)  # a named volume, declared
     assert "pg_isready" in postgres and "healthcheck:" in postgres
     assert re.search(r"networks:\n      - agent-network", postgres)
-    assert 'profiles: ["memory"]' in postgres
+    assert "profiles:" not in postgres  # part of the default stack (founder decision, PR 2)
+    # Healthy only once the FINAL server is up: a TCP check, because the temporary init-time server
+    # listens on the unix socket only (a socket check passed too early and memory-migrate failed).
+    assert "pg_isready -h 127.0.0.1" in postgres
 
 
-def test_database_credentials_come_from_the_environment_with_no_defaults_in_source():
-    for service in ("postgres", "memory-migrate", "memory"):
-        for line in block(service).splitlines():
-            if re.search(r"PASSWORD|BOOTSTRAP_USER", line) and "${" in line:
-                assert re.search(r"\$\{[A-Z_]+:-\}", line), line  # an empty fallback, never a value
+def test_database_credentials_come_from_generated_files_with_no_values_or_defaults_in_source():
+    expected = {
+        "postgres": "./data/dev-auth/memory-db/postgres.env",
+        "memory-migrate": "./data/dev-auth/memory-db/migrate.env",
+        "memory": "./data/dev-auth/memory-db/service.env",
+    }
+    for service, path in expected.items():
+        text = block(service)
+        # optional at parse time so `docker compose config` works before setup; absent means empty
+        # passwords, which the services refuse (checked below), so the stack fails closed
+        assert re.search(rf"env_file:\n      - path: {re.escape(path)}\n        required: false", text), service
+        for line in text.splitlines():
+            assert not re.search(r"PASSWORD|BOOTSTRAP", line), (service, line)  # no value, no default
+    assert ":?" not in COMPOSE  # no ${VAR:?} form, which would break `docker compose config`
     assert not re.search(r"PASSWORD: [^$\s\"]", COMPOSE), "a literal password in compose.yaml"
+    # Each role's password is in its own file only: the service never sees the migration role's.
+    script = (ROOT / "scripts" / "dev_service_auth.py").read_text()
+    assert 'MEMORY_MIGRATE_DB_PASSWORD": migrator' in script and 'MEMORY_DB_PASSWORD": service' in script
+    assert "credentials or certificates are missing" in (ROOT / "Dockerfile.memory").read_text()  # fails closed, loudly
 
 
 def test_only_the_memory_service_and_its_migration_job_hold_database_credentials():
@@ -46,9 +62,10 @@ def test_only_the_memory_service_and_its_migration_job_hold_database_credentials
         if re.search(r"MEMORY_(MIGRATE_)?DB_|POSTGRES_|MEMORY_PG_", block(name))
     ]
     assert holders == [], f"an agent or the web tier references the memory database: {holders}"
-    assert "MEMORY_DB_PASSWORD" in block("memory") and "MEMORY_MIGRATE_DB_PASSWORD" not in block("memory")
-    assert "MEMORY_MIGRATE_DB_PASSWORD" in block("memory-migrate") and "MEMORY_DB_PASSWORD" not in block("memory-migrate")
-    assert "POSTGRES_" not in block("memory") and "BOOTSTRAP" not in block("memory")  # no superuser
+    assert "service.env" in block("memory") and "migrate.env" not in block("memory")
+    assert "migrate.env" in block("memory-migrate") and "service.env" not in block("memory-migrate")
+    assert "postgres.env" not in block("memory") + block("memory-migrate")  # no superuser or other role's password
+    assert "POSTGRES_" not in block("memory") and "BOOTSTRAP" not in block("memory")
 
 
 def test_the_memory_service_waits_for_postgres_health_and_the_migration():
@@ -61,9 +78,14 @@ def test_the_memory_service_waits_for_postgres_health_and_the_migration():
     assert 'restart: "no"' in block("memory-migrate")
 
 
-def test_the_memory_stack_is_opt_in_so_the_default_stack_and_ci_are_unchanged():
+def test_the_memory_stack_is_in_the_default_stack_and_nothing_depends_on_it():
     for service in ("postgres", "memory-migrate", "memory"):
-        assert 'profiles: ["memory"]' in block(service)
+        assert "profiles:" not in block(service), service  # a plain `docker compose up` runs it
+    for name in ("web", "research", "security", "fact-check", "source-quality", "privacy-review",
+                 "synthesis", "pixel", "sage", "orchestrator"):
+        # Memory is best effort: no service waits for the memory stack to start (depends_on entries
+        # are indented six spaces).
+        assert not re.findall(r"^      (?:memory|postgres|memory-migrate):", block(name), re.M), name
     web = block("web")
     assert "memory" not in web.lower().replace("memory_dir", "") and "postgres" not in web.lower()
 

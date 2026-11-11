@@ -24,4 +24,6 @@ EXPOSE 8000
 LABEL org.opencontainers.image.title="ViharBot memory service"
 
 USER 1001:1001
-CMD ["sh", "-c", "uvicorn viharbot.memory_service.app:create_app_from_environment --factory --host 0.0.0.0 --port \"$PORT\""]
+# TLS (ADR-009): when MEMORY_TLS_CERT_FILE and MEMORY_TLS_KEY_FILE are set the service serves HTTPS
+# with them; the files are mounted at run time and never baked into the image. Compose sets them.
+CMD ["sh", "-c", "if [ -z \"$MEMORY_DB_PASSWORD\" ] || { [ -n \"$MEMORY_TLS_CERT_FILE\" ] && [ ! -r \"$MEMORY_TLS_CERT_FILE\" ]; }; then echo 'memory: development credentials or certificates are missing. Run python scripts/dev_service_auth.py on the host, then docker compose up -d' >&2; exit 1; fi; exec uvicorn viharbot.memory_service.app:create_app_from_environment --factory --host 0.0.0.0 --port \"$PORT\" ${MEMORY_TLS_CERT_FILE:+--ssl-certfile \"$MEMORY_TLS_CERT_FILE\" --ssl-keyfile \"$MEMORY_TLS_KEY_FILE\"}"]
