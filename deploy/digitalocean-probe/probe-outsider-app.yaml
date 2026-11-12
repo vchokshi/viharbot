@@ -1,0 +1,43 @@
+# THROWAWAY second app for the DigitalOcean probe (deploy/digitalocean-probe/RUNBOOK.md, fact 4).
+# One worker, no public route, no secrets, no database. It tries to reach the FIRST app's internal
+# service by every candidate hostname and public URL and logs one JSON line per run.
+#
+# Fill the two GENERAL values after the first app's results are read (RUNBOOK step 8); they are
+# names and URLs, not secrets. All claims about App Platform behaviour are UNVERIFIED until run.
+name: viharbot-probe-outsider
+region: nyc   # same region as the first app: the harder isolation case
+
+workers:
+  - name: probe-outsider
+    github:
+      repo: vchokshi/viharbot
+      branch: feature/stage-probe-kit
+      deploy_on_push: false
+    dockerfile_path: deploy/digitalocean-probe/Dockerfile.probe
+    source_dir: /
+    instance_size_slug: apps-s-1vcpu-0.5gb
+    instance_count: 1
+    envs:
+      - key: PROBE_ROLE
+        value: outsider
+        scope: RUN_TIME
+        type: GENERAL
+      # Hostnames and private IPs of probe-service to try, host or host:port, comma-separated.
+      # Start with the plain name, then add the forms and addresses the client reported.
+      - key: PROBE_TARGET_HOSTS
+        value: "probe-service,probe-service:8443"
+        scope: RUN_TIME
+        type: GENERAL
+      - key: PROBE_TARGET_PORT
+        value: "8443"
+        scope: RUN_TIME
+        type: GENERAL
+      # The first app's public URL(s), for example the live URL shown in the control panel.
+      - key: PROBE_PUBLIC_URLS
+        value: ""
+        scope: RUN_TIME
+        type: GENERAL
+      - key: PROBE_OUTSIDER_INTERVAL
+        value: "600"
+        scope: RUN_TIME
+        type: GENERAL
