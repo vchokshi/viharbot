@@ -161,7 +161,7 @@ Details, thresholds, required repository settings and known limits: [continuous 
 
 ## Deployment
 
-Pushing to `main` updates source only; nothing deploys automatically.
+For now, pushing to `main` updates source only; nothing deploys automatically, and a deployment happens only when the founder asks for one. Once Stage can run continuously, a push to `main` is intended to deploy to DigitalOcean automatically (see [`AGENTS.md`](AGENTS.md)).
 
 | Target | State |
 |---|---|

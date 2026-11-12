@@ -1,0 +1,58 @@
+# Tells Archie (a separate private application, repository vchokshi/professor-archibald) that this repository's
+# main branch moved, so it can ingest the new commits into its knowledge store.
+#
+# This does NOT deploy ViharBot and does not change anything in this repository. It starts one Cloud Run job
+# in Archie's own Google Cloud project, over keyless Workload Identity Federation, and waits for it to finish.
+# The job is read-only toward ViharBot: it reads public files through the GitHub API. Everything it writes goes
+# into Archie's database as "validated" knowledge that only the founder can approve.
+#
+# Safe to merge only after the Google Cloud side allows this repository (see the pull request that added this
+# file) and the four repository variables below exist. Until then every run fails at the auth step, after the
+# merge, without blocking it.
+name: Notify Archie of a ViharBot merge
+
+# `push` to main fires for every pull request merge and every direct push. It runs only in this repository's own
+# context, so code from a fork pull request never runs with an OIDC token. Do NOT switch this to
+# pull_request_target.
+on:
+  push:
+    branches: [main]
+
+# No checkout step and no write permission: the job reads nothing from this repository.
+permissions:
+  contents: read
+  id-token: write
+
+# Serialize bursts. GitHub keeps one running and one pending run per group and replaces an older pending run
+# with a newer one. That is safe: Archie ingests the whole range from its last processed commit up to the
+# target commit, so a dropped intermediate trigger is covered by the next one.
+concurrency:
+  group: archie-ingest-notify
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    if: github.repository == 'vchokshi/viharbot'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_TRIGGER_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@6a7c903a70c8625ed6700fa299f5ddb4ca6022e9 # v2.1.5
+      # This runs AFTER the merge and cannot block it. A failure turns this workflow red on the merge commit,
+      # which is the signal to look at the Cloud Run job; it does not undo or hold the merge.
+      - name: Execute Archie ingestion for this commit
+        env:
+          TARGET_SHA: ${{ github.sha }}
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ vars.GCP_REGION }}
+        run: |
+          set -euo pipefail
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "unexpected commit id"; exit 1; }
+          gcloud run jobs execute archie-ingest \
+            --project "$GCP_PROJECT_ID" \
+            --region "$GCP_REGION" \
+            --update-env-vars "ARCHIE_TARGET_SHA=$TARGET_SHA,ARCHIE_INGEST_MODE=scheduled" \
+            --wait
