@@ -1,0 +1,165 @@
+# THROWAWAY App Platform spec for the DigitalOcean probe (deploy/digitalocean-probe/RUNBOOK.md).
+# It is run by the founder by hand, for hours, then destroyed. Nothing here is Stage's spec.
+#
+# Placeholders to replace before use (everything else is complete):
+#   PLACEHOLDER_CLUSTER_NAME   name of the throwaway Managed PostgreSQL cluster you created
+#   region: nyc                must be the App Platform region that maps to the cluster's datacenter
+#   branch: feature/stage-probe-kit   the branch (or main, once merged) the image is built from
+#
+# Secrets: every `type: SECRET` entry below has an EMPTY value on purpose. Paste the values in the
+# control panel (RUNBOOK step 5); never write them into this file or commit them.
+# All claims about how App Platform treats this spec are UNVERIFIED until the runbook runs them.
+name: viharbot-probe
+region: nyc
+
+databases:
+  # Binds the existing cluster so its connection variables can be referenced below.
+  # UNVERIFIED: that `db_user: doadmin` is accepted for an attached production cluster.
+  - name: probe-db
+    engine: PG
+    production: true
+    cluster_name: PLACEHOLDER_CLUSTER_NAME
+    db_name: probe
+    db_user: doadmin
+
+# Public ingress: ONLY the client's read-only results page. probe-service has no route.
+ingress:
+  rules:
+    - match:
+        path:
+          prefix: /
+      component:
+        name: probe-client
+
+services:
+  # The echo and TLS service. Internal only: no http_port, no route. Reached by the client by name.
+  - name: probe-service
+    github:
+      repo: vchokshi/viharbot
+      branch: feature/stage-probe-kit
+      deploy_on_push: false
+    dockerfile_path: deploy/digitalocean-probe/Dockerfile.probe
+    source_dir: /
+    instance_size_slug: apps-s-1vcpu-0.5gb
+    instance_count: 1
+    internal_ports:
+      - 8443
+    # TCP check on the internal port (a TLS service cannot answer a plain HTTP check).
+    # UNVERIFIED: that health checks are applied to internal-only services.
+    health_check:
+      port: 8443
+    envs:
+      - key: PROBE_ROLE
+        value: service
+        scope: RUN_TIME
+        type: GENERAL
+      - key: PROBE_LISTEN_PORT
+        value: "8443"
+        scope: RUN_TIME
+        type: GENERAL
+      # Certificate and key from gen_probe_cert.py (the .b64 files). Encrypted variables.
+      - key: PROBE_TLS_CERT_PEM
+        value: ""
+        scope: RUN_TIME
+        type: SECRET
+      - key: PROBE_TLS_KEY_PEM
+        value: ""
+        scope: RUN_TIME
+        type: SECRET
+
+  # The second component: runs the comparison checks, reads the marker, serves /results.
+  - name: probe-client
+    github:
+      repo: vchokshi/viharbot
+      branch: feature/stage-probe-kit
+      deploy_on_push: false
+    dockerfile_path: deploy/digitalocean-probe/Dockerfile.probe
+    source_dir: /
+    instance_size_slug: apps-s-1vcpu-0.5gb
+    instance_count: 1
+    http_port: 8080
+    health_check:
+      http_path: /health
+      port: 8080
+    envs:
+      - key: PROBE_ROLE
+        value: client
+        scope: RUN_TIME
+        type: GENERAL
+      # Candidate internal hostnames for probe-service (comma-separated, host or host:port). The
+      # client also adds the app's DNS search domains and any non-sensitive *_URL / *_DOMAIN /
+      # *_HOSTNAME variables it finds. Extend this list freely; it is only a list of names to try.
+      - key: PROBE_CANDIDATE_HOSTS
+        value: "probe-service,probe-service:8443"
+        scope: RUN_TIME
+        type: GENERAL
+      # OPTIONAL, UNVERIFIED: if App Platform offers a private-URL bindable variable for a
+      # component, add it here as a GENERAL variable, for example
+      #   - key: PROBE_SERVICE_PRIVATE_URL
+      #     value: ${probe-service.PRIVATE_URL}
+      # Check the current DigitalOcean docs for the exact variable name first; a wrong name may
+      # make the spec invalid. The client reads any variable ending in _URL as a candidate.
+      - key: PROBE_STARTUP_WAIT_SECONDS
+        value: "180"
+        scope: RUN_TIME
+        type: GENERAL
+      # The same certificate as the service, pasted again: the ONLY certificate the client trusts.
+      - key: PROBE_TLS_CA_PEM
+        value: ""
+        scope: RUN_TIME
+        type: SECRET
+      # Throwaway bearer token that protects /results. Make up a long random string.
+      - key: PROBE_RESULTS_TOKEN
+        value: ""
+        scope: RUN_TIME
+        type: SECRET
+      # Database variables, for the ordering check (does the job's marker row exist?).
+      - key: PROBE_DB_URL
+        value: ${probe-db.DATABASE_URL}
+        scope: RUN_TIME
+        type: GENERAL
+
+jobs:
+  # Runs before every deploy. Reports, bootstraps roles in a scratch schema, writes the marker.
+  # Set PROBE_JOB_FAIL to "true" (a second deployment) to confirm a failing job blocks the deploy.
+  - name: probe-job
+    kind: PRE_DEPLOY
+    github:
+      repo: vchokshi/viharbot
+      branch: feature/stage-probe-kit
+    dockerfile_path: deploy/digitalocean-probe/Dockerfile.probe
+    source_dir: /
+    instance_size_slug: apps-s-1vcpu-0.5gb
+    instance_count: 1
+    envs:
+      - key: PROBE_ROLE
+        value: job
+        scope: RUN_TIME
+        type: GENERAL
+      - key: PROBE_JOB_FAIL
+        value: "false"
+        scope: RUN_TIME
+        type: GENERAL
+      - key: PROBE_DB_URL
+        value: ${probe-db.DATABASE_URL}
+        scope: RUN_TIME
+        type: GENERAL
+      # Non-secret shape variables, so the report can show which bindable names exist.
+      - key: PROBE_DB_HOSTNAME
+        value: ${probe-db.HOSTNAME}
+        scope: RUN_TIME
+        type: GENERAL
+      - key: PROBE_DB_PORT
+        value: ${probe-db.PORT}
+        scope: RUN_TIME
+        type: GENERAL
+      - key: PROBE_DB_USERNAME
+        value: ${probe-db.USERNAME}
+        scope: RUN_TIME
+        type: GENERAL
+      # The cluster CA certificate downloaded from the control panel (RUNBOOK step 4), pasted as
+      # an encrypted variable. Used for the verify-full check.
+      - key: PROBE_DB_CA_PEM
+        value: ""
+        scope: RUN_TIME
+        type: SECRET
