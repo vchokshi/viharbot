@@ -8,8 +8,12 @@ Rules enforced here:
 * There is no on/off flag. The client is active for the synthesis service whenever
   ``VIHARBOT_MEMORY_URL`` is set. With no URL memory is inactive for that run (not an error, logged
   once), which is the case on Stage: it has no memory service and no URL.
-* Transport (ADR-009): ``https://`` is accepted for any host (verified against the CA in
-  ``VIHARBOT_MEMORY_CA_FILE`` when set, otherwise the system trust store). ``http://`` is accepted
+* Transport (ADR-009): ``https://`` is accepted for any host, verified against the CA in
+  ``VIHARBOT_MEMORY_CA_FILE`` (a path, for local Compose) or the single pinned certificate in
+  ``VIHARBOT_MEMORY_CA_PEM`` (Stage: an encrypted variable), otherwise the system trust store. With
+  the PEM variable the one certificate is the ONLY trust anchor (no system roots) and hostname
+  verification stays on. If both variables are set they must name the same certificate, otherwise
+  the client refuses to start (``ca_conflict``): neither silently wins. ``http://`` is accepted
   only for a loopback host AND only with ``VIHARBOT_MEMORY_LOCAL_DEV`` on. A plain-HTTP URL to any
   other host, including a private IP, refuses to start the client. Redirects are never followed and
   environment proxies are never used, so a token cannot reach another origin.
@@ -29,6 +33,8 @@ Rules enforced here:
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import http.client
 import ipaddress
@@ -50,6 +56,7 @@ logger = logging.getLogger("memory_client")
 
 URL_ENV = "VIHARBOT_MEMORY_URL"
 CA_FILE_ENV = "VIHARBOT_MEMORY_CA_FILE"
+CA_PEM_ENV = "VIHARBOT_MEMORY_CA_PEM"
 LOCAL_DEV_ENV = "VIHARBOT_MEMORY_LOCAL_DEV"
 TIMEOUT_ENV = "VIHARBOT_MEMORY_TIMEOUT_SECONDS"
 
@@ -111,6 +118,67 @@ def validate_url(url: str, *, local_dev: bool) -> str:
         # loopback unless this is explicitly a local-development configuration.
         raise MemoryClientError("insecure_transport")
     return f"{parts.scheme}://{parts.netloc}"
+
+
+_PEM_RE = re.compile(r"(-----BEGIN ([A-Z0-9 ]+)-----)\s*(.*?)\s*(-----END \2-----)", re.S)
+
+
+def decode_ca_pem(value: str) -> str:
+    """The one trusted certificate as normalized PEM text, from an environment variable's value.
+
+    Accepted forms: base64 of the PEM, the PEM as pasted, the PEM with literal backslash-n
+    sequences, and the PEM with its newlines flattened to spaces. Exactly one CERTIFICATE block is
+    required. Any defect raises ``MemoryClientError("bad_ca_pem")``; the value is never put in the
+    error, so it cannot reach a log.
+    """
+    text = value.strip()
+    try:
+        if "-----BEGIN" not in text:
+            text = base64.b64decode(re.sub(r"\s+", "", text), validate=True).decode("ascii")
+        text = text.replace("\\n", "\n")
+        blocks = _PEM_RE.findall(text)
+        if len(blocks) != 1 or blocks[0][1] != "CERTIFICATE":
+            raise ValueError
+        body = re.sub(r"\s+", "", blocks[0][2])
+        wrapped = "\n".join(body[i:i + 64] for i in range(0, len(body), 64))
+        pem = f"{blocks[0][0]}\n{wrapped}\n{blocks[0][3]}\n"
+        ssl.PEM_cert_to_DER_cert(pem)  # the base64 body must decode
+    except (binascii.Error, UnicodeDecodeError, ValueError):
+        raise MemoryClientError("bad_ca_pem") from None
+    return pem
+
+
+def _context_from_pem(pem: str) -> ssl.SSLContext:
+    """Trust exactly this certificate: ``cadata`` replaces, never extends, the system roots."""
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)  # verify_mode CERT_REQUIRED, check_hostname on
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    context.load_verify_locations(cadata=pem)
+    return context
+
+
+def _tls_context(env: Mapping[str, str]) -> ssl.SSLContext:
+    file_path = env.get(CA_FILE_ENV, "").strip()
+    pem_value = env.get(CA_PEM_ENV, "").strip()
+    if not pem_value:
+        try:
+            return ssl.create_default_context(cafile=file_path or None)
+        except (OSError, ssl.SSLError, ValueError):
+            raise MemoryClientError("bad_ca_file") from None
+    pem = decode_ca_pem(pem_value)
+    if file_path:
+        # Both are set: they must be the same single certificate. A mismatch could mean one of the
+        # two is stale or planted, so memory stays off rather than guess which one to trust.
+        try:
+            with open(file_path, encoding="ascii") as handle:
+                from_file = decode_ca_pem(handle.read())
+        except (OSError, UnicodeDecodeError, MemoryClientError):
+            raise MemoryClientError("bad_ca_file") from None
+        if from_file != pem:
+            raise MemoryClientError("ca_conflict")
+    try:
+        return _context_from_pem(pem)
+    except (ssl.SSLError, ValueError):
+        raise MemoryClientError("bad_ca_pem") from None
 
 
 class MemoryClient:
@@ -348,10 +416,7 @@ def client_from_environment(environ: Mapping[str, str] | None = None) -> MemoryC
         raise MemoryClientError("wrong_subject")
     context = None
     if base.startswith("https://"):
-        try:
-            context = ssl.create_default_context(cafile=env.get(CA_FILE_ENV, "").strip() or None)
-        except (OSError, ssl.SSLError, ValueError):
-            raise MemoryClientError("bad_ca_file") from None
+        context = _tls_context(env)
     try:
         timeout = float(env.get(TIMEOUT_ENV, "") or DEFAULT_TIMEOUT_SECONDS)
     except ValueError:
