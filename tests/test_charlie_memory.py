@@ -1082,4 +1082,4 @@ def test_charlie_writes_then_the_memory_service_restarts_then_a_later_request_re
             assert '"schema\\":\\"charlie.synthesis.meta/1\\"' in block
             assert later.build_kwargs[0].keys() == {"model_alias", "system_prompt"}
     finally:
-        drop_database(admin, database.name)
+        drop_database(admin, database)

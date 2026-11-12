@@ -1,6 +1,7 @@
 """Memory service contract tests against a real PostgreSQL (ADR-009, issue #40, PR 1).
 
 Selected by VIHARBOT_MEMORY_TEST_PG_ADMIN_DSN; skipped with a clear message when it is not set.
+See the tests/memory_helpers.py docstring for the remote-cluster guard and the other variables.
 They decide the isolation question: everything here runs at READ COMMITTED with explicit row locks
 and conditional updates, and every interleaving is forced deterministically by pausing a writer
 inside its transaction (the ``guard`` runs after the row lock and before the write).
@@ -32,6 +33,7 @@ from memory_helpers import (
     drop_database,
     only_policy,
     provision_database,
+    skip_on_remote_cluster,
     session_path,
     truncate_all,
     update_body,
@@ -73,7 +75,7 @@ def database():
     admin = admin_dsn_or_skip()
     db = provision_database(admin)
     yield db
-    drop_database(admin, db.name)
+    drop_database(admin, db)
 
 
 @pytest.fixture
@@ -175,6 +177,7 @@ def test_write_then_restart_then_retrieve_in_a_new_session(database, tmp_path):
 
 @pytest.mark.skipif(not os.environ.get(CONTAINER_ENV), reason=f"{CONTAINER_ENV} is not set: no database container to restart")
 def test_records_survive_a_database_container_restart(database, world):
+    skip_on_remote_cluster("a managed cluster cannot be restarted from here (needs a local Docker container); the Stage drill covers it")
     created = world.call("nova", "POST", agent_path(), create_body("survives a restart"))
     memory_id = created.json()["memory_id"]
     subprocess.run(["docker", "restart", os.environ[CONTAINER_ENV]], check=True, capture_output=True)
@@ -1048,12 +1051,13 @@ def test_the_service_role_has_no_ddl_truncate_or_migration_access(database):
         assert conn.execute("SELECT count(*) FROM memory.records").fetchone() is not None
     with psycopg.connect(database.admin_dsn, autocommit=True) as admin:
         assert admin.execute(
-            "SELECT rolsuper, rolcreatedb, rolcreaterole FROM pg_roles WHERE rolname = 'memory_service'"
+            "SELECT rolsuper, rolcreatedb, rolcreaterole FROM pg_roles WHERE rolname = %s",
+            (database.service_role,),
         ).fetchone() == (False, False, False)
 
 
 def test_migrations_apply_once_and_a_changed_applied_file_is_refused(database, tmp_path):
-    assert migrate(database.migrator_dsn) == []  # already applied by the fixture: up to date
+    assert migrate(database.migrator_dsn, database.migrations_dir) == []  # already applied by the fixture: up to date
     changed = tmp_path / "0001_memory_schema.sql"
     changed.write_text("SELECT 1;\n")
     with pytest.raises(MigrationError):
@@ -1269,8 +1273,8 @@ def test_a_database_with_pre_migration_idempotency_rows_still_replays_for_its_or
                     (principal, principal, key, "" if erased else "h", mid, None if erased else 201,
                      None if erased else result, erased, T0),
                 )
-        assert migrate(db.migrator_dsn) == ["0002_idempotency_owner.sql"]
-        assert migrate(db.migrator_dsn) == []  # the runner applies it once
+        assert migrate(db.migrator_dsn, db.migrations_dir) == ["0002_idempotency_owner.sql"]
+        assert migrate(db.migrator_dsn, db.migrations_dir) == []  # the runner applies it once
         repository = PostgresMemoryRepository(db.service_dsn)
         replay = repository.create(new_record(live), ctx(key=keys["live"]))  # the original owner
         assert (replay.status, replay.replayed, replay.body["memory_id"]) == (201, True, live)
@@ -1284,4 +1288,4 @@ def test_a_database_with_pre_migration_idempotency_rows_still_replays_for_its_or
         with pytest.raises(GuardRefusedError):  # no recoverable owner: fail closed
             repository.create(new_record(orphan), ctx(key=keys["orphan"]))
     finally:
-        drop_database(admin, db.name)
+        drop_database(admin, db)
