@@ -524,6 +524,26 @@ def test_every_read_write_and_denial_is_audited_and_logs_hold_no_content(world, 
     assert "BEGIN" not in everything and "INSERT" not in everything  # no statements or parameters
 
 
+def test_the_list_audit_line_counts_the_records_a_real_database_returned(world, caplog):
+    caplog.set_level(logging.DEBUG)
+    formatter = JsonFormatter()
+
+    def list_count(request_id):
+        assert world.call("nova", "GET", agent_path(), request_id=request_id).status_code == 200
+        lines = [json.loads(formatter.format(r)) for r in caplog.records if r.name == "memory_audit"]
+        (line,) = [x for x in lines if x["request_id"] == request_id]
+        assert (line["operation"], line["outcome"]) == ("list", "ok")
+        return line["count"]
+
+    assert list_count("req-count-0") == 0
+    for _ in range(2):
+        assert world.call("nova", "POST", agent_path(), create_body(CANARY)).status_code == 201
+    assert list_count("req-count-2") == 2
+    lines = [json.loads(formatter.format(r)) for r in caplog.records if r.name == "memory_audit"]
+    assert [x["operation"] for x in lines if "count" in x] == ["list", "list"]
+    assert CANARY not in "\n".join(formatter.format(r) for r in caplog.records)
+
+
 # --- the interleavings that decide the isolation level ---------------------------------------
 
 
