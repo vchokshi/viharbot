@@ -9,6 +9,8 @@ At startup it, in a background thread:
      received with what was sent (method, raw target, body hash and length);
   3. records, at the first health check and at the first non-health request, whether the job's
      marker row exists (the pre-deploy ordering test).
+  4. (retest R3) on every GET /results, reads the marker table afresh and reports it as
+     `marker_now`: counts of rows by (job tag, job mode) and the ordered attempts.
 It then logs ONE JSON summary line and serves it read-only at GET /results (bearer token
 PROBE_RESULTS_TOKEN; without a token the endpoint answers 503, never open). GET /health is open.
 
@@ -349,6 +351,20 @@ class OrderingObserver:
         except DbError as exc:
             record["marker"] = {"found": None, "error": exc.message, "sqlstate": exc.sqlstate}
 
+    def read_now(self) -> dict[str, Any]:
+        """A fresh read of the marker table at call time (retest R3): counts of rows by (tag,
+        mode) and the ordered attempts. Read-only; never raises."""
+        if self._gateway is None:
+            return {"found": None, "note": "no database configured"}
+        try:
+            session = self._gateway.connect(sslmode=self._sslmode)
+            try:
+                return {"at": utc_now_iso(), **read_marker(session)}
+            finally:
+                session.close()
+        except DbError as exc:
+            return {"found": None, "error": scrub(exc.message), "sqlstate": exc.sqlstate}
+
 
 # ---------------------------------------------------------------------------- the whole run
 
@@ -469,6 +485,7 @@ def make_handler(state: ProbeState, observer: OrderingObserver, token: str | Non
                 return
             snapshot = state.snapshot()
             snapshot["ordering"] = observer.observations
+            snapshot["marker_now"] = observer.read_now()
             self._json(200, snapshot)
 
         def _refuse(self) -> None:
