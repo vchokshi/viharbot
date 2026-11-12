@@ -66,6 +66,7 @@ class JsonFormatter(logging.Formatter):
             "operation",
             "outcome",
             "memory_id",
+            "count",  # a successful memory list: how many records, never which
             # Epic #157: persona attribution (Phase B) and peer-review records (Phase C2).
             # Identifiers, counts and fixed codes only; never persona text or review content.
             "persona_id",
