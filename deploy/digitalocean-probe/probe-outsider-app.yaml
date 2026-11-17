@@ -1,5 +1,5 @@
 # THROWAWAY second app for the DigitalOcean probe (deploy/digitalocean-probe/RUNBOOK.md, fact 4).
-# One worker, no public route, no secrets, no database. It tries to reach the FIRST app's internal
+# One worker, no public route, no database binding. It tries to reach the FIRST app's internal
 # service by every candidate hostname and public URL and logs one JSON line per run.
 #
 # Fill the two GENERAL values after the first app's results are read (RUNBOOK step 8); they are
@@ -11,7 +11,7 @@ workers:
   - name: probe-outsider
     github:
       repo: vchokshi/viharbot
-      branch: feature/stage-probe-kit
+      branch: feature/stage-probe-retest
       deploy_on_push: false
     dockerfile_path: deploy/digitalocean-probe/Dockerfile.probe
     source_dir: /
@@ -39,5 +39,37 @@ workers:
         type: GENERAL
       - key: PROBE_OUTSIDER_INTERVAL
         value: "600"
+        scope: RUN_TIME
+        type: GENERAL
+      # Retest R1 (RUNBOOK section 8b): the database denial check. Leave the secrets empty to skip
+      # it. This app has no database binding and is never a trusted source of the cluster. Use a
+      # throwaway database user, not a real credential; paste the values in the control panel.
+      # For the retest set PROBE_OUTSIDER_INTERVAL to "60" in your copy so the log shows the change
+      # when the trusted-source rule is added.
+      - key: PROBE_OUTSIDER_DB_HOST
+        value: ""
+        scope: RUN_TIME
+        type: SECRET
+      - key: PROBE_OUTSIDER_DB_USER
+        value: ""
+        scope: RUN_TIME
+        type: SECRET
+      - key: PROBE_OUTSIDER_DB_PASSWORD
+        value: ""
+        scope: RUN_TIME
+        type: SECRET
+      # Optional: the cluster CA (public). With it the login stage uses verify-full.
+      - key: PROBE_OUTSIDER_DB_CA_PEM
+        value: ""
+        scope: RUN_TIME
+        type: SECRET
+      - key: PROBE_OUTSIDER_DB_PORT
+        value: "25060"
+        scope: RUN_TIME
+        type: GENERAL
+      # `defaultdb`, not `probe`: the probe job revokes PUBLIC CONNECT on `probe`, which would look
+      # like a refusal that the trusted-source rule did not cause.
+      - key: PROBE_OUTSIDER_DB_NAME
+        value: defaultdb
         scope: RUN_TIME
         type: GENERAL
