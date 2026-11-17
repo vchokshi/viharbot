@@ -227,11 +227,35 @@ def create_app(
     return app
 
 
-def conninfo_from_environment(environ: Mapping[str, str], prefix: str = "MEMORY_DB_") -> str:
+def _is_loopback_host(host: str) -> bool:
+    import ipaddress
+
+    if host.lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host.strip("[]")).is_loopback
+    except ValueError:
+        return False
+
+
+def conninfo_from_environment(
+    environ: Mapping[str, str],
+    prefix: str = "MEMORY_DB_",
+    *,
+    sslrootcert: str | None = None,
+    strict_tls: bool = False,
+) -> str:
     """A libpq connection string from MEMORY_DB_* settings. Nothing has a default but the port.
 
     The password is only ever read from the environment (or a mounted secret file) and is never
     logged. The service role and the migration role use the same names with different prefixes.
+
+    ``strict_tls`` is for the Stage launcher only (``stage_entry``, ``MEMORY_STAGE_ROLE=serve``);
+    Compose never sets it, so its unencrypted private-network connection is unchanged. With it the
+    mode is forced to ``verify-full`` whatever ``*_SSLMODE`` says, ``sslrootcert`` (a file path
+    written by the launcher) is passed to libpq, and a host that is not loopback is refused unless
+    a CA file was given, because ``verify-full`` cannot be satisfied without one. A loopback host
+    without a CA keeps the configured mode (local development only).
     """
     from psycopg.conninfo import make_conninfo
 
@@ -241,18 +265,35 @@ def conninfo_from_environment(environ: Mapping[str, str], prefix: str = "MEMORY_
             raise ServiceAuthConfigError(f"{prefix}{name} is required")
         return value
 
+    host = need("HOST")
+    sslmode = environ.get(prefix + "SSLMODE", "prefer").strip() or "prefer"
+    extra: dict[str, str] = {}
+    if strict_tls:
+        if sslrootcert:
+            sslmode = "verify-full"
+            extra["sslrootcert"] = sslrootcert
+        elif not _is_loopback_host(host):
+            raise ServiceAuthConfigError(
+                f"{prefix}HOST is not loopback, so sslmode verify-full with a CA file is required "
+                "(set MEMORY_DB_CA_PEM)"
+            )
     return make_conninfo(
-        host=need("HOST"),
+        host=host,
         port=environ.get(prefix + "PORT", "5432").strip() or "5432",
         dbname=need("NAME"),
         user=need("USER"),
         password=need("PASSWORD"),
-        sslmode=environ.get(prefix + "SSLMODE", "prefer").strip() or "prefer",
+        sslmode=sslmode,
+        **extra,
     )
 
 
-def create_app_from_environment(environ: Mapping[str, str] | None = None) -> FastAPI:
-    """Production entry point (``uvicorn --factory``). Refuses to start without a key registry."""
+def create_app_from_environment(environ: Mapping[str, str] | None = None, *, conninfo: str | None = None) -> FastAPI:
+    """Production entry point (``uvicorn --factory``). Refuses to start without a key registry.
+
+    ``conninfo`` is passed only by the Stage launcher, which has already built a strict TLS
+    connection string; the ``uvicorn --factory`` path (Compose) never passes it.
+    """
     env = os.environ if environ is None else environ
     configure_logging()
     registry_path = env.get("VIHARBOT_KEY_REGISTRY", "").strip()
@@ -263,7 +304,7 @@ def create_app_from_environment(environ: Mapping[str, str] | None = None) -> Fas
     authenticator = ServiceAuthenticator(audience=AUDIENCE, registry=registry)
     policy_file = env.get("MEMORY_POLICY_FILE", "").strip()
     policies = PolicyProvider.from_file(policy_file) if policy_file else PolicyProvider.from_file()
-    repository = PostgresMemoryRepository(conninfo_from_environment(env))
+    repository = PostgresMemoryRepository(conninfo if conninfo is not None else conninfo_from_environment(env))
     app = create_app(repository=repository, authenticator=authenticator, policies=policies)
     try:
         finished = app.state.service.complete_pending_erasures()
