@@ -13,7 +13,7 @@
 # authentication of its own. Never publish its port beyond AgentCore; a local run binds loopback.
 #
 # Build:  docker buildx build --platform linux/arm64 -f Dockerfile.kepler -t viharbot-kepler:local --load .
-FROM python:3.12-slim-bookworm AS build
+FROM python:3.15-slim-bookworm AS build
 
 # AgentCore Runtime runs linux/arm64 only. Fail the build loudly on any other target instead of
 # producing an image that cannot run there (or silently emulating on the wrong host).
@@ -24,7 +24,7 @@ WORKDIR /build
 COPY requirements-kepler.txt ./
 RUN python -m pip install --no-cache-dir --prefix=/install -r requirements-kepler.txt
 
-FROM python:3.12-slim-bookworm AS runtime
+FROM python:3.15-slim-bookworm AS runtime
 
 ARG TARGETARCH
 RUN test "${TARGETARCH}" = "arm64" || { echo "Dockerfile.kepler must be built with --platform linux/arm64" >&2; exit 1; }
