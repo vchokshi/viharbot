@@ -255,10 +255,16 @@ def test_an_agent_key_with_a_non_memory_capability_is_refused_by_the_memory_serv
 
 
 def _stage_blocks() -> dict[str, str]:
+    """Component blocks of the `services:` section only (`databases:` and `jobs:` are other sections)."""
     text = (ROOT / "deploy" / "digitalocean" / "app.yaml").read_text()
-    parts = re.split(r"(?m)^  - name: ([a-z-]+)\s*$", text.split("\nservices:\n", 1)[1])
-    return {parts[i]: parts[i + 1] for i in range(0, len(parts) - 1, 2)} if len(parts) % 2 == 0 else {
-        parts[i]: parts[i + 1] for i in range(1, len(parts) - 1, 2)}
+    text = re.sub(r"(?m)^\s*#.*$", "", text)  # comments (which may mention http_port) are not config
+    section = text.split("\nservices:\n", 1)[1]
+    section = re.split(r"(?m)^[a-z_]+:\s*$", section, maxsplit=1)[0]  # stop at the next top-level key
+    parts = re.split(r"(?m)^  - name: ([a-z-]+)\s*$", section)
+    return {parts[i]: parts[i + 1] for i in range(1, len(parts) - 1, 2)}
+
+
+OPTIONAL_MEMORY_COMPONENTS = {"memory", "memory-bootstrap"}
 
 
 STAGE_AGENTS = ("research", "security", "fact-check", "source-quality", "privacy-review", "synthesis")
@@ -266,7 +272,9 @@ STAGE_AGENTS = ("research", "security", "fact-check", "source-quality", "privacy
 
 def test_every_stage_agent_is_its_own_service_with_its_own_image_health_and_no_shared_state():
     blocks = _stage_blocks()
-    assert set(blocks) == {"web", *STAGE_AGENTS}
+    required = {"web", *STAGE_AGENTS}
+    assert required <= set(blocks)
+    assert set(blocks) - required <= OPTIONAL_MEMORY_COMPONENTS  # present only with the memory spec
     dockerfiles = []
     for name in STAGE_AGENTS:
         body = blocks[name]
@@ -280,6 +288,18 @@ def test_every_stage_agent_is_its_own_service_with_its_own_image_health_and_no_s
     assert "deploy_on_push: false" in blocks["web"]
     # research and security have their own image; the four specialists share one by design.
     assert dockerfiles[0] != dockerfiles[1] and len(set(dockerfiles[2:])) == 1
+
+
+def test_when_memory_is_in_the_stage_spec_only_synthesis_carries_the_memory_client_settings():
+    blocks = _stage_blocks()
+    text = (ROOT / "deploy" / "digitalocean" / "app.yaml").read_text()
+    for name in ("web", "research", "security", "fact-check", "source-quality", "privacy-review"):
+        assert not re.search(r"key: VIHARBOT_(MEMORY|SIGNING|OUTBOUND)", blocks[name]), name
+    if "VIHARBOT_MEMORY_URL" in text:
+        assert "key: VIHARBOT_MEMORY_URL" in blocks["synthesis"]
+        assert "VIHARBOT_SIGNING_KEY" in blocks["synthesis"]
+    for name in OPTIONAL_MEMORY_COMPONENTS & set(blocks):
+        assert "http_port" not in blocks[name] and "routes:" not in blocks[name], name  # never public
 
 
 def test_the_web_service_routes_to_each_stage_agent_by_internal_name():
