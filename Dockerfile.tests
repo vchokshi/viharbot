@@ -7,7 +7,7 @@
 # Bookworm matches the Python base below, so the binary's glibc requirement is met.
 FROM node:24-bookworm-slim AS node
 
-FROM python:3.12-slim-bookworm
+FROM python:3.15-slim-bookworm
 
 # git: the suite checks `git check-ignore .env` and builds throwaway repositories under tmp_path.
 RUN apt-get update \

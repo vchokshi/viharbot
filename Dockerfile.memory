@@ -2,14 +2,14 @@
 # Memory service and its migration job (ADR-009, issue #40). One image, two commands: the service
 # (default) and `python -m viharbot.memory_service.migrate` (run by the memory-migrate job with the
 # migration role). It is the only image that installs the PostgreSQL driver (the `memory` extra).
-FROM python:3.12-slim-bookworm AS build
+FROM python:3.15-slim-bookworm AS build
 
 WORKDIR /build
 COPY pyproject.toml README.md ./
 COPY src ./src
 RUN python -m pip install --no-cache-dir --prefix=/install ".[memory]"
 
-FROM python:3.12-slim-bookworm AS runtime
+FROM python:3.15-slim-bookworm AS runtime
 WORKDIR /app
 
 RUN addgroup --system --gid 1001 appgroup \
