@@ -48,6 +48,7 @@ from typing import Any, Callable, Mapping
 
 ROLE_ENV = "MEMORY_STAGE_ROLE"
 SERVE_ROLE = "serve"
+BOOTSTRAP_ROLE = "bootstrap"  # the PRE_DEPLOY job, see stage_bootstrap.py
 DEFAULT_PORT = 8443  # design 2.3; the image sets PORT=8000, so the Stage spec must set PORT=8443
 EXPIRY_WARNING_DAYS = 30
 
@@ -323,10 +324,15 @@ def run_serve(
 def main(environ: Mapping[str, str] | None = None, **kwargs: Any) -> int:
     env = os.environ if environ is None else environ
     role = (env.get(ROLE_ENV) or "").strip()
-    if role != SERVE_ROLE:
-        print(f"memory-stage: {ROLE_ENV} must be '{SERVE_ROLE}' to use this launcher", file=sys.stderr)
+    if role not in (SERVE_ROLE, BOOTSTRAP_ROLE):
+        print(f"memory-stage: {ROLE_ENV} must be '{SERVE_ROLE}' or '{BOOTSTRAP_ROLE}' to use this launcher",
+              file=sys.stderr)
         return EXIT_BAD_ROLE
     try:
+        if role == BOOTSTRAP_ROLE:
+            from .stage_bootstrap import run_bootstrap
+
+            return run_bootstrap(env, **kwargs)
         return run_serve(env, **kwargs)
     except StageConfigError as error:
         print(f"memory-stage: refusing to start: {error}", file=sys.stderr)
