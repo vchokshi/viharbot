@@ -2,7 +2,7 @@
 
 Scope: the governed memory service (ADR-009), its client in Charlie, and the proposed Stage memory window (`docs/stage-memory-design.md`, `docs/stage-memory-runbook.md`). Authority: the code on `main` at `a84f203`; ADR-006, `docs/service-authentication.md` and `src/viharbot/execution_config/memory_policy.toml` were read as the design intent and checked against the code. This is a test-and-review report. It changes no production code, deploys nothing, and calls no model, gateway or cloud API.
 
-How to read the matrix: **PASS** means the test or check was executed in this review and passed (offline suite: 4085 passed, 92 skipped; 123 of those are the new tests). **NOT RUN** means it was not executed here, with the reason. Nothing is marked PASS on the strength of a document alone. Test names are in `tests/test_memory_security_matrix.py` (M), `tests/test_memory_security_transport.py` (T) and `tests/test_memory_security_logs.py` (L); "suite" means an existing test that also ran in the full offline run.
+How to read the matrix: **PASS** means the test or check was executed in this review and passed (offline suite: 4085 passed, 92 skipped; 123 of those are the new tests on main alone; a 124th covers the bootstrap job once it is merged). **NOT RUN** means it was not executed here, with the reason. Nothing is marked PASS on the strength of a document alone. Test names are in `tests/test_memory_security_matrix.py` (M), `tests/test_memory_security_transport.py` (T) and `tests/test_memory_security_logs.py` (L); "suite" means an existing test that also ran in the full offline run.
 
 Run note for contributors: in a git worktree the editable install points at the main checkout, so run `PYTHONPATH=src python -m pytest` to test the worktree's own code.
 
@@ -118,7 +118,8 @@ Run note for contributors: in a git worktree the editable install points at the 
 | 61 | A key pasted into the CA variable, and the reverse, is not echoed | L `test_a_ca_or_key_pasted_into_the_wrong_variable_is_not_echoed` | PASS |
 | 62 | Static scan of every logging call on the memory path: constant messages, no `exc_info` or traceback, no content-like `extra` keys; `print` calls limited to fixed text, class names or JSON | L `test_logging_calls_use_constant_messages_and_never_exception_text_or_tracebacks`, `test_print_calls_in_the_memory_path_are_fixed_text_class_names_or_json_only`, `test_the_only_exception_text_that_is_logged_is_policy_config_text_built_from_code_constants` | PASS |
 | 63 | Authentication log reflects a caller-chosen path (bounded, query cut) | L `test_the_authentication_log_reflects_a_caller_chosen_path_but_bounded_and_without_the_query` (records F-6) | PASS |
-| 64 | uvicorn's own access log on the Stage launcher's server | Not exercised: tests use the in-process client, not uvicorn's access logger | NOT RUN |
+| 64 | Stage bootstrap job output (only step, outcome, SQLSTATE, fixed flags, exception class; no password, host or driver text, four runs including a driver-style exception) | L `test_the_stage_bootstrap_job_prints_only_step_outcome_sqlstate_and_fixed_fields` (skips until `stage_bootstrap.py` exists; run and passing with it merged) | PASS |
+| 64b | uvicorn's own access log on the Stage launcher's server | Not exercised: tests use the in-process client, not uvicorn's access logger | NOT RUN |
 
 ### Database and deployment (review from documents only)
 

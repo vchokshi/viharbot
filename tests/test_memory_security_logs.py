@@ -342,6 +342,8 @@ def test_logging_calls_use_constant_messages_and_never_exception_text_or_traceba
 
 def test_print_calls_in_the_memory_path_are_fixed_text_class_names_or_json_only():
     allowed = {"stage_entry.py": 3, "migrate.py": 2}
+    if (SRC / "memory_service" / "stage_bootstrap.py").exists():  # present once the bootstrap job has landed
+        allowed["stage_bootstrap.py"] = 1  # one `_log` print: step name, outcome, SQLSTATE, fixed flags
     found: dict[str, list[int]] = {}
     for path in SCANNED:
         for call in _calls(path):
@@ -365,3 +367,57 @@ def test_the_only_exception_text_that_is_logged_is_policy_config_text_built_from
                          and isinstance(v.value, ast.Name)}
                 assert names <= {"key", "low", "high"}, ast.dump(arg)
     assert 'extra={"agent": "memory", "reason": str(exc)}' in source
+
+
+def test_the_stage_bootstrap_job_prints_only_step_outcome_sqlstate_and_fixed_fields(capsys, logs):
+    bootstrap = pytest.importorskip("viharbot.memory_service.stage_bootstrap")
+    admin_pw, svc_pw, mig_pw = sentinel("adminpw"), sentinel("svcpw"), sentinel("migpw")
+    leak = sentinel("driver")
+    env = {"MEMORY_ADMIN_DB_HOST": "127.0.0.1", "MEMORY_ADMIN_DB_NAME": "memorydb",
+           "MEMORY_ADMIN_DB_USER": "doadmin", "MEMORY_ADMIN_DB_PASSWORD": admin_pw,
+           "MEMORY_DB_MIGRATOR_PASSWORD": mig_pw, "MEMORY_DB_SERVICE_PASSWORD": svc_pw}
+
+    class Session:
+        def __init__(self, fail_on=None):
+            self.fail_on = fail_on
+
+        def execute(self, sql):
+            if self.fail_on and self.fail_on in sql:
+                raise bootstrap.DbError("42501")
+            return [(1,)] if sql.startswith("SELECT 1") else [(bootstrap.SERVICE_ROLE,)]
+
+        def encrypt_password(self, role, password):
+            return None
+
+        def close(self):
+            pass
+
+    class Gateway:
+        def __init__(self, conninfo, fail_on=None, connect_fails=False):
+            self.fail_on, self.connect_fails = fail_on, connect_fails
+
+        def connect(self, *, user=None, password=None):
+            if self.connect_fails:
+                raise bootstrap.DbError("28P01")
+            return Session(self.fail_on)
+
+    def boom(conninfo):
+        raise RuntimeError(f"{leak} {conninfo}")  # a driver-style message carrying connection details
+
+    runs = [
+        dict(gateway_factory=lambda c: Gateway(c), migrate_fn=lambda c: ["0001_init.sql"]),
+        dict(gateway_factory=lambda c: Gateway(c, connect_fails=True), migrate_fn=lambda c: []),
+        dict(gateway_factory=lambda c: Gateway(c, fail_on="GRANT CONNECT"), migrate_fn=lambda c: []),
+        dict(gateway_factory=lambda c: Gateway(c), migrate_fn=boom),
+    ]
+    codes = [bootstrap.run_bootstrap(env, **kwargs) for kwargs in runs]
+    assert codes == [0, 1, 1, 1]
+    captured = capsys.readouterr()
+    text = captured.out + captured.err + logs.dump()
+    for secret in (admin_pw, svc_pw, mig_pw, leak, "postgresql://", "password=", "host=", "127.0.0.1"):
+        assert secret not in text, secret
+    allowed = {"timestamp", "level", "agent", "event", "step", "outcome", "sqlstate", "applied",
+               "untested_on_digitalocean", "database_tls", "error_class"}
+    lines = [json.loads(line) for line in captured.out.splitlines()]
+    assert lines and all(set(line) <= allowed for line in lines)
+    assert {line.get("error_class") for line in lines} - {None} == {"RuntimeError"}
