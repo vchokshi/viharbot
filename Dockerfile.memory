@@ -24,6 +24,9 @@ EXPOSE 8000
 LABEL org.opencontainers.image.title="ViharBot memory service"
 
 USER 1001:1001
+# Stage (docs/stage-memory-design.md items 1, 2, 4): when MEMORY_STAGE_ROLE is set the launcher
+# `viharbot.memory_service.stage_entry` takes over (certificate, key, key registry and database CA
+# come from encrypted variables). With it unset the command below is the Compose command, unchanged.
 # TLS (ADR-009): when MEMORY_TLS_CERT_FILE and MEMORY_TLS_KEY_FILE are set the service serves HTTPS
 # with them; the files are mounted at run time and never baked into the image. Compose sets them.
-CMD ["sh", "-c", "if [ -z \"$MEMORY_DB_PASSWORD\" ] || { [ -n \"$MEMORY_TLS_CERT_FILE\" ] && [ ! -r \"$MEMORY_TLS_CERT_FILE\" ]; }; then echo 'memory: development credentials or certificates are missing. Run python scripts/dev_service_auth.py on the host, then docker compose up -d' >&2; exit 1; fi; exec uvicorn viharbot.memory_service.app:create_app_from_environment --factory --host 0.0.0.0 --port \"$PORT\" ${MEMORY_TLS_CERT_FILE:+--ssl-certfile \"$MEMORY_TLS_CERT_FILE\" --ssl-keyfile \"$MEMORY_TLS_KEY_FILE\"}"]
+CMD ["sh", "-c", "if [ -n \"$MEMORY_STAGE_ROLE\" ]; then exec python -m viharbot.memory_service.stage_entry; fi; if [ -z \"$MEMORY_DB_PASSWORD\" ] || { [ -n \"$MEMORY_TLS_CERT_FILE\" ] && [ ! -r \"$MEMORY_TLS_CERT_FILE\" ]; }; then echo 'memory: development credentials or certificates are missing. Run python scripts/dev_service_auth.py on the host, then docker compose up -d' >&2; exit 1; fi; exec uvicorn viharbot.memory_service.app:create_app_from_environment --factory --host 0.0.0.0 --port \"$PORT\" ${MEMORY_TLS_CERT_FILE:+--ssl-certfile \"$MEMORY_TLS_CERT_FILE\" --ssl-keyfile \"$MEMORY_TLS_KEY_FILE\"}"]

@@ -352,8 +352,38 @@ class PsycopgGateway:
 MARKER_TABLES = ("probe_scratch.probe_marker", "public.probe_marker")
 
 
+def read_marker_attempts(session: DbSession, table: str) -> dict[str, Any]:
+    """Counts of marker rows grouped by (tag, mode) and the rows in write order.
+
+    Works on the extended marker table (RUNBOOK retest R3). On a table without the tag columns
+    (the 2026-11-12 shape) it reports `tag_columns: false` instead of failing.
+    """
+    try:
+        groups = session.execute(
+            f"SELECT coalesce(job_tag, '(none)'), job_mode, count(*) FROM {table} "
+            "GROUP BY coalesce(job_tag, '(none)'), job_mode ORDER BY 1, 2")
+        rows = session.execute(
+            f"SELECT coalesce(job_tag, '(none)'), job_mode, coalesce(started_at, written_at::text), "
+            f"coalesce(attempt_id, ''), run_number, coalesce(platform_ids, '') FROM {table} "
+            "ORDER BY run_number, written_at")
+    except DbError as exc:
+        return {"tag_columns": False, "tag_columns_error": exc.sqlstate or "error"}
+    attempts: list[dict[str, Any]] = []
+    for tag, mode, started, attempt_id, run_number, platform in rows:
+        try:
+            ids = json.loads(platform) if platform else {}
+        except ValueError:
+            ids = {}
+        attempts.append({"tag": tag, "mode": mode, "started_at": str(started),
+                         "attempt_id": attempt_id, "run_number": int(run_number),
+                         "platform_identifiers": ids})
+    return {"tag_columns": True,
+            "by_tag_mode": [{"tag": t, "mode": m, "count": int(c)} for t, m, c in groups],
+            "attempts": attempts}
+
+
 def read_marker(session: DbSession) -> dict[str, Any]:
-    """Report whether the job's marker row exists (names and counts only)."""
+    """Report whether the job's marker rows exist (names, counts, tags and times only)."""
     errors: list[str] = []
     for table in MARKER_TABLES:
         try:
@@ -364,9 +394,12 @@ def read_marker(session: DbSession) -> dict[str, Any]:
         except DbError as exc:
             errors.append(f"{table}: {exc.sqlstate or 'error'}")
             continue
-        return {"found": bool(count), "table": table, "rows": int(count),
-                "latest_run_number": last_run, "latest_written_at": written,
-                "latest_job_mode": mode_rows[0][0] if mode_rows else None}
+        result: dict[str, Any] = {
+            "found": bool(count), "table": table, "rows": int(count),
+            "latest_run_number": last_run, "latest_written_at": written,
+            "latest_job_mode": mode_rows[0][0] if mode_rows else None}
+        result.update(read_marker_attempts(session, table))
+        return result
     return {"found": False, "table": None, "rows": 0, "lookup_errors": errors}
 
 
