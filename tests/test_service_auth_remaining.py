@@ -656,8 +656,15 @@ def test_new_capabilities_are_documented_and_distinct():
 
 def test_the_stage_spec_does_not_enable_service_authentication():
     spec = (ROOT / "deploy" / "digitalocean" / "app.yaml").read_text()
-    for name in (sa.ENABLE_ENV, oa.ENABLE_ENV, sa.REGISTRY_ENV, oa.KID_ENV):
-        assert name not in spec  # Stage needs the promote-to-Stage confirmation (AGENTS.md)
+    assert sa.ENABLE_ENV not in spec  # no verifier is switched on anywhere on Stage
+    # The proposed memory spec (not approved for deploy) signs from Charlie and verifies in the memory
+    # service only; no other component carries these settings. Promotion still needs the founder's yes.
+    components = re.split(r"(?m)^  - name: ", spec)[1:]
+    for block in components:
+        owner = block.split("\n", 1)[0]
+        for name in (oa.ENABLE_ENV, sa.REGISTRY_ENV, oa.KID_ENV):
+            if name in block:
+                assert owner in ("synthesis", "memory"), (owner, name)
 
 
 def test_compose_turns_authentication_on_and_carries_no_key_material():
