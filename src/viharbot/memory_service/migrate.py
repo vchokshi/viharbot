@@ -26,6 +26,12 @@ _NAME = re.compile(r"^(\d{4})_[a-z0-9_]+\.sql$")
 _LOCK_ID = 7_040_001  # arbitrary, stable: "issue 40, migration lock"
 
 
+_SCHEMA_NAME = "memory"
+# The one statement a migration file may carry that needs database-level CREATE. Matched exactly,
+# on a line of its own, so nothing else in a migration is ever rewritten.
+_CREATE_SCHEMA_LINE = re.compile(r"^CREATE SCHEMA IF NOT EXISTS memory;[ \t]*$", re.MULTILINE)
+
+
 class MigrationError(RuntimeError):
     """A migration cannot be applied safely. Nothing further is run."""
 
@@ -46,6 +52,22 @@ def discover(directory: Path = MIGRATIONS_DIR) -> list[tuple[int, str, str]]:
     return found
 
 
+def schema_exists(conn: psycopg.Connection, name: str = _SCHEMA_NAME) -> bool:
+    return conn.execute("SELECT 1 FROM pg_namespace WHERE nspname = %s", (name,)).fetchone() is not None
+
+
+def skip_schema_create(text: str) -> str:
+    """Migration text with its ``CREATE SCHEMA IF NOT EXISTS memory;`` line made a comment.
+
+    PostgreSQL checks the CREATE privilege on the database before it looks at IF NOT EXISTS, so
+    that statement fails for a migrator that owns the schema but not the database (DigitalOcean
+    Managed PostgreSQL: the platform owns the database, the bootstrap job creates the schema and
+    makes the migrator its owner; founder decision N6). The checksum is always taken over the
+    ORIGINAL file text, so databases that already applied the file are unaffected.
+    """
+    return _CREATE_SCHEMA_LINE.sub("-- schema already exists: CREATE SCHEMA skipped by the runner", text)
+
+
 def migrate(conninfo: str, directory: Path = MIGRATIONS_DIR) -> list[str]:
     """Apply every pending migration. Returns the file names applied."""
     migrations = discover(directory)
@@ -53,7 +75,13 @@ def migrate(conninfo: str, directory: Path = MIGRATIONS_DIR) -> list[str]:
     with psycopg.connect(conninfo, autocommit=True, connect_timeout=10) as conn:
         conn.execute("SELECT pg_advisory_lock(%s)", (_LOCK_ID,))
         try:
-            conn.execute("CREATE SCHEMA IF NOT EXISTS memory")
+            # Create the schema only when it is missing (a fresh database the migrator owns, as in
+            # Compose). When it exists, no database-level CREATE is needed or used. A migrator that
+            # lacks it still cannot create any other schema.
+            schema_present = schema_exists(conn)
+            if not schema_present:
+                conn.execute("CREATE SCHEMA IF NOT EXISTS memory")
+                schema_present = True
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS memory.schema_migrations ("
                 "version integer PRIMARY KEY, name text NOT NULL, checksum text NOT NULL, "
@@ -70,7 +98,7 @@ def migrate(conninfo: str, directory: Path = MIGRATIONS_DIR) -> list[str]:
                         raise MigrationError(f"{name} was changed after it was applied")
                     continue
                 with conn.transaction():
-                    conn.execute(text)  # type: ignore[arg-type]  # plain multi-statement SQL, no parameters
+                    conn.execute(skip_schema_create(text) if schema_present else text)  # type: ignore[arg-type]  # plain multi-statement SQL, no parameters
                     conn.execute(
                         "INSERT INTO memory.schema_migrations (version, name, checksum) VALUES (%s, %s, %s)",
                         (version, name, checksum),
