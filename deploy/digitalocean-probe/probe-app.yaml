@@ -4,7 +4,7 @@
 # Placeholders to replace before use (everything else is complete):
 #   PLACEHOLDER_CLUSTER_NAME   name of the throwaway Managed PostgreSQL cluster you created
 #   region: nyc                must be the App Platform region that maps to the cluster's datacenter
-#   branch: feature/stage-probe-kit   the branch (or main, once merged) the image is built from
+#   branch: feature/stage-probe-retest   the branch (or main, once merged) the image is built from
 #
 # Secrets: every `type: SECRET` entry below has an EMPTY value on purpose. Paste the values in the
 # control panel (RUNBOOK step 5); never write them into this file or commit them.
@@ -36,7 +36,7 @@ services:
   - name: probe-service
     github:
       repo: vchokshi/viharbot
-      branch: feature/stage-probe-kit
+      branch: feature/stage-probe-retest
       deploy_on_push: false
     dockerfile_path: deploy/digitalocean-probe/Dockerfile.probe
     source_dir: /
@@ -71,7 +71,7 @@ services:
   - name: probe-client
     github:
       repo: vchokshi/viharbot
-      branch: feature/stage-probe-kit
+      branch: feature/stage-probe-retest
       deploy_on_push: false
     dockerfile_path: deploy/digitalocean-probe/Dockerfile.probe
     source_dir: /
@@ -126,7 +126,7 @@ jobs:
     kind: PRE_DEPLOY
     github:
       repo: vchokshi/viharbot
-      branch: feature/stage-probe-kit
+      branch: feature/stage-probe-retest
     dockerfile_path: deploy/digitalocean-probe/Dockerfile.probe
     source_dir: /
     instance_size_slug: apps-s-1vcpu-0.5gb
@@ -138,6 +138,14 @@ jobs:
         type: GENERAL
       - key: PROBE_JOB_FAIL
         value: "false"
+        scope: RUN_TIME
+        type: GENERAL
+      # Retest R3: a plain label written into every marker row. Use "ok-1" in the normal spec and
+      # "fail-1" together with PROBE_JOB_FAIL "true" in the failing spec (RUNBOOK section 8b), so a
+      # retry of the failing job (fail-1 rows) is told from the rollback re-running the previous
+      # version's job (an ok-1 row after the failure). Letters, digits, dot, dash, underscore.
+      - key: PROBE_JOB_TAG
+        value: "ok-1"
         scope: RUN_TIME
         type: GENERAL
       - key: PROBE_DB_URL

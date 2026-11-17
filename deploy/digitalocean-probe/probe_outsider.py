@@ -16,7 +16,17 @@ Environment:
   PROBE_TARGET_PORT    default port for entries without one (default 8443)
   PROBE_PUBLIC_URLS    comma-separated public URLs of the first app (https://...)
   PROBE_OUTSIDER_INTERVAL  seconds between repeats (default 600); one JSON line per run.
-No secrets are used or printed. Outbound calls go only to the configured targets and URLs.
+Retest R1 (RUNBOOK section 8b): a database denial check. When PROBE_OUTSIDER_DB_HOST is set, the
+outsider (NOT a trusted source of the cluster, no database binding) tries the throwaway cluster
+stage by stage: DNS, TCP connect, the PostgreSQL TLS handshake (SSLRequest, then TLS), and a login
+with a throwaway credential. It reports where it stops (`classification`), never a secret:
+  PROBE_OUTSIDER_DB_HOST      cluster host name (SECRET type in the spec: it is redacted in output)
+  PROBE_OUTSIDER_DB_PORT      default 25060
+  PROBE_OUTSIDER_DB_NAME      default `defaultdb` (not `probe`: the bootstrap revokes PUBLIC CONNECT
+                              there, which would look like a refusal that the rule did not cause)
+  PROBE_OUTSIDER_DB_USER / PROBE_OUTSIDER_DB_PASSWORD   a throwaway database user (SECRET type)
+  PROBE_OUTSIDER_DB_CA_PEM    optional cluster CA (public); with it the login uses verify-full
+Otherwise no secrets are used. Outbound calls go only to the configured targets, URLs and database.
 """
 
 from __future__ import annotations
@@ -26,15 +36,33 @@ import json
 import os
 import socket
 import ssl
+import struct
 import sys
 import time
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 from urllib.parse import urlsplit
 
 from probe_client import parse_host_port
-from probe_common import log_json, scrub
+from probe_common import (
+    ConnectionInfo,
+    DbError,
+    DbGateway,
+    PemError,
+    PsycopgGateway,
+    TempSecretFiles,
+    decode_pem_variable,
+    log_json,
+    redact_host,
+    scrub,
+)
 
 HEALTH_PATH = "/__probe/health"
+POSTGRES_SSL_REQUEST = struct.pack("!II", 8, 80877103)  # length 8, the SSLRequest code
+DEFAULT_DB_PORT = 25060
+# Classifications of the database check, in the order a connection progresses.
+DB_CLASSIFICATIONS = ("not_configured", "dns_failure", "timeout", "connection_refused", "tcp_error",
+                      "tls_not_offered", "tls_failed", "tls_ok_authentication_refused",
+                      "login_failed_other", "login_not_run", "login_ok_connected")
 
 
 def _looks_like_probe(body: bytes) -> bool:
@@ -108,6 +136,129 @@ def probe_public_url(url: str, timeout: float = 10.0) -> dict[str, Any]:
     return result
 
 
+# ------------------------------------------------------------- retest R1: database denial
+
+
+def probe_database(host: str, port: int, dbname: str, user: str, password: str,
+                   ca_pem: str | None = None, *, timeout: float = 5.0,
+                   create_connection: Callable[..., socket.socket] = socket.create_connection,
+                   gateway_factory: Callable[[ConnectionInfo], DbGateway] = PsycopgGateway,
+                   ) -> dict[str, Any]:
+    """Try DNS, TCP, the PostgreSQL TLS handshake and a login; report exactly where it stops.
+
+    `classification` is one of DB_CLASSIFICATIONS. Nothing secret is returned: the host is
+    redacted, the user and password never appear, and every message is scrubbed. The TLS stage
+    does not verify the certificate (it asks only "can I reach it"); the login stage verifies
+    with the cluster CA when one is supplied, else uses sslmode=require.
+    """
+    hide = [host, user, password]
+    stages: dict[str, Any] = {"dns": None, "tcp": None, "tls": None, "login": None}
+    result: dict[str, Any] = {
+        "check": "database_denial", "host_redacted": redact_host(host), "port": port,
+        "database": dbname, "login_sslmode": "verify-full" if ca_pem else "require",
+        "stages": stages, "classification": None, "stopped_at": None, "reached_database": False}
+
+    def stop(stage: str, classification: str, reason: str) -> dict[str, Any]:
+        stages[stage] = {"ok": False, "reason": scrub(reason, hide)}
+        result.update(classification=classification, stopped_at=stage)
+        return result
+
+    try:
+        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except socket.gaierror as exc:
+        return stop("dns", "dns_failure", exc.strerror or "lookup failed")
+    stages["dns"] = {"ok": True, "address_count": len({i[4][0] for i in infos})}
+    try:
+        sock = create_connection((infos[0][4][0], port), timeout=timeout)
+    except TimeoutError:
+        return stop("tcp", "timeout", "no answer to the TCP connection within the timeout")
+    except ConnectionRefusedError:
+        return stop("tcp", "connection_refused", "the connection was actively refused")
+    except OSError as exc:
+        return stop("tcp", "tcp_error", f"{type(exc).__name__}: {exc.strerror or 'connect failed'}")
+    stages["tcp"] = {"ok": True}
+    try:
+        sock.settimeout(timeout)
+        try:
+            sock.sendall(POSTGRES_SSL_REQUEST)
+            answer = sock.recv(1)
+        except TimeoutError:
+            return stop("tls", "tls_failed", "connected, but no answer to the TLS request (timeout)")
+        except OSError as exc:
+            return stop("tls", "tls_failed", f"connection dropped during the TLS request: {type(exc).__name__}")
+        if answer == b"":
+            return stop("tls", "tls_failed", "the server closed the connection at the TLS request")
+        if answer != b"S":
+            return stop("tls", "tls_not_offered", "the server answered that it does not offer TLS")
+        context = ssl.create_default_context()
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE  # reachability only; no credential is sent on this stage
+        try:
+            with context.wrap_socket(sock, server_hostname=None) as tls:
+                stages["tls"] = {"ok": True, "tls_version": tls.version()}
+        except (ssl.SSLError, OSError) as exc:
+            return stop("tls", "tls_failed", f"handshake failed: {type(exc).__name__}")
+    finally:
+        sock.close()
+
+    info = ConnectionInfo(scheme="postgresql", host=host, port=port, database=dbname, user=user,
+                          password=password, sslmode=None, query_names=())
+    try:
+        with TempSecretFiles({"db-ca.crt": ca_pem} if ca_pem else {}) as paths:
+            session = gateway_factory(info).connect(
+                sslmode="verify-full" if ca_pem else "require",
+                sslrootcert=str(paths["db-ca.crt"]) if ca_pem else None)
+            try:
+                session.execute("SELECT 1")
+            finally:
+                session.close()
+    except DbError as exc:
+        text = scrub(exc.message, hide)
+        if exc.sqlstate is None and "not installed" in exc.message:
+            stages["login"] = {"ok": False, "reason": text}
+            result.update(classification="login_not_run", stopped_at="login")
+        elif (exc.sqlstate or "").startswith("28"):
+            stages["login"] = {"ok": False, "sqlstate": exc.sqlstate, "reason": text}
+            result.update(classification="tls_ok_authentication_refused", stopped_at="login")
+        else:
+            stages["login"] = {"ok": False, "sqlstate": exc.sqlstate, "reason": text}
+            result.update(classification="login_failed_other", stopped_at="login")
+        return result
+    stages["login"] = {"ok": True}
+    result.update(classification="login_ok_connected", reached_database=True)
+    return result
+
+
+def database_check(environ: Mapping[str, str], **kwargs: Any) -> dict[str, Any]:
+    """Run `probe_database` from the PROBE_OUTSIDER_DB_* variables, or say it is not configured."""
+    host = environ.get("PROBE_OUTSIDER_DB_HOST", "").strip()
+    user = environ.get("PROBE_OUTSIDER_DB_USER", "")
+    password = environ.get("PROBE_OUTSIDER_DB_PASSWORD", "")
+    base: dict[str, Any] = {"check": "database_denial", "classification": "not_configured",
+                            "reached_database": False}
+    if not host:
+        return base | {"note": "PROBE_OUTSIDER_DB_HOST is not set"}
+    if not (user and password):
+        return base | {"note": "PROBE_OUTSIDER_DB_USER or PROBE_OUTSIDER_DB_PASSWORD is not set"}
+    try:
+        port = int(environ.get("PROBE_OUTSIDER_DB_PORT", "") or DEFAULT_DB_PORT)
+    except ValueError:
+        return base | {"note": "PROBE_OUTSIDER_DB_PORT is not a number"}
+    ca_pem: str | None = None
+    ca_note = None
+    if environ.get("PROBE_OUTSIDER_DB_CA_PEM", "").strip():
+        try:
+            ca_pem, _ = decode_pem_variable(environ["PROBE_OUTSIDER_DB_CA_PEM"], "PROBE_OUTSIDER_DB_CA_PEM")
+        except PemError as exc:
+            ca_note = str(exc)
+    result = probe_database(host, port, environ.get("PROBE_OUTSIDER_DB_NAME", "") or "defaultdb",
+                            user, password, ca_pem, **kwargs)
+    if ca_note:
+        result["ca_note"] = ca_note
+    return result
+
+
 def run_outsider(environ: Mapping[str, str]) -> dict[str, Any]:
     default_port = int(environ.get("PROBE_TARGET_PORT", "8443"))
     targets: list[dict[str, Any]] = []
@@ -128,10 +279,13 @@ def run_outsider(environ: Mapping[str, str]) -> dict[str, Any]:
     reached = names("answers_like_probe_service")
     public_hits = [u["url"] for u in urls
                    if any(p.get("answers_like_probe_service") for p in u["paths"])]
+    database = database_check(environ)
     return {
         "probe": "outsider", "ran_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "targets": targets, "public_urls": urls,
+        "targets": targets, "public_urls": urls, "database": database,
         "summary": {
+            "database_classification": database["classification"],
+            "database_reached": database["reached_database"],
             "targets_resolving": names("resolves"),
             "targets_connecting": names("connects"),
             "targets_answering_as_probe_service": reached,

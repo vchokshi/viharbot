@@ -10,6 +10,7 @@ import base64
 import datetime
 import json
 import os
+import re
 import socket
 import ssl
 import stat
@@ -415,18 +416,37 @@ def test_scrub_removes_values_urls_and_password_pairs():
 
 
 class FakeDb:
-    """In-memory stand-in for a cluster: roles, scratch schema, marker table, scripted failures."""
+    """In-memory stand-in for a cluster: roles, scratch schema, marker table, scripted failures.
+
+    Options reproduce what the cluster might do: `connect_required` makes the migrator need an
+    explicit CONNECT grant (the 2026-11-12 failure); `alter_db_needs_membership` makes ALTER
+    DATABASE OWNER need a membership grant; `migrator_has_create` gives the migrator CREATE on the
+    database; `legacy_marker` starts with the old marker table (no tag columns); `alter_denied`
+    refuses ALTER TABLE on it.
+    """
 
     def __init__(self, *, fail: dict[str, DbError] | None = None, membership_needed: bool = False,
-                 fail_modes: set[str] | None = None) -> None:
+                 fail_modes: set[str] | None = None, connect_required: bool = False,
+                 alter_db_needs_membership: bool = False, migrator_has_create: bool = False,
+                 legacy_marker: bool = False, alter_denied: bool = False) -> None:
         self.roles: dict[str, str | None] = {}
-        self.marker: list[tuple[int, str, str]] = []
+        # (run_number, mode, raw values, tag, attempt_id, started_at, platform_ids)
+        self.marker: list[tuple] = []
         self.log: list[str] = []
         self.connects: list[tuple[str, str | None]] = []
         self.fail = fail or {}
         self.fail_modes = fail_modes or set()
         self.membership_needed = membership_needed
         self.members: set[str] = set()
+        self.connect_required = connect_required
+        self.connect_granted: set[str] = set()
+        self.alter_db_needs_membership = alter_db_needs_membership
+        self.migrator_has_create = migrator_has_create
+        self.alter_denied = alter_denied
+        self.columns_added = not legacy_marker
+        self.databases: dict[str, str] = {"probe": "doadmin"}
+        self.schema_owner = "doadmin"
+        self.other_schemas: set[str] = set()
 
     def connect(self, *, sslmode, sslrootcert=None, user=None, password=None):
         self.connects.append((sslmode, sslrootcert))
@@ -434,6 +454,8 @@ class FakeDb:
             raise DbError("08006", "connection failed: certificate verify failed")
         if user is not None and self.roles.get(user) != password:
             raise DbError("28P01", f"password authentication failed for user {user}")
+        if user == "probe_migrator" and self.connect_required and user not in self.connect_granted:
+            raise DbError("42501", 'permission denied for database "probe"')
         return FakeSession(self, user or "doadmin")
 
 
@@ -467,11 +489,56 @@ class FakeSession:
             name = sql.split('"')[1]
             db.roles[name] = sql.split("PASSWORD '")[1].rstrip("'")
             return []
+        if sql.startswith("GRANT CONNECT"):
+            db.connect_granted.add(sql.split(" TO ")[1].strip('"'))
+            return []
         if sql.startswith("GRANT") and "TO CURRENT_USER" in sql:
             db.members.add(sql.split('"')[1])
             return []
+        if sql.startswith("REVOKE SET OPTION"):
+            db.members.discard(sql.split('"')[1])
+            return []
+        if sql.startswith("SELECT pg_has_role"):
+            return [("probe_migrator" in db.members, "probe_migrator" in db.members)]
+        if sql.startswith("SELECT has_database_privilege"):
+            return [(True, db.migrator_has_create)]
+        if sql.startswith("SELECT pg_get_userbyid(nspowner)"):
+            return [(db.schema_owner,)]
+        if sql.startswith("SELECT 1 FROM pg_namespace"):
+            return [(1,)]
+        if sql.startswith("SELECT datname, pg_get_userbyid(datdba)"):
+            return sorted((n, o) for n, o in db.databases.items() if n.startswith("probe_scratch_db_"))
+        if sql.startswith("CREATE DATABASE"):
+            name = sql.split('"')[1]
+            if name in db.databases:
+                raise DbError("42P04", f'database "{name}" already exists')
+            db.databases[name] = self.login
+            return []
+        if sql.startswith("DROP DATABASE"):
+            db.databases.pop(sql.split('"')[1], None)
+            return []
+        if sql.startswith("ALTER DATABASE"):
+            name = sql.split('"')[1]
+            if name == "probe":
+                raise AssertionError("the main database's owner must never be altered")
+            if db.alter_db_needs_membership and "probe_migrator" not in db.members:
+                raise DbError("42501", "must be able to SET ROLE \"probe_migrator\"")
+            db.databases[name] = "probe_migrator"
+            return []
+        if sql.startswith("CREATE SCHEMA") and self.current == "probe_migrator":
+            if not db.migrator_has_create:
+                raise DbError("42501", 'permission denied for database "probe"')
+            if "IF NOT EXISTS" not in sql:
+                db.other_schemas.add(sql.split('"')[1])
+            return []
+        if sql.startswith("DROP SCHEMA"):
+            db.other_schemas.discard(sql.split('"')[1])
+            return []
         if sql.startswith("ALTER SCHEMA") and db.membership_needed and "probe_migrator" not in db.members:
             raise DbError("42501", "must be able to SET ROLE \"probe_migrator\"")
+        if sql.startswith("ALTER SCHEMA"):
+            db.schema_owner = "probe_migrator"
+            return []
         if sql.startswith("SET ROLE"):
             role = sql.split('"')[1]
             if db.membership_needed and role not in db.members:
@@ -483,13 +550,37 @@ class FakeSession:
             return []
         if "should_not_exist" in sql and self.current == "probe_service":
             raise DbError("42501", "permission denied for schema probe_scratch")
+        if sql.startswith("ALTER TABLE") and "probe_marker" in sql:
+            if db.alter_denied:
+                raise DbError("42501", "must be owner of table probe_marker")
+            db.columns_added = True
+            return []
         if "SELECT count(*) + 1 FROM" in sql:
             return [(len(db.marker) + 1,)]
         if sql.startswith("INSERT INTO"):
             values = sql.split("VALUES (")[1]
             run_number, mode = int(values.split(",")[0]), values.split("'")[1]
-            db.marker.append((run_number, mode, values))
+            if "job_tag" in sql.split("VALUES")[0]:
+                if not db.columns_added:
+                    raise DbError("42703", 'column "job_tag" does not exist')
+                quoted = re.findall(r"'((?:[^']|'')*)'", values)
+                db.marker.append((run_number, mode, values, quoted[1], quoted[2], quoted[3], quoted[4]))
+            else:
+                db.marker.append((run_number, mode, values, None, None, None, None))
             return []
+        if sql.startswith("SELECT coalesce(job_tag") and "GROUP BY" in sql:
+            if not db.columns_added:
+                raise DbError("42703", 'column "job_tag" does not exist')
+            counts: dict[tuple[str, str], int] = {}
+            for row in db.marker:
+                key = (row[3] or "(none)", row[1])
+                counts[key] = counts.get(key, 0) + 1
+            return [(t, m, c) for (t, m), c in sorted(counts.items())]
+        if sql.startswith("SELECT coalesce(job_tag"):
+            if not db.columns_added:
+                raise DbError("42703", 'column "job_tag" does not exist')
+            return [(r[3] or "(none)", r[1], r[5] or "2026-11-11 10:00:00+00", r[4] or "", r[0], r[6] or "")
+                    for r in db.marker]
         if "max(run_number)" in sql:
             if not db.marker:
                 raise DbError("42P01", 'relation "probe_marker" does not exist')
@@ -528,7 +619,8 @@ def test_job_normal_run_reports_everything_exits_zero_and_leaks_nothing():
     assert checks["verify_full_with_supplied_ca"]["outcome"] == "ok"
     assert summary["bootstrap_summary"]["unexpected"] == []
     assert summary["marker"] == {"written": True, "table": "probe_scratch.probe_marker",
-                                 "run_number": 1, "errors_before_success": []}
+                                 "run_number": 1, "extended_columns": True,
+                                 "errors_before_success": []}
     steps = {s["step"]: s for s in summary["bootstrap"]}
     assert steps["service_cannot_create_table_expected_error"]["outcome"] == "error"
     assert steps["service_cannot_create_table_expected_error"]["as_expected"] is True
@@ -853,3 +945,618 @@ def test_probe_sources_make_no_calls_to_digitalocean_or_third_parties():
             assert word not in text, f"{path.name} mentions {word}"
     assert "os.environ" in (PROBE_DIR / "probe_entry.py").read_text()
     assert os.access(PROBE_DIR / "probe_entry.py", os.R_OK)
+
+
+# ================================================================ retest (2026-11-12 follow-up)
+
+import probe_laptop_dbcheck  # noqa: E402
+import time  # noqa: E402
+
+R2_NEW_STEPS = [
+    "grant_connect_migrator", "login_as_probe_migrator_after_connect_grant",
+    "scratch_database_cleanup_before_a", "scratch_database_cleanup_before_b",
+    "reset_set_option_on_migrator", "membership_state_before_variant_a",
+    "create_scratch_database_a", "alter_scratch_database_owner_without_membership_grant",
+    "grant_migrator_to_admin_with_set_true", "create_scratch_database_b",
+    "alter_scratch_database_owner_after_membership_grant", "scratch_database_owners",
+    "drop_scratch_database_a", "drop_scratch_database_b",
+    "precondition_migrator_connect_yes_create_no", "precondition_schema_owned_by_migrator",
+    "migrator_create_schema_if_not_exists_existing_schema", "migrator_existence_check_then_skip",
+    "migrator_creates_table_in_existing_schema", "migrator_create_other_schema_expect_error",
+    "drop_other_schema_cleanup",
+]
+
+
+def steps_of(summary: dict) -> dict:
+    return {s["step"]: s for s in summary["bootstrap"]}
+
+
+# --------------------------------------------------------------- R2: migrator privileges
+
+
+def test_r2_steps_run_in_order_after_the_original_steps_which_are_unchanged():
+    db = FakeDb()
+    summary, code = probe_job.run_job(job_env(), db)
+    names = [s["step"] for s in summary["bootstrap"]]
+    assert code == 0 and summary["bootstrap_summary"]["unexpected"] == []
+    original_login = names.index("login_as_probe_migrator")
+    assert names.index("login_as_probe_service") > original_login
+    positions = [names.index(step) for step in R2_NEW_STEPS]
+    assert positions == sorted(positions) and positions[0] > names.index("login_as_probe_service")
+    for step in R2_NEW_STEPS:
+        record = steps_of(summary)[step]
+        assert {"step", "expect", "outcome", "as_expected"} <= set(record)
+        assert record["outcome"] != "error" or record["sqlstate"]
+    assert summary["r2_findings"]["preconditions_hold"] is True
+
+
+def test_r2_reproduces_the_2026_failure_and_shows_the_repair_beside_it():
+    db = FakeDb(connect_required=True)
+    summary, _ = probe_job.run_job(job_env(), db)
+    steps = steps_of(summary)
+    assert steps["login_as_probe_migrator"]["outcome"] == "error"
+    assert steps["login_as_probe_migrator"]["sqlstate"] == "42501"
+    assert steps["login_as_probe_migrator"]["as_expected"] is False
+    assert steps["grant_connect_migrator"]["outcome"] == "ok"
+    assert steps["login_as_probe_migrator_after_connect_grant"]["outcome"] == "ok"
+    assert steps["login_as_probe_migrator_after_connect_grant"]["as_expected"] is True
+    names = [s["step"] for s in summary["bootstrap"]]
+    assert names.index("login_as_probe_migrator") < names.index("grant_connect_migrator")
+    findings = summary["r2_findings"]
+    assert findings["original_migrator_login"] == "error"
+    assert findings["migrator_login_after_connect_grant"] == "ok"
+
+
+def test_r2_alter_database_owner_is_tested_in_scratch_databases_only_both_variants():
+    db = FakeDb(alter_db_needs_membership=True)
+    summary, _ = probe_job.run_job(job_env(), db)
+    steps = steps_of(summary)
+    a = steps["alter_scratch_database_owner_without_membership_grant"]
+    b = steps["alter_scratch_database_owner_after_membership_grant"]
+    assert a["outcome"] == "error" and a["sqlstate"] == "42501"
+    assert steps["grant_migrator_to_admin_with_set_true"]["outcome"] == "ok"
+    assert "WITH SET TRUE" in steps["grant_migrator_to_admin_with_set_true"]["statement"]
+    assert b["outcome"] == "ok"
+    alters = [sql for sql in db.log if sql.startswith("ALTER DATABASE")]
+    assert alters and all("probe_scratch_db_" in sql for sql in alters)
+    assert not any(sql.startswith('ALTER DATABASE "probe"') for sql in db.log)
+    assert db.databases == {"probe": "doadmin"}  # scratch databases are dropped again
+    owners = steps["scratch_database_owners"]["rows"]
+    assert [row[0] for row in owners] == ["probe_scratch_db_a", "probe_scratch_db_b"]
+
+
+def test_r2_alter_database_owner_without_a_membership_grant_can_simply_work():
+    summary, _ = probe_job.run_job(job_env(), FakeDb())
+    steps = steps_of(summary)
+    assert steps["alter_scratch_database_owner_without_membership_grant"]["outcome"] == "ok"
+    assert steps["alter_scratch_database_owner_after_membership_grant"]["outcome"] == "ok"
+    assert summary["r2_findings"]["alter_database_owner_without_membership_grant"] == "ok"
+
+
+def test_r2_grant_with_set_true_refused_falls_back_to_the_plain_grant():
+    refuse = DbError("42601", 'syntax error at or near "SET"')
+    db = FakeDb(fail={"WITH SET TRUE": refuse})
+    summary, _ = probe_job.run_job(job_env(), db)
+    steps = steps_of(summary)
+    assert steps["grant_migrator_to_admin_with_set_true"]["outcome"] == "error"
+    assert steps["grant_migrator_to_admin_plain"]["outcome"] == "ok"
+
+
+def test_r2_create_schema_if_not_exists_fails_for_the_migrator_and_the_existence_check_works():
+    db = FakeDb()
+    summary, _ = probe_job.run_job(job_env(), db)
+    steps = steps_of(summary)
+    blocked = steps["migrator_create_schema_if_not_exists_existing_schema"]
+    assert blocked["outcome"] == "error" and blocked["sqlstate"] == "42501"
+    assert "permission denied for database" in blocked["error"] and blocked["as_expected"] is True
+    assert steps["migrator_existence_check_then_skip"]["outcome"] == "ok"
+    assert steps["migrator_existence_check_then_skip"]["rows"] == [["1"]]
+    assert steps["migrator_creates_table_in_existing_schema"]["outcome"] == "ok"
+    other = steps["migrator_create_other_schema_expect_error"]
+    assert other["outcome"] == "error" and other["sqlstate"] == "42501" and other["as_expected"] is True
+    assert summary["r2_findings"]["create_schema_if_not_exists_on_existing_schema_as_migrator"] == "error"
+
+
+def test_r2_a_migrator_that_can_create_schemas_is_reported_as_unexpected_and_cleaned_up():
+    db = FakeDb(migrator_has_create=True)
+    summary, _ = probe_job.run_job(job_env(), db)
+    steps = steps_of(summary)
+    assert steps["migrator_create_schema_if_not_exists_existing_schema"]["outcome"] == "ok"
+    assert steps["migrator_create_schema_if_not_exists_existing_schema"]["as_expected"] is False
+    assert steps["migrator_create_other_schema_expect_error"]["outcome"] == "ok"
+    assert steps["migrator_create_other_schema_expect_error"]["as_expected"] is False
+    assert steps["precondition_migrator_connect_yes_create_no"]["as_expected"] is False
+    assert summary["r2_findings"]["preconditions_hold"] is False
+    assert db.other_schemas == set()  # the cleanup step removed the unwanted schema
+    assert "migrator_create_schema_if_not_exists_existing_schema" in summary["bootstrap_summary"]["unexpected"]
+
+
+def test_r2_preconditions_flag_a_schema_the_migrator_does_not_own():
+    db = FakeDb(fail={"ALTER SCHEMA": DbError("42501", "must be owner of schema probe_scratch")})
+    summary, _ = probe_job.run_job(job_env(), db)
+    steps = steps_of(summary)
+    assert steps["precondition_schema_owned_by_migrator"]["as_expected"] is False
+    assert summary["r2_findings"]["preconditions_hold"] is False
+
+
+def test_r2_dependent_steps_are_skipped_not_faked_when_the_migrator_cannot_log_in():
+    grant = 'GRANT CONNECT ON DATABASE "probe" TO "probe_migrator"'
+    db = FakeDb(connect_required=True, fail={grant: DbError("42501", "permission denied")})
+    summary, _ = probe_job.run_job(job_env(), db)
+    steps = steps_of(summary)
+    assert steps["login_as_probe_migrator_after_connect_grant"]["outcome"] == "error"
+    for step in ("migrator_create_schema_if_not_exists_existing_schema", "migrator_existence_check_then_skip",
+                 "migrator_creates_table_in_existing_schema", "migrator_create_other_schema_expect_error"):
+        assert steps[step]["outcome"] == "skipped" and steps[step]["as_expected"] is False
+    assert summary["marker"]["written"] is True
+
+
+@pytest.mark.parametrize("options", [{}, {"alter_db_needs_membership": True}, {"connect_required": True}])
+def test_r2_rerun_is_idempotent_and_leaves_no_scratch_state(options):
+    db = FakeDb(**options)
+    env = job_env()
+    runs = [probe_job.run_job(env, db)[0] for _ in range(3)]
+    first = steps_of(runs[0])
+    for later in runs[1:]:
+        later_steps = steps_of(later)
+        for step in R2_NEW_STEPS:
+            assert later_steps[step]["outcome"] == first[step]["outcome"], step
+        # The CONNECT grant persists, so from the second run on the original migrator login works.
+        stable = [n for n in runs[0]["bootstrap_summary"]["unexpected"] if n != "login_as_probe_migrator"]
+        assert later["bootstrap_summary"]["unexpected"] == stable
+    assert db.databases == {"probe": "doadmin"} and db.other_schemas == set()
+    assert [r["marker"]["run_number"] for r in runs] == [1, 2, 3]
+    # A re-run starts by clearing a scratch database that an earlier interrupted run left behind.
+    db.databases["probe_scratch_db_a"] = "probe_migrator"
+    again = probe_job.run_job(env, db)[0]
+    assert steps_of(again)["create_scratch_database_a"]["outcome"] == "ok"
+    assert db.databases == {"probe": "doadmin"}
+
+
+def test_r2_new_steps_never_show_a_password_and_scrub_errors():
+    password = rand_secret("pw")
+    leak = DbError("42501", f"permission denied (user doadmin password={password} "
+                            "host db-host-1.d.db.ondigitalocean.com)")
+    db = FakeDb(fail={"CREATE DATABASE": leak, "CREATE SCHEMA IF NOT EXISTS": leak,
+                      "ALTER TABLE": leak})
+    summary, code = probe_job.run_job(job_env(password=password), db)
+    text = json.dumps(summary)
+    assert code == 0 and password not in text and "db-host-1" not in text
+    for role_password in db.roles.values():
+        assert role_password not in text
+    created = [s for s in summary["bootstrap"] if s["step"].startswith("create_scratch_database")]
+    assert created and all(s["sqlstate"] == "42501" and password not in s["error"] for s in created)
+    new = [s for s in summary["bootstrap"] if s["step"] in R2_NEW_STEPS]
+    assert all("PASSWORD" not in s.get("statement", "") for s in new)
+    assert summary["marker"]["extended_columns"] is False  # the ALTER TABLE failure was tolerated
+
+
+# ------------------------------------------------------- R3: retry versus rollback markers
+
+
+def test_clean_tag_accepts_plain_labels_only():
+    assert probe_job.clean_tag(None) == "(none)" and probe_job.clean_tag("  ") == "(none)"
+    assert probe_job.clean_tag("fail-1") == "fail-1" and probe_job.clean_tag("ok_1.2") == "ok_1.2"
+    assert probe_job.clean_tag("bad tag!") == "(invalid)"
+    assert probe_job.clean_tag("x" * 41) == "(invalid)"
+    assert probe_job.clean_tag("x" * 40) == "x" * 40
+
+
+def test_platform_identifiers_list_names_and_record_only_plain_non_secret_values():
+    token_like = rand_secret("") + rand_secret("")
+    uuid_value = "0f8fad5b-d9cb-469f-a165-70867728950e"
+    env = {"APP_DEPLOYMENT_ID": uuid_value, "HOSTNAME": "probe-job-7d9f5-abcde",
+           "BUILD_REF": token_like, "COMPONENT_URL": "https://example.invalid/path",
+           "DEPLOYMENT_TOKEN": "short-but-sensitive", "PROBE_JOB_TAG": "fail-1",
+           "PATH": "/usr/bin", "INSTANCE_PASSWORD": "pw"}
+    found = probe_job.platform_identifiers(env)
+    assert found["values"] == {"APP_DEPLOYMENT_ID": uuid_value, "HOSTNAME": "probe-job-7d9f5-abcde"}
+    assert set(found["withheld"]) == {"BUILD_REF", "COMPONENT_URL"}
+    assert "DEPLOYMENT_TOKEN" not in found["names_found"] and "INSTANCE_PASSWORD" not in found["names_found"]
+    assert "PROBE_JOB_TAG" not in found["names_found"] and "PATH" not in found["names_found"]
+    assert token_like not in json.dumps(found) and "example.invalid" not in json.dumps(found)
+
+
+def test_marker_rows_carry_tag_mode_attempt_id_start_time_and_platform_ids():
+    db = FakeDb()
+    env = job_env(extra={"PROBE_JOB_TAG": "fail-1", "PROBE_JOB_FAIL": "true",
+                         "APP_DEPLOYMENT_ID": "0f8fad5b-d9cb-469f-a165-70867728950e"})
+    summary, code = probe_job.run_job(env, db)
+    assert code == probe_job.EXIT_FAIL_MODE
+    row = db.marker[-1]
+    assert row[1] == "fail" and row[3] == "fail-1"
+    assert re.fullmatch(r"[0-9a-f]{16}", row[4]) and row[4] == summary["attempt_id"]
+    assert row[5] == summary["started_at"] and "0f8fad5b" in row[6]
+    assert summary["job_tag"] == "fail-1" and summary["marker"]["extended_columns"] is True
+    assert summary["variables"]["expected_present"]["PROBE_JOB_TAG"] is True
+    other, _ = probe_job.run_job(env, db)
+    assert other["attempt_id"] != summary["attempt_id"]  # one random id per attempt
+
+
+def test_main_logs_the_attempt_before_anything_else(capsys):
+    db = FakeDb()
+    probe_job.main(job_env(extra={"PROBE_JOB_TAG": "ok-1"}), db)
+    lines = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line.strip()]
+    assert lines[0]["event"] == "probe_job_attempt_started"
+    assert lines[0]["job_tag"] == "ok-1" and lines[0]["job_mode"] == "normal"
+    assert lines[-1]["event"] == "probe_job_summary" and lines[-1]["attempt_id"] == lines[0]["attempt_id"]
+
+
+def test_client_groups_marker_rows_by_tag_and_mode_and_orders_the_attempts():
+    db = FakeDb()
+    ok = job_env(extra={"PROBE_JOB_TAG": "ok-1"})
+    fail = job_env(extra={"PROBE_JOB_TAG": "fail-1", "PROBE_JOB_FAIL": "true"})
+    for env in (ok, fail, fail, ok):  # a normal deployment, a failing job tried twice, a rollback re-run
+        probe_job.run_job(env, db)
+    now = probe_client.OrderingObserver(db).read_now()
+    assert now["found"] is True and now["rows"] == 4 and now["tag_columns"] is True
+    assert now["by_tag_mode"] == [{"tag": "fail-1", "mode": "fail", "count": 2},
+                                  {"tag": "ok-1", "mode": "normal", "count": 2}]
+    assert [(a["tag"], a["mode"]) for a in now["attempts"]] == [
+        ("ok-1", "normal"), ("fail-1", "fail"), ("fail-1", "fail"), ("ok-1", "normal")]
+    assert all(a["started_at"].startswith("20") for a in now["attempts"])
+    assert len({a["attempt_id"] for a in now["attempts"]}) == 4
+    assert [a["run_number"] for a in now["attempts"]] == [1, 2, 3, 4]
+
+
+def test_client_results_endpoint_serves_a_live_marker_read():
+    import http.client
+    from http.server import ThreadingHTTPServer
+
+    db = FakeDb()
+    token = rand_secret("t")
+    observer = probe_client.OrderingObserver(db)
+    state = probe_client.ProbeState()
+    server = ThreadingHTTPServer(("127.0.0.1", 0), probe_client.make_handler(state, observer, token))
+    host, port = serve(server)
+
+    def results() -> dict:
+        conn = http.client.HTTPConnection(host, port, timeout=5)
+        conn.request("GET", "/results", headers={"Authorization": f"Bearer {token}"})
+        data = conn.getresponse().read()
+        conn.close()
+        return json.loads(data)
+
+    try:
+        assert results()["marker_now"]["found"] is False
+        probe_job.run_job(job_env(extra={"PROBE_JOB_TAG": "ok-1"}), db)
+        probe_job.run_job(job_env(extra={"PROBE_JOB_TAG": "fail-1", "PROBE_JOB_FAIL": "true"}), db)
+        live = results()["marker_now"]
+        assert [(g["tag"], g["count"]) for g in live["by_tag_mode"]] == [("fail-1", 1), ("ok-1", 1)]
+        assert results()["ordering"]["first_request"]["marker"]["found"] is False  # observed once, earlier
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_read_now_without_a_database_and_on_errors():
+    assert probe_client.OrderingObserver(None).read_now()["found"] is None
+
+    class Broken:
+        def connect(self, **kwargs):
+            raise DbError("28P01", "password authentication failed")
+
+    assert probe_client.OrderingObserver(Broken()).read_now()["sqlstate"] == "28P01"
+
+
+def test_old_marker_table_keeps_working_and_old_rows_group_as_none():
+    db = FakeDb(legacy_marker=True)
+    db.marker.append((1, "normal", "1, 'normal'", None, None, None, None))  # written by the first probe
+    summary, _ = probe_job.run_job(job_env(extra={"PROBE_JOB_TAG": "ok-1"}), db)
+    assert summary["marker"]["written"] is True and summary["marker"]["extended_columns"] is True
+    assert summary["marker"]["run_number"] == 2
+    now = probe_client.OrderingObserver(db).read_now()
+    assert now["by_tag_mode"] == [{"tag": "(none)", "mode": "normal", "count": 1},
+                                  {"tag": "ok-1", "mode": "normal", "count": 1}]
+    assert now["attempts"][0]["attempt_id"] == ""
+
+
+def test_marker_falls_back_to_the_old_shape_when_columns_cannot_be_added():
+    db = FakeDb(legacy_marker=True, alter_denied=True)
+    summary, code = probe_job.run_job(job_env(extra={"PROBE_JOB_TAG": "ok-1"}), db)
+    assert code == 0 and summary["marker"]["written"] is True
+    assert summary["marker"]["extended_columns"] is False
+    assert any("could not add tag columns" in e for e in summary["marker"]["errors_before_success"])
+    assert db.marker[-1][3] is None
+    now = probe_client.OrderingObserver(db).read_now()
+    assert now["found"] is True and now["rows"] == 1 and now["tag_columns"] is False
+
+
+# ------------------------------------------------- R1: the outsider's database denial check
+
+
+def pg_like_server(mode: str, cert: str | None = None, key: str | None = None,
+                   tmp: Path | None = None):
+    """A loopback listener that speaks just enough of the PostgreSQL start-up to test the stages."""
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(8)
+    seen: list[bytes] = []
+
+    def run() -> None:
+        while True:
+            try:
+                conn, _ = listener.accept()
+            except OSError:
+                return
+            try:
+                conn.settimeout(3)
+                if mode == "silent":
+                    conn.recv(8)
+                    time.sleep(2)
+                    continue
+                request = conn.recv(8)
+                seen.append(request)
+                if mode == "close":
+                    continue
+                if mode == "no_tls":
+                    conn.sendall(b"N")
+                    continue
+                conn.sendall(b"S")
+                if mode == "tls_handshake_fails":
+                    continue  # hang up instead of handshaking
+                context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+                context.minimum_version = ssl.TLSVersion.TLSv1_2
+                assert tmp is not None and cert and key
+                (tmp / "c.pem").write_text(cert)
+                (tmp / "k.pem").write_text(key)
+                context.load_cert_chain(tmp / "c.pem", tmp / "k.pem")
+                try:
+                    with context.wrap_socket(conn, server_side=True):
+                        pass
+                except (ssl.SSLError, OSError):
+                    pass
+            except OSError:
+                pass
+            finally:
+                conn.close()
+
+    threading.Thread(target=run, daemon=True).start()
+    return listener, listener.getsockname()[1], seen
+
+
+class FakeLoginGateway:
+    """Stands in for PsycopgGateway at the login stage."""
+
+    def __init__(self, error: DbError | None = None) -> None:
+        self.error, self.calls = error, []
+
+    def __call__(self, info):
+        self.info = info
+        return self
+
+    def connect(self, *, sslmode, sslrootcert=None, user=None, password=None):
+        self.calls.append((sslmode, sslrootcert, sslrootcert and os.path.exists(sslrootcert)))
+        if self.error is not None:
+            raise self.error
+        return type("S", (), {"execute": lambda self, sql: [(1,)], "close": lambda self: None})()
+
+
+@pytest.fixture()
+def db_creds():
+    return {"user": rand_secret("u"), "password": rand_secret("pw")}
+
+
+def run_db_probe(port: int, creds: dict, gateway: FakeLoginGateway | None = None, **kwargs):
+    return probe_outsider.probe_database(
+        "127.0.0.1", port, "defaultdb", creds["user"], creds["password"], timeout=1.0,
+        gateway_factory=gateway or FakeLoginGateway(), **kwargs)
+
+
+def assert_no_secret(result: dict, creds: dict) -> None:
+    text = json.dumps(result)
+    assert creds["user"] not in text and creds["password"] not in text and "127.0.0.1" not in text
+
+
+def test_db_check_classifies_connection_refused(db_creds):
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        closed = sock.getsockname()[1]
+    result = run_db_probe(closed, db_creds)
+    assert result["classification"] == "connection_refused" and result["stopped_at"] == "tcp"
+    assert result["reached_database"] is False and result["stages"]["dns"]["ok"] is True
+    assert result["stages"]["tls"] is None and result["stages"]["login"] is None
+    assert_no_secret(result, db_creds)
+
+
+def test_db_check_classifies_a_tcp_timeout_and_other_tcp_errors(db_creds):
+    def slow(*args, **kwargs):
+        raise TimeoutError("timed out")
+
+    def unreachable(*args, **kwargs):
+        raise OSError(65, "No route to host")
+
+    result = run_db_probe(1, db_creds, create_connection=slow)
+    assert result["classification"] == "timeout" and result["stopped_at"] == "tcp"
+    other = run_db_probe(1, db_creds, create_connection=unreachable)
+    assert other["classification"] == "tcp_error" and "No route" in other["stages"]["tcp"]["reason"]
+    assert_no_secret(result, db_creds)
+
+
+def test_db_check_classifies_dns_failure(db_creds):
+    result = probe_outsider.probe_database("no-such-host.invalid", 25060, "defaultdb", db_creds["user"],
+                                           db_creds["password"], timeout=1.0)
+    assert result["classification"] == "dns_failure" and result["stopped_at"] == "dns"
+    assert db_creds["password"] not in json.dumps(result)
+
+
+@pytest.mark.parametrize("mode,expected", [("no_tls", "tls_not_offered"), ("close", "tls_failed"),
+                                           ("silent", "tls_failed"), ("tls_handshake_fails", "tls_failed")])
+def test_db_check_classifies_tls_stage_failures(mode, expected, db_creds):
+    listener, port, seen = pg_like_server(mode)
+    try:
+        result = run_db_probe(port, db_creds)
+    finally:
+        listener.close()
+    assert result["classification"] == expected and result["stopped_at"] == "tls"
+    assert result["stages"]["tcp"] == {"ok": True} and result["stages"]["login"] is None
+    assert seen == [probe_outsider.POSTGRES_SSL_REQUEST] or mode == "silent"
+    assert_no_secret(result, db_creds)
+
+
+def test_db_check_tls_ok_then_authentication_refused(db_creds, tmp_path):
+    cert, key = make_cert(["127.0.0.1"])
+    listener, port, _ = pg_like_server("tls", cert, key, tmp_path)
+    try:
+        for sqlstate in ("28P01", "28000"):
+            gateway = FakeLoginGateway(DbError(sqlstate, f"password authentication failed for user "
+                                                         f"{db_creds['user']} password={db_creds['password']} "
+                                                         "at 127.0.0.1"))
+            result = run_db_probe(port, db_creds, gateway)
+            assert result["classification"] == "tls_ok_authentication_refused"
+            assert result["stopped_at"] == "login" and result["stages"]["tls"]["ok"] is True
+            assert result["stages"]["tls"]["tls_version"].startswith("TLS")
+            assert result["stages"]["login"]["sqlstate"] == sqlstate and result["reached_database"] is False
+            assert gateway.calls == [("require", None, None)]
+            assert_no_secret(result, db_creds)
+    finally:
+        listener.close()
+
+
+def test_db_check_tls_ok_then_other_login_failures_and_missing_driver(db_creds, tmp_path):
+    cert, key = make_cert(["127.0.0.1"])
+    listener, port, _ = pg_like_server("tls", cert, key, tmp_path)
+    try:
+        other = run_db_probe(port, db_creds, FakeLoginGateway(DbError("3D000", "database does not exist")))
+        assert other["classification"] == "login_failed_other" and other["stages"]["login"]["sqlstate"] == "3D000"
+        none = run_db_probe(port, db_creds, FakeLoginGateway(DbError(None, "connection failed: closed")))
+        assert none["classification"] == "login_failed_other"
+        missing = run_db_probe(port, db_creds,
+                               FakeLoginGateway(DbError(None, "psycopg is not installed in this image")))
+        assert missing["classification"] == "login_not_run"
+    finally:
+        listener.close()
+
+
+def test_db_check_success_is_reported_as_reached(db_creds, tmp_path):
+    cert, key = make_cert(["127.0.0.1"])
+    listener, port, _ = pg_like_server("tls", cert, key, tmp_path)
+    try:
+        result = run_db_probe(port, db_creds)
+    finally:
+        listener.close()
+    assert result["classification"] == "login_ok_connected" and result["reached_database"] is True
+    assert result["stopped_at"] is None and result["stages"]["login"] == {"ok": True}
+    assert_no_secret(result, db_creds)
+
+
+def test_db_check_uses_verify_full_with_a_ca_file_that_is_removed_afterwards(db_creds, tmp_path):
+    cert, key = make_cert(["127.0.0.1"])
+    listener, port, _ = pg_like_server("tls", cert, key, tmp_path)
+    gateway = FakeLoginGateway()
+    try:
+        result = run_db_probe(port, db_creds, gateway, ca_pem=cert)
+    finally:
+        listener.close()
+    mode, path, existed = gateway.calls[0]
+    assert mode == "verify-full" and existed is True and not os.path.exists(path)
+    assert result["login_sslmode"] == "verify-full"
+
+
+def test_db_check_from_environment_not_configured_and_configured(db_creds, monkeypatch):
+    assert probe_outsider.database_check({})["classification"] == "not_configured"
+    partial = probe_outsider.database_check({"PROBE_OUTSIDER_DB_HOST": "h.example"})
+    assert partial["classification"] == "not_configured" and "USER" in partial["note"]
+    bad_port = probe_outsider.database_check({
+        "PROBE_OUTSIDER_DB_HOST": "h.example", "PROBE_OUTSIDER_DB_USER": db_creds["user"],
+        "PROBE_OUTSIDER_DB_PASSWORD": db_creds["password"], "PROBE_OUTSIDER_DB_PORT": "x"})
+    assert bad_port["classification"] == "not_configured" and "PORT" in bad_port["note"]
+    captured = {}
+
+    def fake_probe(host, port, dbname, user, password, ca_pem=None, **kwargs):
+        captured.update(host=host, port=port, dbname=dbname, ca=ca_pem)
+        return {"check": "database_denial", "classification": "timeout", "reached_database": False}
+
+    monkeypatch.setattr(probe_outsider, "probe_database", fake_probe)
+    env = {"PROBE_OUTSIDER_DB_HOST": "h.example", "PROBE_OUTSIDER_DB_USER": db_creds["user"],
+           "PROBE_OUTSIDER_DB_PASSWORD": db_creds["password"], "PROBE_OUTSIDER_DB_CA_PEM": "junk"}
+    result = probe_outsider.database_check(env)
+    assert captured == {"host": "h.example", "port": 25060, "dbname": "defaultdb", "ca": None}
+    assert "PROBE_OUTSIDER_DB_CA_PEM" in result["ca_note"] and "junk" not in json.dumps(result)
+
+
+def test_outsider_summary_carries_the_database_classification_without_secrets(db_creds, monkeypatch):
+    def fake_probe(*args, **kwargs):
+        return {"check": "database_denial", "classification": "tls_ok_authentication_refused",
+                "reached_database": False}
+
+    monkeypatch.setattr(probe_outsider, "probe_database", fake_probe)
+    env = {"PROBE_OUTSIDER_DB_HOST": "h.example", "PROBE_OUTSIDER_DB_USER": db_creds["user"],
+           "PROBE_OUTSIDER_DB_PASSWORD": db_creds["password"]}
+    out = probe_outsider.run_outsider(env)
+    assert out["summary"]["database_classification"] == "tls_ok_authentication_refused"
+    assert out["summary"]["database_reached"] is False and out["summary"]["isolated"] is True
+    text = json.dumps(out)
+    assert db_creds["password"] not in text and db_creds["user"] not in text
+    assert probe_outsider.run_outsider({})["summary"]["database_classification"] == "not_configured"
+
+
+def test_laptop_script_maps_variables_sets_exit_codes_and_prints_no_secret(db_creds, monkeypatch, capsys):
+    seen = {}
+    outcome = {"c": "login_ok_connected", "r": True}
+
+    def fake_probe(host, port, dbname, user, password, ca_pem=None, **kwargs):
+        seen.update(host=host, port=port, dbname=dbname, user=user, password=password)
+        return {"check": "database_denial", "classification": outcome["c"],
+                "reached_database": outcome["r"], "host_redacted": "***"}
+
+    monkeypatch.setattr(probe_outsider, "probe_database", fake_probe)
+    env = {"PROBE_LAPTOP_DB_HOST": "h.example", "PROBE_LAPTOP_DB_USER": db_creds["user"],
+           "PROBE_LAPTOP_DB_PASSWORD": db_creds["password"], "PROBE_LAPTOP_DB_PORT": "25061"}
+    assert probe_laptop_dbcheck.main(env) == 1
+    outcome.update(c="timeout", r=False)
+    assert probe_laptop_dbcheck.main(env) == 0
+    outcome.update(c="login_not_run", r=False)
+    assert probe_laptop_dbcheck.main(env) == 2
+    assert probe_laptop_dbcheck.main({}) == 2
+    assert seen["port"] == 25061 and seen["dbname"] == "defaultdb" and seen["host"] == "h.example"
+    printed = capsys.readouterr().out
+    assert db_creds["password"] not in printed and db_creds["user"] not in printed
+
+
+def test_laptop_script_against_a_closed_port_reports_refused(db_creds, capsys):
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        closed = sock.getsockname()[1]
+    env = {"PROBE_LAPTOP_DB_HOST": "127.0.0.1", "PROBE_LAPTOP_DB_PORT": str(closed),
+           "PROBE_LAPTOP_DB_USER": db_creds["user"], "PROBE_LAPTOP_DB_PASSWORD": db_creds["password"]}
+    assert probe_laptop_dbcheck.main(env) == 0
+    out = capsys.readouterr().out
+    assert json.loads(out)["classification"] == "connection_refused"
+    assert db_creds["password"] not in out and "127.0.0.1" not in out
+
+
+# --------------------------------------------------------------------- kit-wide properties
+
+
+def test_every_ssl_context_in_the_kit_sets_a_minimum_tls_version():
+    for path in PROBE_DIR.glob("*.py"):
+        text = path.read_text()
+        contexts = text.count("create_default_context(") + text.count("SSLContext(")
+        assert contexts <= text.count("minimum_version ="), f"{path.name}: a context without minimum_version"
+
+
+def test_retest_files_specs_and_dockerfile():
+    names = {p.name for p in PROBE_DIR.iterdir()}
+    assert "probe_laptop_dbcheck.py" in names
+    docker = (PROBE_DIR / "Dockerfile.probe").read_text()
+    assert "probe_laptop_dbcheck" not in docker  # the laptop script never goes into the image
+    app = (PROBE_DIR / "probe-app.yaml").read_text()
+    job_block = app.split("- name: probe-job", 1)[1]
+    assert "key: PROBE_JOB_TAG" in job_block and 'value: "ok-1"' in job_block
+    outsider = (PROBE_DIR / "probe-outsider-app.yaml").read_text()
+    for name in ("PROBE_OUTSIDER_DB_HOST", "PROBE_OUTSIDER_DB_USER", "PROBE_OUTSIDER_DB_PASSWORD"):
+        block = outsider.split(f"key: {name}", 1)[1].split("- key:", 1)[0]
+        assert "type: SECRET" in block and 'value: ""' in block
+    assert "defaultdb" in outsider
+
+
+def test_runbook_documents_the_retest_and_every_new_step_name():
+    text = (PROBE_DIR / "RUNBOOK.md").read_text()
+    assert "Retest (2026-11-12 follow-up)" in text
+    for step in R2_NEW_STEPS:
+        assert step in text, f"RUNBOOK.md does not mention step {step}"
+    for word in ("fail-1", "ok-1", "PROBE_JOB_TAG", "marker_now", "probe_laptop_dbcheck.py",
+                 "PROBE_OUTSIDER_DB_HOST", "tls_ok_authentication_refused", "scratch"):
+        assert word in text
+    assert "db-s-1vcpu-1gb" in text and "no `--format`" in text and "HTTP 400" in text
