@@ -13,6 +13,23 @@ envs:
     scope: RUN_TIME
     type: GENERAL
 
+# PROPOSAL, NOT APPROVED FOR DEPLOY (docs/stage-memory-deployment-plan.md). The memory pieces below
+# (`memory-db`, the `memory` service, the `memory-bootstrap` job and Charlie's memory variables) are
+# a proposed spec change for design item 11. The founder creates the managed cluster outside this
+# spec and applies a local filled copy only after answering the promotion question for one build.
+# Replace the two PLACEHOLDER_ values in the local copy, never here. Every SECRET below is empty on
+# purpose: paste values in the local copy or the control panel, never commit them.
+databases:
+  # Binds the founder's existing cluster so its connection variables can be referenced.
+  # UNVERIFIED: that `db_user: doadmin` is accepted for an attached production cluster (the probe
+  # used the same form but its result for this exact shape is not recorded as a pass).
+  - name: memory-db
+    engine: PG
+    production: true
+    cluster_name: PLACEHOLDER_CLUSTER_NAME
+    db_name: PLACEHOLDER_DATABASE_NAME
+    db_user: doadmin
+
 services:
   - name: web
     github:
@@ -246,6 +263,159 @@ services:
         scope: RUN_TIME
         type: GENERAL
       - key: LITELLM_API_KEY
+        value: ""
+        scope: RUN_TIME
+        type: SECRET
+      # Governed memory (docs/stage-memory-design.md 2.3). Memory is ON whenever VIHARBOT_MEMORY_URL is
+      # set; remove it (and redeploy) to turn memory off. Charlie only; no other component has these.
+      - key: VIHARBOT_MEMORY_URL
+        value: https://memory:8443
+        scope: RUN_TIME
+        type: GENERAL
+      # The memory service's certificate (the same base64 file as MEMORY_TLS_CERT_PEM): Charlie's
+      # ONLY trusted certificate.
+      - key: VIHARBOT_MEMORY_CA_PEM
+        value: ""
+        scope: RUN_TIME
+        type: SECRET
+      - key: VIHARBOT_OUTBOUND_AUTH
+        value: "on"
+        scope: RUN_TIME
+        type: GENERAL
+      # Must match the key id in the memory registry (printed by scripts/stage_memory_materials.py).
+      - key: VIHARBOT_SIGNING_KID
+        value: charlie-stage-1
+        scope: RUN_TIME
+        type: GENERAL
+      - key: VIHARBOT_SERVICE_SUBJECT
+        value: charlie
+        scope: RUN_TIME
+        type: GENERAL
+      - key: VIHARBOT_SIGNING_KEY
+        value: ""
+        scope: RUN_TIME
+        type: SECRET
+
+  # Governed memory service (design 2.4). INTERNAL ONLY: no http_port and no public route. It
+  # serves HTTPS itself on 8443, so the platform check is a TCP check.
+  - name: memory
+    github:
+      repo: vchokshi/viharbot
+      branch: main
+      deploy_on_push: false
+    dockerfile_path: Dockerfile.memory
+    source_dir: /
+    instance_size_slug: apps-s-1vcpu-0.5gb
+    instance_count: 1  # one instance: the replay cache is per process
+    internal_ports:
+      - 8443
+    health_check:
+      port: 8443
+    envs:
+      - key: MEMORY_STAGE_ROLE
+        value: serve
+        scope: RUN_TIME
+        type: GENERAL
+      # The image sets PORT=8000; the launcher only defaults to 8443 when PORT is unset.
+      - key: PORT
+        value: "8443"
+        scope: RUN_TIME
+        type: GENERAL
+      - key: MEMORY_TLS_CERT_PEM
+        value: ""
+        scope: RUN_TIME
+        type: SECRET
+      - key: MEMORY_TLS_KEY_PEM
+        value: ""
+        scope: RUN_TIME
+        type: SECRET
+      - key: VIHARBOT_KEY_REGISTRY_B64
+        value: ""
+        scope: RUN_TIME
+        type: SECRET
+      # Binding references (not secrets). HOSTNAME and PORT are TESTED bindable names (PR #326);
+      # DATABASE is DOCUMENTED only.
+      - key: MEMORY_DB_HOST
+        value: ${memory-db.HOSTNAME}
+        scope: RUN_TIME
+        type: GENERAL
+      - key: MEMORY_DB_PORT
+        value: ${memory-db.PORT}
+        scope: RUN_TIME
+        type: GENERAL
+      - key: MEMORY_DB_NAME
+        value: ${memory-db.DATABASE}
+        scope: RUN_TIME
+        type: GENERAL
+      - key: MEMORY_DB_USER
+        value: memory_service
+        scope: RUN_TIME
+        type: GENERAL
+      - key: MEMORY_DB_PASSWORD
+        value: ""
+        scope: RUN_TIME
+        type: SECRET
+      - key: MEMORY_DB_SSLMODE
+        value: verify-full
+        scope: RUN_TIME
+        type: GENERAL
+      - key: MEMORY_DB_CA_PEM
+        value: ""
+        scope: RUN_TIME
+        type: SECRET
+
+jobs:
+  # Runs before every deployment (and, apparently, again on a platform rollback), so every step is
+  # idempotent. MERGE HELD for the probe retest R1 to R3: its migrator CONNECT grant is untested.
+  - name: memory-bootstrap
+    kind: PRE_DEPLOY
+    github:
+      repo: vchokshi/viharbot
+      branch: main
+      deploy_on_push: false
+    dockerfile_path: Dockerfile.memory
+    source_dir: /
+    envs:
+      - key: MEMORY_STAGE_ROLE
+        value: bootstrap
+        scope: RUN_TIME
+        type: GENERAL
+      # Admin connection from the binding. HOSTNAME, PORT and USERNAME are TESTED bindable names;
+      # PASSWORD and DATABASE are DOCUMENTED only (design 2.3, PR #326 row 4d).
+      - key: MEMORY_ADMIN_DB_HOST
+        value: ${memory-db.HOSTNAME}
+        scope: RUN_TIME
+        type: GENERAL
+      - key: MEMORY_ADMIN_DB_PORT
+        value: ${memory-db.PORT}
+        scope: RUN_TIME
+        type: GENERAL
+      - key: MEMORY_ADMIN_DB_USER
+        value: ${memory-db.USERNAME}
+        scope: RUN_TIME
+        type: GENERAL
+      - key: MEMORY_ADMIN_DB_PASSWORD
+        value: ${memory-db.PASSWORD}
+        scope: RUN_TIME
+        type: SECRET
+      - key: MEMORY_ADMIN_DB_NAME
+        value: ${memory-db.DATABASE}
+        scope: RUN_TIME
+        type: GENERAL
+      - key: MEMORY_ADMIN_DB_SSLMODE
+        value: verify-full
+        scope: RUN_TIME
+        type: GENERAL
+      - key: MEMORY_DB_MIGRATOR_PASSWORD
+        value: ""
+        scope: RUN_TIME
+        type: SECRET
+      # Same value as MEMORY_DB_PASSWORD on the memory service.
+      - key: MEMORY_DB_SERVICE_PASSWORD
+        value: ""
+        scope: RUN_TIME
+        type: SECRET
+      - key: MEMORY_DB_CA_PEM
         value: ""
         scope: RUN_TIME
         type: SECRET

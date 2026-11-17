@@ -736,9 +736,13 @@ def test_compose_runs_memory_by_default_for_charlie_only_with_no_flag_and_no_dep
     assert "--ssl-certfile" in (ROOT / "Dockerfile.memory").read_text()
 
 
-def test_stage_is_not_touched_and_no_other_agent_reads_the_memory_settings():
+def test_the_proposed_stage_spec_gives_only_charlie_the_memory_client_settings_and_no_other_agent_reads_them():
+    # Was "Stage is not touched". The memory spec is now a proposal (docs/stage-memory-deployment-plan.md,
+    # not approved for deploy); the per-component rules are in tests/test_memory_deployment_static.py.
     spec = (ROOT / "deploy" / "digitalocean" / "app.yaml").read_text()
-    assert "VIHARBOT_MEMORY" not in spec and "memory-service" not in spec
+    components = re.split(r"(?m)^  - name: ", spec)[1:]
+    holders = [c.split("\n", 1)[0] for c in components if "VIHARBOT_MEMORY" in c]
+    assert holders == ["synthesis"] and "memory-service" not in spec
     sources = {p.name for p in (ROOT / "src" / "viharbot").glob("*.py") if "memory_client" in p.read_text()
                or "charlie_memory" in p.read_text()}
     assert sources == {"memory_client.py", "charlie_memory.py", "specialist_agent.py"}
