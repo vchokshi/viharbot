@@ -136,7 +136,7 @@ Database passwords are handled apart from keys and certificates, because Postgre
 
 ## Running the contract tests
 
-The PostgreSQL tests are selected by `VIHARBOT_MEMORY_TEST_PG_ADMIN_DSN` (a superuser DSN for a throwaway server) and skip with a message naming it when it is unset. Each session creates the two roles and a fresh database, runs the real migrations, and drops the database after.
+The PostgreSQL tests are selected by `VIHARBOT_MEMORY_TEST_PG_ADMIN_DSN` (a superuser DSN for a throwaway server, or a non-superuser with CREATEROLE and CREATEDB on a managed cluster; a non-loopback host also needs `VIHARBOT_MEMORY_TEST_PG_ALLOW_REMOTE=1` and `VIHARBOT_MEMORY_TEST_PG_CONFIRM_EMPTY=1`, see `tests/memory_helpers.py` and the [Stage runbook](stage-memory-runbook.md) section 4.4) and skip with a message naming it when it is unset. Each session creates the two roles and a fresh database, runs the real migrations, and drops the database after.
 
 ```bash
 docker run -d --name vb-pg-test -e POSTGRES_PASSWORD=<throwaway> -p 127.0.0.1:55432:5432 postgres:17.11-alpine3.24
