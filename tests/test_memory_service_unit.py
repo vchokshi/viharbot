@@ -7,6 +7,7 @@ fails the test if it is touched. Offline, no model, no gateway.
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
@@ -27,6 +28,7 @@ from viharbot import service_auth as sa
 from viharbot.execution_bindings import default_bindings
 from viharbot.identity_registry import default_registry
 from viharbot.memory_service import migrate as migrate_module
+from viharbot.memory_service.audit import audit
 from viharbot.memory_service.models import CreateRequest
 from viharbot.memory_service.paths import PathError, ReservedScope, parse_memory_path
 from viharbot.memory_service.policy import (
@@ -39,8 +41,9 @@ from viharbot.memory_service.policy import (
     load_policy,
     parse_policy,
 )
-from viharbot.memory_service.repository import GuardRefusedError, MutationResult
+from viharbot.memory_service.repository import GuardRefusedError, MutationResult, Provenance, Record
 from viharbot.memory_service.service import new_memory_id
+from viharbot.observability import JsonFormatter
 
 MID = "01234567-89ab-7def-8123-456789abcdef"
 
@@ -668,3 +671,73 @@ def test_the_adapter_reads_the_clock_after_the_lock_never_before(monkeypatch):
     order.clear()
     repo.classify("m", 1, "confidential", ctx)
     assert order.index("CLOCK") > order.index("record_lock")
+
+
+# --- the list audit line carries a count and nothing else new ---------------------------------
+
+
+class CountingRepository(GuardProbe):
+    """Serves a fixed number of records on list, and a record on get, with no real storage."""
+
+    def __init__(self, how_many: int) -> None:
+        super().__init__()
+        self.how_many = how_many
+
+    def _record(self, memory_id: str) -> Record:
+        return Record(
+            memory_id=memory_id, memory_type="agent", scope_key="agent/nova", owner_agent_id="nova",
+            content="x", provenance=Provenance("agent_memory", "test:source", "nova", None),
+            classification="internal", tags=(), personal_data=False, consent_basis="not_applicable",
+            consent_reference=None, retention_until=None, expires_at=None, created_at=T0, updated_at=T0,
+            version=1, rev=1, lifecycle="active",
+        )
+
+    def list(self, scope, owner, now, allowed_classes, tag, limit):
+        return [self._record(new_memory_id()) for _ in range(self.how_many)]
+
+    def get(self, scope, owner, memory_id, now, allowed_classes):
+        return self._record(memory_id)
+
+
+def _audit_lines(caplog) -> list[dict]:
+    formatter = JsonFormatter()
+    return [json.loads(formatter.format(r)) for r in caplog.records if r.name == "memory_audit"]
+
+
+@pytest.mark.parametrize("how_many", [0, 1, 3])
+def test_a_successful_list_audit_line_carries_the_number_of_records_returned(tmp_path, caplog, how_many):
+    caplog.set_level(logging.DEBUG)
+    world = build_world(tmp_path, CountingRepository(how_many))
+    response = world.call("nova", "GET", agent_path(), request_id="req-count-1")
+    assert response.status_code == 200 and response.json()["count"] == how_many
+    (line,) = [x for x in _audit_lines(caplog) if x["request_id"] == "req-count-1"]
+    assert (line["operation"], line["outcome"]) == ("list", "ok")
+    assert line["count"] == how_many and type(line["count"]) is int
+    assert "memory_id" not in line and "tag" not in line and "records" not in line
+
+
+def test_no_other_operation_and_no_refused_list_carries_a_count(tmp_path, caplog):
+    caplog.set_level(logging.DEBUG)
+    world = build_world(tmp_path, CountingRepository(2))
+    for index, operation in enumerate(("create", "update", "classify", "retire", "erase")):
+        path, body = _request(operation)
+        assert world.call("nova", "POST", path, body, request_id=f"req-nc-{index}").status_code in (200, 201)
+    assert world.call("nova", "GET", agent_path("nova", MID), request_id="req-nc-get").status_code == 200
+    assert world.call("scout", "GET", agent_path("nova"), request_id="req-nc-denied").status_code == 403
+    assert world.call("nova", "GET", agent_path() + "?bogus=1", request_id="req-nc-bad").status_code == 400
+    assert world.call(None, "GET", agent_path(), request_id="req-nc-anon").status_code == 401
+    lines = _audit_lines(caplog)
+    assert {x["request_id"] for x in lines} >= {
+        *(f"req-nc-{i}" for i in range(5)), "req-nc-get", "req-nc-denied", "req-nc-bad",
+    }
+    assert [x for x in lines if "count" in x] == []
+
+
+def test_the_audit_helper_refuses_a_count_for_anything_but_a_successful_list(caplog):
+    caplog.set_level(logging.DEBUG)
+    common = dict(request_id="r", caller="nova", scope="agent/nova")
+    audit(operation="list", outcome="ok", count=4, **common)
+    audit(operation="list", outcome="denied", reason="scope_not_owned", count=4, **common)
+    audit(operation="create", outcome="ok", count=4, **common)
+    lines = _audit_lines(caplog)
+    assert [("count" in x) for x in lines] == [True, False, False] and lines[0]["count"] == 4

@@ -220,6 +220,7 @@ def create_app(
         audit(
             request_id=request_id, caller=caller.sub, scope=scope_label, operation=operation,
             outcome="replayed" if outcome.replayed else "ok", memory_id=memory_id,
+            count=outcome.payload["count"] if operation == "list" else None,
         )
         return _json(outcome.status, outcome.payload, request_id, outcome.headers)
 
