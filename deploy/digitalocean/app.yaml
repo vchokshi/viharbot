@@ -365,7 +365,7 @@ services:
         type: SECRET
 
 jobs:
-  # Runs before every deployment (and, apparently, again on a platform rollback), so every step is
+  # Runs before every deployment (and again on a platform rollback, tested 2026-11-23), so every step is
   # idempotent. Its migrator CONNECT grant was validated on DigitalOcean by the probe retest 2026-11-23.
   - name: memory-bootstrap
     kind: PRE_DEPLOY
