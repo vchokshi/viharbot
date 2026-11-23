@@ -366,7 +366,7 @@ services:
 
 jobs:
   # Runs before every deployment (and, apparently, again on a platform rollback), so every step is
-  # idempotent. MERGE HELD for the probe retest R1 to R3: its migrator CONNECT grant is untested.
+  # idempotent. Its migrator CONNECT grant was validated on DigitalOcean by the probe retest 2026-11-23.
   - name: memory-bootstrap
     kind: PRE_DEPLOY
     github:
