@@ -2,8 +2,9 @@
 
 Offline: a fake gateway stands in for the database, as ``tests/test_digitalocean_probe.py`` does
 for the probe job. Nothing here contacts DigitalOcean or PostgreSQL. These tests prove the job's
-LOGIC (order, idempotence, refusals, quiet logs). They do NOT prove the untested SQL steps work on
-DigitalOcean; that waits for the founder's probe retest R1 to R3.
+LOGIC (order, idempotence, refusals, quiet logs). They do NOT prove any SQL works on DigitalOcean;
+the CONNECT grant and WITH SET TRUE were validated there by the probe retest 2026-11-23, and
+client-side SCRAM hashing is still untested.
 """
 
 from __future__ import annotations
@@ -237,27 +238,43 @@ def test_no_statement_is_a_bare_create_other_than_the_first_role_creation(env):
     assert creates == []  # every CREATE is IF NOT EXISTS or replaced by ALTER once the role exists
 
 
-# ---------------------------------------------------- the isolated, untested platform steps
+# ------------------------------------------- the platform grants (probe retest 2026-11-23)
 
 
-def test_the_untested_steps_live_in_one_function_and_are_marked(env, capsys):
-    steps_ = sb.untested_platform_steps("memory")
+def test_the_platform_grants_live_in_one_function_and_are_validated(env, capsys):
+    steps_ = sb.platform_grant_steps("memory")
     assert [s.name for s in steps_] == ["grant_migrator_to_admin_set_true", "grant_connect_migrator"]
-    assert all(s.untested for s in steps_)
+    # Probe retest 2026-11-23: both tested on DigitalOcean, so neither is flagged untested.
+    assert not any(s.untested for s in steps_)
+    # CONNECT is required (fatal); WITH SET TRUE is accepted but optional (non-fatal).
+    assert {s.name: s.fatal for s in steps_} == {"grant_migrator_to_admin_set_true": False,
+                                                 "grant_connect_migrator": True}
     db = FakeDatabase()
     run(env, db)
     reported = steps(capsys.readouterr().out)
-    assert reported["grant_connect_migrator"]["untested_on_digitalocean"] is True
-    assert reported["grant_migrator_to_admin_set_true"]["untested_on_digitalocean"] is True
-    assert reported["create_schema"]["untested_on_digitalocean"] is False
+    for name in ("grant_connect_migrator", "grant_migrator_to_admin_set_true", "create_schema"):
+        assert reported[name]["untested_on_digitalocean"] is False
     # The migrator CONNECT grant and the SET grant are written only inside that function.
     source = code_only()
-    isolated = inspect.getsource(sb.untested_platform_steps)
+    isolated = inspect.getsource(sb.platform_grant_steps)
     outside = source.replace(isolated, "")
     assert "WITH SET TRUE" not in outside
     assert not re.search(r'GRANT CONNECT ON DATABASE \{db\} TO \{migrator\}', outside)
-    # and the design's alternative is not silently included
-    assert "ALTER DATABASE" not in outside
+    # ALTER DATABASE ... OWNER failed on DigitalOcean without a membership grant and is not used
+    assert not any("ALTER DATABASE" in statement for statement in db.statements)
+    assert not any("ALTER DATABASE" in step.sql for step in steps_)
+    assert not re.search(r'f?"[^"\n]*ALTER DATABASE', source)
+
+
+def test_client_side_scram_hashing_is_still_flagged_untested(env, capsys):
+    db = FakeDatabase()
+    db.hash_prefix = "SCRAM-SHA-256$"
+    assert run(env, db) == sb.EXIT_OK
+    reported = steps(capsys.readouterr().out)
+    assert reported["create_role_memory_migrator"]["untested_on_digitalocean"] is True
+    plain = FakeDatabase()
+    run(env, plain)
+    assert steps(capsys.readouterr().out)["create_role_memory_migrator"]["untested_on_digitalocean"] is False
 
 
 def test_a_refused_set_grant_is_recorded_and_the_job_carries_on(env, capsys):
@@ -409,4 +426,5 @@ def test_the_module_makes_no_claim_about_digitalocean_success_and_has_no_superus
     source = code_only()
     assert "SUPERUSER" not in source.replace("NOSUPERUSER", "")
     assert not re.search(r"(?i)works on digitalocean|verified on digitalocean", inspect.getsource(sb))
-    assert "MERGE HELD UNTIL THE PROBE RETEST R1 to R3" in inspect.getsource(sb)
+    assert "MERGE HELD" not in inspect.getsource(sb)
+    assert "probe retest 2026-11-23" in inspect.getsource(sb)
