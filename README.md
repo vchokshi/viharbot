@@ -30,7 +30,7 @@ This README describes what the code on `main` does today. Planned work is labell
 
 * An identity is a persona and a routing label. By default it does not change behavior (`VIHARBOT_PERSONALITY_INFERENCE_ENABLED` and `VIHARBOT_PERSONA_PROMPT_ENABLED` are set nowhere). Adding an *operational* agent means editing about ten places (the `Capability` enum and several tables in `identity.py`, `execution_bindings.py`, `orchestration_state.py` and `orchestration_policy.py`, the response model, `web_app.agent_urls()`, compose and the Stage spec). Fixes are planned: [#226](https://github.com/vchokshi/viharbot/issues/226) (placement file) and [#227](https://github.com/vchokshi/viharbot/issues/227) (capability manifest, deferred).
 * The Research agent (Nova) makes one model call from the model's own knowledge. It has no retrieval tool, so Fact Check judges only the evidence Nova supplied ([#237](https://github.com/vchokshi/viharbot/issues/237)).
-* Memory is write-only JSONL: written, never read, no retention ([#229](https://github.com/vchokshi/viharbot/issues/229)).
+* Agent memory (`remember()`) is write-only JSONL: written, never read, no retention ([#229](https://github.com/vchokshi/viharbot/issues/229)). Separately, Charlie alone uses the governed memory service where a memory URL is set (local Compose; not Stage). See [development status](docs/development-status.md).
 * `demo.py` holds core pipeline functions as well as the CLI demo ([#232](https://github.com/vchokshi/viharbot/issues/232)).
 * Which mode `/api/chat` runs depends on whether the web container has a planner alias and a LiteLLM key ([#223](https://github.com/vchokshi/viharbot/issues/223)).
 * `identity_execution.py` and `delegated_execution.py` are not reachable from the web app ([#222](https://github.com/vchokshi/viharbot/issues/222)).
@@ -178,7 +178,7 @@ For now, pushing to `main` updates source only; nothing deploys automatically, a
 
 ## Known limitations
 
-* Agent memory is append-only JSONL, written but never read back, and ephemeral on App Platform.
+* Agent memory (`remember()`) is append-only JSONL, written but never read back, and ephemeral on App Platform. The governed memory service (Charlie only) runs in local Compose and is not deployed to Stage.
 * Agent-to-agent REST is authenticated only where `VIHARBOT_SERVICE_AUTH` is on (local Compose, not Stage) and never authorized per delegation (A3); identities do not have separate cloud permissions.
 * Calls run one at a time, and cancelling a browser request does not stop work already in flight.
 * Planned, not built: per-user accounts, durable sessions and memory, authenticated inter-agent calls, distributed runtimes, Atlas, Sage and Orbit. Pixel's slide decks are built only in local Compose and are unverified against a live model; see [Pixel slide service](docs/pixel-slide-service.md).
