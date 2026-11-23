@@ -36,8 +36,8 @@ Nothing may proceed on "probably fine". A FAIL means stop, record it, and tear d
 ## 3. Pre-window checklist (founder, a day before if possible)
 
 1. **Merged work.** Confirm every item in section 9 is merged to `main`, or the founder accepts the gap. Write down the exact commit SHA to deploy. Run the offline suite as the README describes and record the result. Do not build or deploy from an unmerged branch.
-2. **Probe retest done.** The one-time retest (decision N3) has run once and its results are recorded in `docs/stage-memory-platform-verification.md`. Section 8b of `deploy/digitalocean-probe/RUNBOOK.md` (merged in PR #331) holds the steps R1 to R3. **The retest has not been run:** no R1 to R3 results are recorded in `docs/stage-memory-platform-verification.md` or on issue #40. Until it has run, the bootstrap cannot be built (design 6, item 6).
-3. **Prices and slug.** Run `doctl databases options slugs --engine pg` and use a slug from that list. `db-s-1vcpu-1gb` is no longer offered (TESTED); the probe used `db-amd-1vcpu-1gb` (15 GiB storage), whose price is **UNCONFIRMED**. Check the current price on DigitalOcean's pricing pages and in the control panel estimate before creating anything. Record the slug and price you saw.
+2. **Probe retest done.** The one-time retest (decision N3) ran once on 2026-11-23 and its results are recorded in `docs/stage-memory-platform-verification.md` ("Retest 2026-11-23"). Section 8b of `deploy/digitalocean-probe/RUNBOOK.md` (merged in PR #331) holds the steps R1 to R3. Results in short: R1 trusted-source denial PASS on the public path (about 40 seconds after the rule; the private-VPC path is untested), R2 the migrator needs `GRANT CONNECT` and, to take ownership, `GRANT migrator TO CURRENT_USER WITH SET TRUE` (PASS), R3 a failing pre-deploy job is not retried but the rollback re-runs the previous version's job once (answered). This ticks this item only. The bootstrap (#354) and the Stage app spec (#356) are unmerged drafts, so no gate is met.
+3. **Prices and slug.** Run `doctl databases options slugs --engine pg` and use a slug from that list. The offered list changes: `db-s-1vcpu-1gb` was absent on 2026-11-12 and listed again on 2026-11-23 (TESTED); the probes used `db-amd-1vcpu-1gb` (15 GiB storage), whose price is **UNCONFIRMED** (no invoice read yet). The server was PostgreSQL 17.12 on 2026-11-23. Check the current price on DigitalOcean's pricing pages and in the control panel estimate before creating anything. Record the slug and price you saw.
 4. **Cost estimate with arithmetic.** Sources: list prices recorded in `docs/stage-memory-platform-verification.md` (rows 3a, 3c, 8b, 8d), retrieved 2026-11-11; not read from any invoice. Database 15.15 / 672 = $0.02254 per hour (marketing page figure, slug unmatched). One extra `apps-s-1vcpu-0.5gb` memory component 5.00 / 672 = $0.00744 per hour. Bootstrap job billed only while it runs, about 0. Total about **$0.030 per hour**.
 
    | Window | Memory component | Database | Total |
@@ -53,7 +53,7 @@ Nothing may proceed on "probably fine". A FAIL means stop, record it, and tear d
    | Item | Per window | Yearly |
    |---|---|---|
    | Managed cluster and dedicated database | yes (N1) | |
-   | Cluster CA certificate | yes: assume a new cluster has a new CA (UNVERIFIED; the retest may record it) | |
+   | Cluster CA certificate | yes: assume a new cluster has a new CA (UNVERIFIED; the retest did not exercise a second cluster) | |
    | Database role passwords (migrator, service) | yes | |
    | Trusted-source rules (operator, app) | yes | |
    | Memory server certificate and key, Charlie's trust copy | | yes, or a fresh certificate each window (N5) |
@@ -80,7 +80,7 @@ RUN (founder)  doctl databases db create <cluster-id> <database-name>
 RUN (founder)  doctl databases db list <cluster-id>
 ```
 
-Status: `create` ran on 2026-11-12 and has no `--format` flag (TESTED); the other flags were used by the probe runbook but are not itemised in the record. `--format` on `list` and the `db` subcommands are UNVERIFIED. PostgreSQL 17, Standard Edition, **one node, no standby**. Control-panel fallback: Create, Databases, PostgreSQL 17, Standard, single node, the datacenter and VPC. Add the cluster ID to the resource list now.
+Status: `create` ran on 2026-11-12 and 2026-11-23 and has no `--format` flag (TESTED). In `doctl` 2.0 (2026-11-23) `databases db create` and `databases user create` also take no `--format`, `user create` masks the password, `databases user get --show` reveals it, and `doctl databases connection` has no `--user` flag. **Warning: `doctl databases create` prints the admin connection URI including its password. Treat that output as a secret: do not paste it into a ticket, chat, log or this repository, and clear the terminal scrollback.** `--format` on `list` and the `db` subcommands are UNVERIFIED. PostgreSQL 17, Standard Edition, **one node, no standby**. Control-panel fallback: Create, Databases, PostgreSQL 17, Standard, single node, the datacenter and VPC. Add the cluster ID to the resource list now.
 
 **The cluster accepts credentialed connections from anywhere until a trusted-source rule exists (UNVERIFIED default).** It is empty and holds no real data; keep this period short.
 
@@ -162,7 +162,7 @@ The procedure, in order:
    RUN (founder)  doctl databases firewalls list <cluster-id>                                         # must show no ip_addr rule
    ```
 
-5. From the operator machine, confirm the cluster now refuses you (the retest R1 evidence says whether this can be relied on; denial was untested until then).
+5. From the operator machine, confirm the cluster now refuses you (the retest R1 evidence (2026-11-23) saw a public laptop refused about 40 seconds after the rule; allow for that delay).
 
 **G2 is met** only with a PASS, the rule removed and the firewall list checked.
 
@@ -190,7 +190,7 @@ Wait for an affirmative answer **for that commit**. "Probably", silence, or an a
 
 ### 4.6 Deploy
 
-**Placeholder: not built (verified against `main`).** The Stage app spec (design 6, item 11) is a separate pull request that needs the founder's explicit approval; `deploy/digitalocean/app.yaml` today has the web and six agents and no memory component, no job and no database binding. The bootstrap job (item 6, `MEMORY_STAGE_ROLE=bootstrap`) is not built: `stage_entry.py` accepts only `serve` and exits 2 otherwise. It waits for the retest. Until both exist there is nothing to deploy, and this step cannot be carried out. When they exist, the steps are:
+**Placeholder: not built (verified against `main`).** The Stage app spec (design 6, item 11) is a separate pull request that needs the founder's explicit approval; `deploy/digitalocean/app.yaml` today has the web and six agents and no memory component, no job and no database binding. The bootstrap job (item 6, `MEMORY_STAGE_ROLE=bootstrap`) is not built: `stage_entry.py` accepts only `serve` and exits 2 otherwise. The retest has run (2026-11-23), but the bootstrap pull request (#354) and the app spec pull request (#356) are unmerged drafts. Until both are merged there is nothing to deploy, and this step cannot be carried out. When they exist, the steps are:
 
 1. Copy the spec to `data/stage-spec-filled.yaml` (gitignored). Put the secret values into that local copy only (the platform encrypts a SECRET on first submission, DOCUMENTED row 7a; creating an app with empty SECRET values and encrypting on first submission were not tested). Never commit it.
 2. Validate and apply:
@@ -343,10 +343,10 @@ Reconciled 2026-11-16 against `main` at `a84f203`. Re-check each against `main` 
 
 | Item (design section 6) | State on `main` | Affects |
 |---|---|---|
-| 6 Bootstrap and migrate entry (`MEMORY_STAGE_ROLE=bootstrap`) | **not built**; `stage_entry.py` accepts only `serve`. Waits for the retest (N3) | 4.6, 5; no way yet to create the two roles |
-| 11 Stage app spec with `memory`, `memory-bootstrap`, `memory-db`, Charlie's variables | **not built**; needs the founder's explicit approval; `deploy/digitalocean/app.yaml` unchanged | 4.6 |
+| 6 Bootstrap and migrate entry (`MEMORY_STAGE_ROLE=bootstrap`) | **not built on `main`**; `stage_entry.py` accepts only `serve`; bootstrap PR #354 is an unmerged draft. The retest (N3) has run | 4.6, 5; no way yet to create the two roles |
+| 11 Stage app spec with `memory`, `memory-bootstrap`, `memory-db`, Charlie's variables | **not built on `main`**; app spec PR #356 is an unmerged draft; needs the founder's explicit approval; `deploy/digitalocean/app.yaml` unchanged | 4.6 |
 | 12 Documentation updates (`docs/memory-service.md`, `docs/deployment-strategy.md`, `docs/development-status.md`) | partly done in this reconciliation (status text only); Stage statements wait for the app spec | none |
-| Probe retest R1 to R3 | kit merged in PR #331; **not run**: no results in `docs/stage-memory-platform-verification.md` or on issue #40 | pre-window check 2; trusted-source denial and the migrator grants are still unproven |
+| Probe retest R1 to R3 | kit merged in PR #331; **run 2026-11-23**, results in `docs/stage-memory-platform-verification.md`: R1 PASS (public path; private-VPC path untested), R2 PASS, R3 answered | pre-window check 2 done; the private-VPC denial path, app-spec binding names and SCRAM hashing are still untested |
 | Local rehearsal (design 7.2) | **not run** | G3 evidence |
 | Conformance run on a managed cluster (G2) | support merged (PR #334); **not run** against any managed cluster | 4.4 |
 | AGENTS.md sentence "Stage currently has the web service and six agents" | true today; stale once item 11 deploys; founder-reviewed path, not edited here | none |
