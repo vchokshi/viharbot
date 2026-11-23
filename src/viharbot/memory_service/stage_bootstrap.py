@@ -4,23 +4,31 @@ Selected by ``MEMORY_STAGE_ROLE=bootstrap`` (the launcher, ``stage_entry``, disp
 the PRE_DEPLOY job of the Stage app: it runs before every deployment and, after a failed deployment,
 the platform's rollback appears to run it again, so EVERY step is idempotent.
 
-MERGE HELD UNTIL THE PROBE RETEST R1 to R3 IS RECORDED. Two steps are designed but have never run
-on DigitalOcean and this module does not claim they work there:
+Probe retest 2026-11-23 (the founder's R1 to R3 on DigitalOcean, Standard PostgreSQL 17.12, as
+``doadmin``) recorded the two platform-specific grants, both in ONE place, ``platform_grant_steps()``:
 
-* the migrator CONNECT grant on the platform-created database (design 4.1 step 4), and
-* ``GRANT memory_migrator TO CURRENT_USER WITH SET TRUE`` (design 4.1 step 3).
+* ``GRANT CONNECT ON DATABASE ... TO memory_migrator`` (design 4.1 step 4): TESTED, REQUIRED. The
+  migrator cannot log in to the platform-created database (SQLSTATE 42501) until it runs. Fatal.
+* ``GRANT memory_migrator TO CURRENT_USER WITH SET TRUE`` (design 4.1 step 3): TESTED, accepted. It
+  is only needed to hand the database to the migrator, which this job does not do, so it stays
+  optional and non-fatal. ``ALTER DATABASE ... OWNER`` failed without it (42501) and is deliberately
+  NOT used; a test guards its absence.
 
-Both live in ONE place, ``untested_platform_steps()``, and nowhere else. If the retest says the
-approach is wrong (for example ``ALTER DATABASE ... OWNER`` is needed instead), change that one
-function and its tests. Every other step is plain SQL the Compose script also runs, or was observed
-on DigitalOcean by the probe (PR #326).
+Also recorded 2026-11-23: a re-run exits 0 with the same outcomes (idempotent), and a failed
+PRE_DEPLOY job is not retried by the platform but the automated rollback re-runs the previous
+version's job once, so this job runs again during a rollback and MUST stay idempotent.
+
+STILL UNTESTED on DigitalOcean: client-side SCRAM hashing of the role passwords (the plain-password
+fallback stays; steps that used a client-side hash are flagged ``untested_on_digitalocean``). Every
+other step is plain SQL the Compose script also runs, or was observed on DigitalOcean by the probe
+(PR #326) or the retest.
 
 Sequence (admin = the database binding's ``doadmin``, ``sslmode=verify-full`` with the cluster CA):
 
 1. connect as admin and check the dedicated database exists;
 2. create-or-alter ``memory_migrator`` and ``memory_service`` (LOGIN, no SUPERUSER, CREATEDB or
-   CREATEROLE), password pre-hashed client-side as SCRAM when the driver can (UNTESTED on DO);
-3. untested platform steps (above) and ``REVOKE ALL ON DATABASE ... FROM PUBLIC``, ``GRANT CONNECT``
+   CREATEROLE), password pre-hashed client-side as SCRAM when the driver can (SCRAM UNTESTED on DO);
+3. the platform grant steps (above) and ``REVOKE ALL ON DATABASE ... FROM PUBLIC``, ``GRANT CONNECT``
    to the service role;
 4. ``CREATE SCHEMA IF NOT EXISTS memory`` then ``ALTER SCHEMA memory OWNER TO memory_migrator``;
 5. migrate as ``memory_migrator`` with the unchanged runner (``migrate.py``);
@@ -159,35 +167,36 @@ class Step:
     untested: bool = False
 
 
-def untested_platform_steps(database: str) -> list[Step]:
-    """THE ISOLATED, UNTESTED SQL. Change only this function when the R1 to R3 results come in.
+def platform_grant_steps(database: str) -> list[Step]:
+    """The two grants for a database the platform created and ``doadmin`` owns.
 
-    Both statements are the design's proposals for a database the platform created and `doadmin`
-    owns. Neither has been run on DigitalOcean. The design's alternative if the CONNECT grant does
-    not repair the migrator login is ``ALTER DATABASE <db> OWNER TO memory_migrator`` (worked on a
-    local PostgreSQL 17.11 only once the SET grant had run); it is deliberately NOT included.
+    Validated by the probe retest 2026-11-23 on DigitalOcean (PostgreSQL 17.12). The design's
+    alternative, ``ALTER DATABASE <db> OWNER TO memory_migrator``, is deliberately NOT included.
     """
     db, migrator = quote_ident(database), quote_ident(MIGRATOR_ROLE)
     return [
-        # Design 4.1 step 3. Not fatal on its own: PostgreSQL 16 and later need it for a
-        # non-superuser admin to hand ownership to a role it created, but DigitalOcean's `doadmin`
-        # did not (PR #326 row 5b), so a refusal is recorded and the following fatal steps decide.
+        # Design 4.1 step 3. Tested (probe retest 2026-11-23): accepted. Not fatal: this job does
+        # not change the database owner, so a refusal on another edition is recorded and the
+        # following fatal steps decide.
         Step("grant_migrator_to_admin_set_true", f"GRANT {migrator} TO CURRENT_USER WITH SET TRUE",
-             fatal=False, untested=True),
-        # Design 4.1 step 4: the migrator CONNECT grant, the fix for the probe's "permission denied
-        # for database". Fatal: without it the migrator cannot log in and nothing else can work.
-        Step("grant_connect_migrator", f"GRANT CONNECT ON DATABASE {db} TO {migrator}", untested=True),
+             fatal=False),
+        # Design 4.1 step 4: the migrator CONNECT grant. Tested (probe retest 2026-11-23): the
+        # migrator login fails with 42501 until it runs, and works after. Fatal: without it nothing
+        # else can work.
+        Step("grant_connect_migrator", f"GRANT CONNECT ON DATABASE {db} TO {migrator}"),
     ]
 
 
 def role_steps(role: str, password: str, session: DbSession) -> list[Step]:
-    """Create-or-alter one login role. Password hashed client-side when the driver can (UNTESTED)."""
+    """Create-or-alter one login role. Password hashed client-side when the driver can (UNTESTED on DO)."""
     ident = quote_ident(role)
     secret = session.encrypt_password(role, password) or password
     exists = bool(session.execute(f"SELECT 1 FROM pg_roles WHERE rolname = {quote_literal(role)}"))
     verb = "ALTER" if exists else "CREATE"
     attrs = "LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE"
-    return [Step(f"{verb.lower()}_role_{role}", f"{verb} ROLE {ident} WITH {attrs} PASSWORD {quote_literal(secret)}")]
+    hashed = secret != password  # a client-side SCRAM hash was used: not yet tried on DigitalOcean
+    return [Step(f"{verb.lower()}_role_{role}", f"{verb} ROLE {ident} WITH {attrs} PASSWORD {quote_literal(secret)}",
+                 untested=hashed)]
 
 
 def database_steps(database: str) -> list[Step]:
@@ -197,7 +206,7 @@ def database_steps(database: str) -> list[Step]:
     return [
         Step("revoke_public_connect", f"REVOKE ALL ON DATABASE {db} FROM PUBLIC"),
         Step("grant_connect_service", f"GRANT CONNECT ON DATABASE {db} TO {service}"),
-        *untested_platform_steps(database),
+        *platform_grant_steps(database),
         # CREATE SCHEMA worked on DigitalOcean without AUTHORIZATION (PR #326); owner then changed.
         Step("create_schema", f"CREATE SCHEMA IF NOT EXISTS {schema}"),
         Step("alter_schema_owner", f"ALTER SCHEMA {schema} OWNER TO {migrator}"),
