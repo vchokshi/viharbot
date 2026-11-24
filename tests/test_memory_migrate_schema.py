@@ -16,7 +16,7 @@ from dataclasses import dataclass
 
 import psycopg
 import pytest
-from memory_helpers import admin_dsn_or_skip, drop_database
+from memory_helpers import admin_dsn_or_skip, skip_on_remote_cluster
 from psycopg import errors as pg_errors
 from psycopg import sql
 from psycopg.conninfo import make_conninfo
@@ -58,12 +58,13 @@ class Env:
     dsn: str  # the migrator, on the throwaway database
 
 
-def _ensure_service_role(conn: psycopg.Connection) -> None:
+def _ensure_service_role(conn: psycopg.Connection) -> bool:
     # Migration 0001 requires this role to exist. Created only when missing; never altered.
-    if not conn.execute("SELECT 1 FROM pg_roles WHERE rolname = 'memory_service'").fetchone():
-        conn.execute(
-            sql.SQL("CREATE ROLE memory_service LOGIN PASSWORD {}").format(sql.Literal(secrets.token_hex(12)))
-        )
+    # Returns True when this call created it, so the teardown can remove exactly that.
+    if conn.execute("SELECT 1 FROM pg_roles WHERE rolname = 'memory_service'").fetchone():
+        return False
+    conn.execute(sql.SQL("CREATE ROLE memory_service LOGIN PASSWORD {}").format(sql.Literal(secrets.token_hex(12))))
+    return True
 
 
 @contextmanager
@@ -74,10 +75,12 @@ def _env(*, owns_database: bool, owns_schema: bool):
     owns_schema True is the Stage shape (the admin made the schema and handed it to the migrator).
     """
     admin = admin_dsn_or_skip()
+    # These tests need the real role name memory_service, so they never touch a remote cluster.
+    skip_on_remote_cluster("needs the role name memory_service; local throwaway cluster only")
     suffix = secrets.token_hex(5)
     role, db, password = f"migtest_role_{suffix}", f"migtest_db_{suffix}", secrets.token_hex(12)
     with psycopg.connect(admin, autocommit=True) as conn:
-        _ensure_service_role(conn)
+        created_service_role = _ensure_service_role(conn)
         conn.execute(sql.SQL("CREATE ROLE {} LOGIN PASSWORD {}").format(sql.Identifier(role), sql.Literal(password)))
         create = sql.SQL("CREATE DATABASE {}").format(sql.Identifier(db))
         if owns_database:
@@ -96,9 +99,13 @@ def _env(*, owns_database: bool, owns_schema: bool):
     try:
         yield Env(admin, db, role, make_conninfo(admin, dbname=db, user=role, password=password))
     finally:
-        drop_database(admin, db)
+        # This fixture owns these names (not memory_helpers' vbtest_ ones), so it drops them itself.
+        assert db.startswith("migtest_db_") and role.startswith("migtest_role_")
         with psycopg.connect(admin, autocommit=True) as conn:
+            conn.execute(sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(sql.Identifier(db)))
             conn.execute(sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(role)))
+            if created_service_role:
+                conn.execute("DROP ROLE IF EXISTS memory_service")
 
 
 def _applied(env: Env) -> list[str]:

@@ -1,6 +1,6 @@
 # DigitalOcean probe runbook (throwaway)
 
-**Status:** a test kit and a procedure. The founder ran sections 1 to 11 once on 2026-11-12 (results are in `docs/stage-memory-platform-verification.md`, "Tested by throwaway probe"). **Section 8b, the "Retest (2026-11-12 follow-up)", has not been run.** The author of this kit did not provision, deploy or contact DigitalOcean, used no `doctl`, account, token or credential, and did not run any command below. **Every `doctl` command and control-panel step here is something the founder runs by hand.** Every claim about how DigitalOcean behaves is **UNVERIFIED** until the procedure produces the evidence for it, except where a line says "observed 2026-11-12". Implementation under human supervision; nothing here merges or approves anything.
+**Status:** a test kit and a procedure. The founder ran sections 1 to 11 once on 2026-11-12 (results are in `docs/stage-memory-platform-verification.md`, "Tested by throwaway probe"). **Section 8b, the "Retest (2026-11-12 follow-up)", was run once by the founder on 2026-11-23** (results are in `docs/stage-memory-platform-verification.md`, "Retest 2026-11-23"; R1 PASS on the public path, R2 PASS, R3 answered; everything was torn down). The author of this kit did not provision, deploy or contact DigitalOcean, used no `doctl`, account, token or credential, and did not run any command below. **Every `doctl` command and control-panel step here is something the founder runs by hand.** Every claim about how DigitalOcean behaves is **UNVERIFIED** until the procedure produces the evidence for it, except where a line says "observed 2026-11-12". Implementation under human supervision; nothing here merges or approves anything.
 
 ## 1. Purpose, and what this will not do
 
@@ -29,7 +29,7 @@
 ## 2. Prerequisites
 
 * A DigitalOcean account you control, `doctl` installed and authenticated **by you** (`doctl auth init` is yours to run; never paste the token anywhere), and permission to create apps and databases.
-* The kit's branch pushed to GitHub and readable by App Platform's GitHub integration (the specs build from `vchokshi/viharbot`, branch `feature/stage-probe-retest`; change `branch` to `main` after merge, and to any other branch you want to build). Docker is **not** required locally: App Platform builds `deploy/digitalocean-probe/Dockerfile.probe`.
+* The kit's branch pushed to GitHub and readable by App Platform's GitHub integration (the specs build from `vchokshi/viharbot`; the kit is merged, so build from `main`. The committed specs still name the retired branch `feature/stage-probe-retest`: edit a copy and set `branch` to `main`). Docker is **not** required locally: App Platform builds `deploy/digitalocean-probe/Dockerfile.probe`.
 * Python 3.12+ with `cryptography` (already a ViharBot dependency) to run the certificate script, `curl`, and `jq` (optional, for reading results).
 * A scratch shell on your laptop. Keep the throwaway values in files under the repository's gitignored `data/` directory (or outside the repository), never in shell history or a ticket.
 * Time: about 60 to 90 minutes for one pass. Plan to finish and tear down in one sitting.
@@ -335,6 +335,14 @@ Cases: `get-plain`, `get-percent-space`, `get-query-order-and-repeat`, `get-quer
 
 This retest produces evidence. It does not prove Stage is ready, complete a gate, decide anything, or touch ViharBot data (there is none).
 
+**Observed 2026-11-23 (the founder's run; not DigitalOcean documentation).**
+
+* **Outsider uses the public host.** The outsider app is not attached to the VPC, so before any rule it timed out on the **private** host. Point it at the **public** host and port for R1-3 and R1-6. Denial on the private-VPC path from an app that is attached to the VPC is therefore **untested**; a later run that needs it must attach a second app to the VPC.
+* **Timing.** After the rule, refusal (a TCP timeout) began about 40 seconds later; the two-minute wait in R1-6 was enough. The exposure window (cluster online to rule applied) was about 7 minutes.
+* **`doctl` 2.0 flags.** `databases db create` and `databases user create` take no `--format`. `databases user create` masks the password in its output; `databases user get` with `--show` reveals it. `doctl databases connection` has no `--user` flag. **`doctl databases create` prints the admin connection URI including its password**: treat that output as a secret, never paste it, and clear the scrollback.
+* **Slug.** `db-s-1vcpu-1gb` was listed as offered again on 2026-11-23, and `db-amd-1vcpu-1gb` still worked. Read the list at creation time.
+* **Not exercised:** app-spec binding names and SCRAM password hashing.
+
 ### 8b.2 Extra cost and safety rules
 
 **Cost.** One more short-lived cluster and the same three always-on components (probe-service, probe-client, probe-outsider), so the same hourly rate as section 3: about **$0.04337 per hour** (UNCONFIRMED for the current slug `db-amd-1vcpu-1gb`; see section 3). The retest needs about 2 hours: 2 x 0.04337 = **$0.09**, and **$0.17** if it stretches to 4. The scratch databases live for seconds inside the same cluster and cost nothing extra. The outsider's one-minute loop adds a few kilobytes. If you forget everything for a day: **$1.04**. The control panel estimate and your invoice are the authority.
@@ -361,7 +369,7 @@ Outsider `classification` values, in the order a connection progresses: `dns_fai
 
 `<angle brackets>` are values you substitute. Everything marked **RUN** is yours. **UNVERIFIED** flags a `doctl` flag or behaviour that has not been observed; each has a control-panel fallback. Write the UTC time (`date -u`) next to each step in your notes.
 
-**R1-0. Prepare.** Push or check out the kit on the branch the specs build from (`feature/stage-probe-retest`, or `main` after merge). Make a scratch file `data/probe-cert/db-denial.env` (gitignored) for the throwaway user's details. Prerequisites in section 2 apply.
+**R1-0. Prepare.** Check out the kit on `main` (it is merged), and set `branch` to `main` in the copies of the specs. Make a scratch file `data/probe-cert/db-denial.env` (gitignored) for the throwaway user's details. Prerequisites in section 2 apply.
 
 **R1-1. Cluster, dedicated database, CA, throwaway user. (The exposure window opens here.)**
 
