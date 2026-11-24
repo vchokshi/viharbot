@@ -11,6 +11,16 @@ REMOVED_FLAGS = ("VIHARBOT_IDENTITY_ROUTING_ENABLED", "VIHARBOT_DELEGATION_ENABL
 AGENTS = ("research", "security", "fact-check", "source-quality", "privacy-review", "synthesis", "pixel", "sage")
 
 
+def assert_planner_settings_only_in_the_web_block(text: str) -> None:
+    """Founder decision 2026-11-23: Stage web runs Charlie's planner (live team). The cloud spec may
+    carry the planner alias and an EMPTY SECRET key slot in the web block only, never a key value."""
+    blocks = re.split(r"(?m)^  - name: ([a-z-]+)\s*$", text.split("\nservices:\n", 1)[1])
+    by_name = {blocks[i]: blocks[i + 1] for i in range(1, len(blocks) - 1, 2)}
+    assert text.count("CHARLIE_PLANNER_MODEL") == 1 and "CHARLIE_PLANNER_MODEL" in by_name["web"]
+    assert re.search(r"- key: CHARLIE_PLANNER_MODEL\n\s+value: gpt-6-luna\n", by_name["web"])
+    assert re.search(r'- key: LITELLM_API_KEY\n\s+value: ""\n\s+scope: RUN_TIME\n\s+type: SECRET', by_name["web"])
+
+
 def service_block(name: str) -> str:
     match = re.search(rf"^  {re.escape(name)}:\n(.*?)(?=^  \S|\Z)", COMPOSE, re.S | re.M)
     assert match, name
@@ -24,8 +34,9 @@ def test_the_removed_feature_flags_are_not_shipped_anywhere():
     spec = ROOT / DEPLOY_SPEC
     if spec.exists():
         text = spec.read_text()
-        for name in (*REMOVED_FLAGS, "CHARLIE_PLANNER_MODEL", "WEB_LITELLM_API_KEY"):
-            assert name not in text, name  # the cloud spec never carries the live team's inputs
+        for name in (*REMOVED_FLAGS, "WEB_LITELLM_API_KEY"):
+            assert name not in text, name  # the cloud spec never carries the host-side names or removed flags
+        assert_planner_settings_only_in_the_web_block(text)
 
 
 def test_the_web_service_receives_the_planner_settings_with_safe_defaults():
@@ -52,8 +63,8 @@ def test_no_secret_or_alias_is_committed_in_shipped_files():
     assert not re.search(r"(sk-[A-Za-z0-9]{10,}|Bearer\s+\S{8,})", example + COMPOSE)
     spec = ROOT / DEPLOY_SPEC
     if spec.exists():
-        for name in ("CHARLIE_PLANNER_MODEL", "WEB_LITELLM_API_KEY"):
-            assert name not in spec.read_text()
+        assert "WEB_LITELLM_API_KEY" not in spec.read_text()
+        assert_planner_settings_only_in_the_web_block(spec.read_text())
 
 
 def test_only_the_web_service_is_published_and_only_on_localhost():

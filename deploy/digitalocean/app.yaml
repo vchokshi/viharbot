@@ -70,6 +70,18 @@ services:
         value: "false"
         scope: RUN_TIME
         type: GENERAL
+      # Charlie's planner (the live team conversation) is the only inference the web service makes.
+      # It runs only when BOTH of these are non-empty (src/viharbot/live_team.py): the alias below
+      # and a key. The key is empty on purpose: the founder pastes the `stage-web` key (scoped to
+      # gpt-6-luna) in the local filled copy, never here.
+      - key: CHARLIE_PLANNER_MODEL
+        value: gpt-6-luna
+        scope: RUN_TIME
+        type: GENERAL
+      - key: LITELLM_API_KEY
+        value: ""
+        scope: RUN_TIME
+        type: SECRET
       - key: RESEARCH_URL
         value: http://research:8000/research
         scope: RUN_TIME

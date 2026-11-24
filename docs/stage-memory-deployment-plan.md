@@ -38,6 +38,12 @@ The proposed `deploy/digitalocean/app.yaml` (read it; this table is a summary) a
 
 **Spec checks the repository can make offline** (`tests/test_memory_deployment_static.py`): no memory variable on `web` or the five other agents; only `synthesis` carries the client settings; `memory` has no `http_port`, no route and no top-level `ingress`; port 8443 only, `PORT=8443`, TCP check; the job is `PRE_DEPLOY` with no port; every `SECRET` is empty or a binding reference and no secret-named variable is plain; `deploy_on_push` is `false` everywhere; every memory variable in the spec is one the code reads. These prove the file's shape. They do not prove the platform accepts it.
 
+### 2.1 Per-component LiteLLM keys and the web planner (founder decision 2026-11-23)
+
+Each model-using component gets its own gateway key, created in LiteLLM as `stage-<component>` and restricted to that component's model alias (research `gpt-6.1-sol`, security `openai/gpt-5.4`, fact-check and source-quality `gemini/gemini-3.5-flash`, privacy-review and synthesis `openai/gpt-5.4-mini`, web `gpt-6-luna`). The spec carries only an empty `LITELLM_API_KEY` SECRET slot per component; the operator fills them in the local copy (the keys are held in gitignored files, never in this repository) and the platform encrypts them on first submission. Revoke a key by alias with the gateway's management key.
+
+The `web` component now also sets `CHARLIE_PLANNER_MODEL: gpt-6-luna` and has a `LITELLM_API_KEY` slot. The live team conversation runs only when both are non-empty (`src/viharbot/live_team.py`), so with the `stage-web` key filled the web container makes Charlie's planner model calls itself; before this change Stage web held no key and ran the fixed pipeline. This adds model-call cost on Stage and puts a gateway key in the browser-facing container (scoped to one alias, no budget set). Two tests that said "the cloud spec never carries the live team's inputs" were narrowed to allow exactly this: the planner alias once, in `web`, and an empty SECRET slot, never a value.
+
 ## 3. Required DigitalOcean resources
 
 Everything below is the founder's to create (runbook section 4). None exists today.
