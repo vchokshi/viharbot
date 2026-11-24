@@ -30,7 +30,7 @@ This README describes what the code on `main` does today. Planned work is labell
 
 * An identity is a persona and a routing label. By default it does not change behavior (`VIHARBOT_PERSONALITY_INFERENCE_ENABLED` and `VIHARBOT_PERSONA_PROMPT_ENABLED` are set nowhere). Adding an *operational* agent means editing about ten places (the `Capability` enum and several tables in `identity.py`, `execution_bindings.py`, `orchestration_state.py` and `orchestration_policy.py`, the response model, `web_app.agent_urls()`, compose and the Stage spec). Fixes are planned: [#226](https://github.com/vchokshi/viharbot/issues/226) (placement file) and [#227](https://github.com/vchokshi/viharbot/issues/227) (capability manifest, deferred).
 * The Research agent (Nova) makes one model call from the model's own knowledge. It has no retrieval tool, so Fact Check judges only the evidence Nova supplied ([#237](https://github.com/vchokshi/viharbot/issues/237)).
-* Agent memory (`remember()`) is write-only JSONL: written, never read, no retention ([#229](https://github.com/vchokshi/viharbot/issues/229)). Separately, Charlie alone uses the governed memory service where a memory URL is set (local Compose; not Stage). See [development status](docs/development-status.md).
+* Agent memory (`remember()`) is write-only JSONL: written, never read, no retention ([#229](https://github.com/vchokshi/viharbot/issues/229)). Separately, Charlie alone uses the governed memory service where a memory URL is set (local Compose, and Stage in a first 3-day window from 2026-11-24: five metadata fields, fail-open; two of five failure drills run, the rest not yet; memory is used only when the live team's planner schedules synthesis). See [development status](docs/development-status.md).
 * `demo.py` holds core pipeline functions as well as the CLI demo ([#232](https://github.com/vchokshi/viharbot/issues/232)).
 * Which mode `/api/chat` runs depends on whether the web container has a planner alias and a LiteLLM key ([#223](https://github.com/vchokshi/viharbot/issues/223)).
 * `identity_execution.py` and `delegated_execution.py` are not reachable from the web app ([#222](https://github.com/vchokshi/viharbot/issues/222)).
@@ -133,6 +133,8 @@ The default suite mocks all model and LiteLLM calls and is the authoritative one
 python -m pytest -q
 ```
 
+A local (not CI) caveat: `tests/test_service_auth.py::test_no_private_key_material_is_committed` walks the whole working tree, including gitignored files, so a local gitignored development TLS key (`data/dev-auth/` from `scripts/dev_service_auth.py`, or a rehearsal key under `.claude/worktrees`) makes it fail on your machine. CI runs on a clean checkout and passes. It is not a defect to fix in the test; move or delete the local key material to run it cleanly.
+
 Two environment notes. LiteLLM loads a `.env` it finds above its install location when it is imported, which used to flip feature flags on and fail tests on the host. The test configuration (`tests/conftest.py`) now sets `LITELLM_MODE=PRODUCTION` before that import, so a local `.env` no longer affects the offline suite and there is no need to move it aside. This applies to tests only; the application is unchanged. It is skipped when you opt in to the live checks from the shell (`RUN_LITELLM_INTEGRATION=1` or `RUN_LITELLM_INFERENCE=1`), which may need a key kept in `.env`, and you can set `LITELLM_MODE=DEV` yourself to load it on purpose. The Docker profile runs the same offline suite in a container:
 
 ```bash
@@ -166,7 +168,7 @@ For now, pushing to `main` updates source only; nothing deploys automatically, a
 | Target | State |
 |---|---|
 | Local Docker Compose | The development environment (nine services: web plus eight agents, and `orchestrator` and `tests` profiles) |
-| DigitalOcean App Platform | A template exists in [`deploy/digitalocean/app.yaml`](deploy/digitalocean/app.yaml) (seven components: web plus six agents; no Pixel or Sage, so it is behind the dev stack; `deploy_on_push: false`). The committed spec sets no planner alias or key, so a Stage built from it runs the fixed pipeline and `/api/chat/stream` answers `409` |
+| DigitalOcean App Platform | A template exists in [`deploy/digitalocean/app.yaml`](deploy/digitalocean/app.yaml) (seven components: web plus six agents; no Pixel or Sage, so it is behind the dev stack; `deploy_on_push: false`). The committed spec sets the planner alias and an empty gateway-key slot; a Stage built from it with the key left empty runs the fixed pipeline and `/api/chat/stream` answers `409`, and with the key filled it runs the live team. Stage also runs the memory service and a bootstrap job (first window from 2026-11-24) |
 | AWS / Bedrock AgentCore | Compatibility code and notes ([AgentCore notes](deploy/agentcore/README.md)); no AgentCore runtime is deployed and the streaming route is not bridged. Separately, Kepler's AWS lab foundation (IAM, ECR, DynamoDB, SNS) is provisioned ([change record](docs/aws-lab-change-record.md)) |
 
 ## Security boundaries
@@ -178,7 +180,7 @@ For now, pushing to `main` updates source only; nothing deploys automatically, a
 
 ## Known limitations
 
-* Agent memory (`remember()`) is append-only JSONL, written but never read back, and ephemeral on App Platform. The governed memory service (Charlie only) runs in local Compose and is not deployed to Stage.
+* Agent memory (`remember()`) is append-only JSONL, written but never read back, and ephemeral on App Platform. The governed memory service (Charlie only) runs in local Compose and, since 2026-11-24, on Stage in a first 3-day window (five metadata fields, fail-open; not operationally validated beyond what the [acceptance checklist](docs/stage-memory-acceptance.md) records).
 * Agent-to-agent REST is authenticated only where `VIHARBOT_SERVICE_AUTH` is on (local Compose, not Stage) and never authorized per delegation (A3); identities do not have separate cloud permissions.
 * Calls run one at a time, and cancelling a browser request does not stop work already in flight.
 * Planned, not built: per-user accounts, durable sessions and memory, authenticated inter-agent calls, distributed runtimes, Atlas, Sage and Orbit. Pixel's slide decks are built only in local Compose and are unverified against a live model; see [Pixel slide service](docs/pixel-slide-service.md).

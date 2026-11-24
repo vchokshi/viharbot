@@ -66,6 +66,8 @@ docker compose config --quiet && docker compose --profile demo --profile tests b
 docker compose --profile tests run --build --rm tests   # the same offline suite, in the test image
 ```
 
+**A local-only failure to expect.** `tests/test_service_auth.py::test_no_private_key_material_is_committed` walks the whole working tree, including gitignored files. A local gitignored development TLS key (for example under `data/dev-auth/`, written by `scripts/dev_service_auth.py`) or a rehearsal key left under `.claude/worktrees` makes it fail on a developer machine. CI runs on a clean checkout, where those files do not exist, and passes. This is documented here, not fixed.
+
 LiteLLM loads a `.env` it finds above its install location on import, which used to turn the orchestration flags on and fail tests on a developer's machine (CI has no `.env`, so it never saw this). `tests/conftest.py` now sets `LITELLM_MODE=PRODUCTION` before that import, so the offline suite gives the same result with or without a local `.env`; `tests/test_env_isolation.py` checks it against the installed LiteLLM. The live opt-ins (`RUN_LITELLM_INTEGRATION=1`, `RUN_LITELLM_INFERENCE=1`) skip the isolation, since they may need a key kept in `.env`.
 
 ## Coverage
