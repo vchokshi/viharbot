@@ -486,8 +486,8 @@ def test_no_secret_value_or_connection_string_reaches_the_logs(env, password, ca
         json.loads(line)  # every stdout line is one JSON object
 
 
-def test_the_launcher_does_nothing_unless_the_role_is_serve(env, capsys):
-    for role in (None, "", "bootstrap", "SERVE", "x"):
+def test_the_launcher_does_nothing_unless_the_role_is_serve_or_bootstrap(env, capsys):
+    for role in (None, "", "BOOTSTRAP", "SERVE", "x"):
         local = {k: v for k, v in env.items() if k != se.ROLE_ENV}
         if role is not None:
             local[se.ROLE_ENV] = role
