@@ -1,6 +1,6 @@
 # Stage memory acceptance and release checklist
 
-**Status: an operator checklist. Nothing in it has been run, and no row below is PASS.** Every status in this file is NOT RUN, NOT BUILT or OPEN unless the evidence column names a recorded artifact. Stage has no memory service, nothing is provisioned, no promotion has been requested, and issue #40 stays open. This document authorizes nothing: the only authorization to deploy is the founder's affirmative answer to the AGENTS.md question for one specific build.
+**Status: an operator checklist. The only rows with evidence are the probe retest R1 to R3 rows (run 2026-11-23, recorded in `docs/stage-memory-platform-verification.md`); no gate is met.** Every other status in this file is NOT RUN, NOT BUILT or OPEN unless the evidence column names a recorded artifact. Stage has no memory service, nothing is provisioned, no promotion has been requested, and issue #40 stays open. This document authorizes nothing: the only authorization to deploy is the founder's affirmative answer to the AGENTS.md question for one specific build.
 
 This is an ordinary document under `docs/`. It collects, in one place, what an operator must show before and after a Stage memory window. It does not replace the procedure (`docs/stage-memory-runbook.md`, which owns the steps and gates G1 to G5), the design (`docs/stage-memory-design.md`) or the platform facts (`docs/stage-memory-platform-verification.md`). If this file disagrees with the code or the runbook, the code wins, then the runbook; fix this file.
 
@@ -16,8 +16,8 @@ State of `main` when this was written (baseline `a84f203`): launcher (PR #330), 
 
 ### 1.1 Code and build readiness
 
-- [ ] The bootstrap entry (design item 6) is merged. Today: NOT BUILT. It waits for the probe retest.
-- [ ] The Stage app spec (design item 11) is merged with the founder's explicit approval. Today: NOT BUILT.
+- [ ] The bootstrap entry (design item 6) is merged. Today: NOT BUILT on `main`; the bootstrap pull request (#354) is an unmerged draft. The retest it waited for has run (2026-11-23).
+- [ ] The Stage app spec (design item 11) is merged with the founder's explicit approval. Today: NOT BUILT on `main`; the app spec pull request (#356) is an unmerged draft.
 - [ ] The commit to deploy is on `main`, its full SHA recorded; no unmerged branch is built or deployed.
 - [ ] `python -m pytest -q` passes on that commit; record total, passed, skipped. Database tests skip without a PostgreSQL DSN; that skip is expected here and does not count as database evidence.
 - [ ] CI on that commit is green (Python 3.12 and 3.13, frontend, lint, Docker build and smoke test, CI result). CI does not run PostgreSQL by decision, so a green CI is not conformance evidence (section 3 and section 9).
@@ -25,7 +25,7 @@ State of `main` when this was written (baseline `a84f203`): launcher (PR #330), 
 
 ### 1.2 Platform and cost readiness
 
-- [ ] Probe retest R1 to R3 executed once and results recorded in `docs/stage-memory-platform-verification.md`. Today: NOT RUN. No R1 to R3 results exist in that file or on issue #40.
+- [x] Probe retest R1 to R3 executed once and results recorded in `docs/stage-memory-platform-verification.md`. Done 2026-11-23: R1 trusted-source denial PASS on the public path (private-VPC path untested), R2 migrator grants PASS, R3 retry versus rollback answered (no retry; the rollback re-runs the previous version's job once). Throwaway test on one account on one day; this ticks only this line.
 - [ ] Database slug taken from `doctl databases options slugs --engine pg`; the price seen in the control panel estimate recorded (list price is UNCONFIRMED).
 - [ ] Cost estimate (runbook section 3, item 4) recomputed with the price seen, and the window length agreed.
 - [ ] The non-secret resource inventory (section 7) is open and empty, ready to fill as resources are created.
@@ -79,7 +79,7 @@ Procedure and commands are in the runbook; the right-hand column is what this fi
 |---|---|---|
 | Local rehearsal (design 7.2): launcher and bootstrap in Compose against a local PostgreSQL with a non-superuser admin stand-in, bootstrap run twice, write, restart, read, no secret in a log | Recorded run: date, commit, outcome per step | NOT RUN (the bootstrap does not exist) |
 | Offline suite on the deploy commit | `python -m pytest -q` counts | NOT RUN for the future commit |
-| Retest R1 to R3 (design 7.3) | Written results in the verification file | NOT RUN |
+| Retest R1 to R3 (design 7.3) | Written results in the verification file | DONE 2026-11-23: R1 PASS (public path; private-VPC path untested), R2 PASS, R3 PASS (answered). Evidence: "Retest 2026-11-23" in the verification file |
 | Cluster CA differs per cluster (design 7.3) | Recorded yes or no after creating a second cluster or the window's cluster | UNVERIFIED |
 
 ## 3. PostgreSQL conformance procedure (gate G2)
@@ -112,7 +112,7 @@ Steps (the founder's shell; the DSN, with its password, is typed into the enviro
    with the three variables above set (admin DSN with `verify-full` and CA, `ALLOW_REMOTE=1`, `CONFIRM_EMPTY=1`). Use `-ra` so skip reasons are printed.
 5. **Judge.** PASS: every in-scope test passes; the only skip is `test_records_survive_a_database_container_restart`. FAIL: any failure, any other skip, or a refusal from the empty-cluster check (a refusal means the cluster is not the window's fresh one; stop and investigate, do not bypass it).
 6. **Remove the operator rule in the same session** and verify with `doctl databases firewalls list`; no `ip_addr` rule may remain.
-7. **Confirm refusal** from the operator machine (retest R1 context).
+7. **Confirm refusal** from the operator machine (retest R1 context: the 2026-11-23 retest saw refusal from a public laptop about 40 seconds after the rule applied, so allow for that delay when checking).
 8. **Record** the result per section 6 (counts, date, commit, plan, PostgreSQL major version; no connection detail).
 
 Cost note: the database bills per started hour with a one-hour minimum; this run adds one to two billed hours.
