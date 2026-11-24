@@ -193,7 +193,10 @@ def role_steps(role: str, password: str, session: DbSession) -> list[Step]:
     secret = session.encrypt_password(role, password) or password
     exists = bool(session.execute(f"SELECT 1 FROM pg_roles WHERE rolname = {quote_literal(role)}"))
     verb = "ALTER" if exists else "CREATE"
-    attrs = "LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE"
+    # PostgreSQL 16+: an admin without the superuser attribute is refused (42501) when ALTER ROLE
+    # names that attribute at all, even to clear it. Only CREATE states it (a new role has none by
+    # default, and CREATE is accepted); a re-run must not, so ALTER leaves it out.
+    attrs = "LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE" if verb == "CREATE" else "LOGIN NOCREATEDB NOCREATEROLE"
     hashed = secret != password  # a client-side SCRAM hash was used: not yet tried on DigitalOcean
     return [Step(f"{verb.lower()}_role_{role}", f"{verb} ROLE {ident} WITH {attrs} PASSWORD {quote_literal(secret)}",
                  untested=hashed)]
