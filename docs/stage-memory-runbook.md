@@ -4,7 +4,7 @@
 
 This is an ordinary runbook under `docs/`, the work item 10 of `docs/stage-memory-design.md` (section 6). It is not an ADR or a governance document. If this runbook disagrees with the code or a script, the code wins; fix this document.
 
-**Labels.** TESTED = observed by the founder's probe on 2026-11-12 (`docs/stage-memory-platform-verification.md`, "Tested by throwaway probe"); that is observation on one account on one day. DOCUMENTED = a DigitalOcean page says it, as recorded in that file. UNVERIFIED = nobody has checked it. A name marked "(branch)" exists only in an open pull request and may change before merge.
+**Labels.** TESTED = observed by the founder's probe on 2026-11-12 (`docs/stage-memory-platform-verification.md`, "Tested by throwaway probe"); that is observation on one account on one day. DOCUMENTED = a DigitalOcean page says it, as recorded in that file. UNVERIFIED = nobody has checked it. Pull requests #326 to #334 are merged to `main`; names below were checked against `main` at baseline `a84f203`.
 
 ## 1. Purpose, status and non-goals
 
@@ -36,8 +36,8 @@ Nothing may proceed on "probably fine". A FAIL means stop, record it, and tear d
 ## 3. Pre-window checklist (founder, a day before if possible)
 
 1. **Merged work.** Confirm every item in section 9 is merged to `main`, or the founder accepts the gap. Write down the exact commit SHA to deploy. Run the offline suite as the README describes and record the result. Do not build or deploy from an unmerged branch.
-2. **Probe retest done.** The one-time retest (decision N3) has run once and its results are recorded in `docs/stage-memory-platform-verification.md`. Section 8b of `deploy/digitalocean-probe/RUNBOOK.md` on branch `feature/stage-probe-retest` (PR #331) holds the steps R1 to R3. Until it has run, the bootstrap cannot be built (design 6, item 6).
-3. **Prices and slug.** Run `doctl databases options slugs --engine pg` and use a slug from that list. `db-s-1vcpu-1gb` is no longer offered (TESTED); the probe used `db-amd-1vcpu-1gb` (15 GiB storage), whose price is **UNCONFIRMED**. Check the current price on DigitalOcean's pricing pages and in the control panel estimate before creating anything. Record the slug and price you saw.
+2. **Probe retest done.** The one-time retest (decision N3) ran once on 2026-11-23 and its results are recorded in `docs/stage-memory-platform-verification.md` ("Retest 2026-11-23"). Section 8b of `deploy/digitalocean-probe/RUNBOOK.md` (merged in PR #331) holds the steps R1 to R3. Results in short: R1 trusted-source denial PASS on the public path (about 40 seconds after the rule; the private-VPC path is untested), R2 the migrator needs `GRANT CONNECT` and, to take ownership, `GRANT migrator TO CURRENT_USER WITH SET TRUE` (PASS), R3 a failing pre-deploy job is not retried but the rollback re-runs the previous version's job once (answered). This ticks this item only. The bootstrap (#354) and the Stage app spec (#356) are unmerged drafts, so no gate is met.
+3. **Prices and slug.** Run `doctl databases options slugs --engine pg` and use a slug from that list. The offered list changes: `db-s-1vcpu-1gb` was absent on 2026-11-12 and listed again on 2026-11-23 (TESTED); the probes used `db-amd-1vcpu-1gb` (15 GiB storage), whose price is **UNCONFIRMED** (no invoice read yet). The server was PostgreSQL 17.12 on 2026-11-23. Check the current price on DigitalOcean's pricing pages and in the control panel estimate before creating anything. Record the slug and price you saw.
 4. **Cost estimate with arithmetic.** Sources: list prices recorded in `docs/stage-memory-platform-verification.md` (rows 3a, 3c, 8b, 8d), retrieved 2026-11-11; not read from any invoice. Database 15.15 / 672 = $0.02254 per hour (marketing page figure, slug unmatched). One extra `apps-s-1vcpu-0.5gb` memory component 5.00 / 672 = $0.00744 per hour. Bootstrap job billed only while it runs, about 0. Total about **$0.030 per hour**.
 
    | Window | Memory component | Database | Total |
@@ -53,7 +53,7 @@ Nothing may proceed on "probably fine". A FAIL means stop, record it, and tear d
    | Item | Per window | Yearly |
    |---|---|---|
    | Managed cluster and dedicated database | yes (N1) | |
-   | Cluster CA certificate | yes: assume a new cluster has a new CA (UNVERIFIED; the retest may record it) | |
+   | Cluster CA certificate | yes: assume a new cluster has a new CA (UNVERIFIED; the retest did not exercise a second cluster) | |
    | Database role passwords (migrator, service) | yes | |
    | Trusted-source rules (operator, app) | yes | |
    | Memory server certificate and key, Charlie's trust copy | | yes, or a fresh certificate each window (N5) |
@@ -80,7 +80,7 @@ RUN (founder)  doctl databases db create <cluster-id> <database-name>
 RUN (founder)  doctl databases db list <cluster-id>
 ```
 
-Status: `create` ran on 2026-11-12 and has no `--format` flag (TESTED); the other flags were used by the probe runbook but are not itemised in the record. `--format` on `list` and the `db` subcommands are UNVERIFIED. PostgreSQL 17, Standard Edition, **one node, no standby**. Control-panel fallback: Create, Databases, PostgreSQL 17, Standard, single node, the datacenter and VPC. Add the cluster ID to the resource list now.
+Status: `create` ran on 2026-11-12 and 2026-11-23 and has no `--format` flag (TESTED). In `doctl` 2.0 (2026-11-23) `databases db create` and `databases user create` also take no `--format`, `user create` masks the password, `databases user get --show` reveals it, and `doctl databases connection` has no `--user` flag. **Warning: `doctl databases create` prints the admin connection URI including its password. Treat that output as a secret: do not paste it into a ticket, chat, log or this repository, and clear the terminal scrollback.** `--format` on `list` and the `db` subcommands are UNVERIFIED. PostgreSQL 17, Standard Edition, **one node, no standby**. Control-panel fallback: Create, Databases, PostgreSQL 17, Standard, single node, the datacenter and VPC. Add the cluster ID to the resource list now.
 
 **The cluster accepts credentialed connections from anywhere until a trusted-source rule exists (UNVERIFIED default).** It is empty and holds no real data; keep this period short.
 
@@ -90,11 +90,11 @@ Status: `create` ran on 2026-11-12 and has no `--format` flag (TESTED); the othe
 RUN (founder)  doctl databases get-ca <cluster-id>              # TESTED; save the PEM to data/stage-memory/db-ca.pem
 ```
 
-Control-panel fallback: the cluster, Overview, Connection details, Download CA certificate. The CA is public but still stays out of commits. It is pasted later into `MEMORY_DB_CA_PEM` (a SECRET variable; base64 or PEM both load, `src/viharbot/memory_service/stage_entry.py`, branch of PR #330). Its size was about 2 KB base64 (TESTED, 2,056 characters); variables above about 2 KB are untested.
+Control-panel fallback: the cluster, Overview, Connection details, Download CA certificate. The CA is public but still stays out of commits. It is pasted later into `MEMORY_DB_CA_PEM` (a SECRET variable; base64 or PEM both load, `src/viharbot/memory_service/stage_entry.py`, PR #330, merged). Its size was about 2 KB base64 (TESTED, 2,056 characters); variables above about 2 KB are untested.
 
 ### 4.3 Generate the materials (gate G1)
 
-The script is `scripts/stage_memory_materials.py` (branch of PR #329). It writes only under `data/` (default `data/stage-memory/`, directory 0700, files 0600), refuses any other path, takes no secret on the command line, and prints only the certificate names, expiry, SHA-256 fingerprint, the key id and file names. The assistant must not run it and must not read its output files.
+The script is `scripts/stage_memory_materials.py` (PR #329, merged). It writes only under `data/` (default `data/stage-memory/`, directory 0700, files 0600), refuses any other path, takes no secret on the command line, and prints only the certificate names, expiry, SHA-256 fingerprint, the key id and file names. The assistant must not run it and must not read its output files.
 
 ```text
 RUN (founder)  python scripts/stage_memory_materials.py                    # first time: certificate, key, signing key, registry, both passwords
@@ -132,9 +132,19 @@ Reference-only files (`memory.crt.pem`, `memory.key.pem`, `charlie-signing.pub`,
 
 ### 4.4 Conformance run on the empty cluster (gate G2)
 
-**Placeholder: not built.** The conformance fixture support (design 6, item 9) has not been opened as a pull request when this was written, so its variable names for the remote-cluster opt-in and the empty-cluster confirmation are not known. Do not invent them. Today the suite takes `VIHARBOT_MEMORY_TEST_PG_ADMIN_DSN` (`tests/memory_helpers.py`), documented there as a superuser DSN for a throwaway server, and its fixture `ALTER`s the passwords of roles named `memory_migrator` and `memory_service` and drops databases with `FORCE`. **Never point the current fixture at a managed cluster.** When item 9 merges, replace this note with its real names (design 6, "Conformance run (item 9)").
+The conformance fixture support (design 6, item 9) merged in PR #334. The fixture is `tests/memory_helpers.py`; the suite is `tests/test_memory_postgres_contract.py`. It is selected by these variables (read from the module docstring and constants):
 
-The procedure, once item 9 exists, in order:
+| Variable | Meaning |
+|---|---|
+| `VIHARBOT_MEMORY_TEST_PG_ADMIN_DSN` | Admin DSN. Unset: the database tests skip. May be a superuser (throwaway container) or a non-superuser with CREATEROLE and CREATEDB (a managed cluster, for example `doadmin`). For TLS use `sslmode=verify-full` and `sslrootcert=<path to the CA file>`; the derived service and migrator DSNs inherit both. |
+| `VIHARBOT_MEMORY_TEST_PG_ALLOW_REMOTE=1` | Required when the admin host is not loopback. |
+| `VIHARBOT_MEMORY_TEST_PG_CONFIRM_EMPTY=1` | Also required for a remote host. Not taken on trust: the fixture checks the cluster and **refuses** (the run fails) if any database exists beyond the system ones (`postgres`, `template0`, `template1`, `defaultdb`, `_dodb`) and the `vbtest_` prefix, or if roles named `memory_migrator` or `memory_service` exist. |
+| `VIHARBOT_MEMORY_TEST_PG_FORCE_REMOTE_GUARD=1` | Applies the remote rules to a loopback host; can only make checks stricter. |
+| `VIHARBOT_MEMORY_TEST_PG_CONTAINER` | A local Docker container name, only for the container-restart test; that test skips on a remote cluster. |
+
+Isolation: each run creates its own roles (`vbtest_m_<hex>`, `vbtest_s_<hex>`) and database (`vbtest_<hex>`) and drops only those on teardown; it does not alter the real `memory_migrator`, `memory_service` or their database. This is why the guard above must pass on a fresh cluster. Still run it only against the window's own empty cluster, never one that holds live data.
+
+The procedure, in order:
 
 1. Confirm the cluster is the window's fresh one, before the app exists, and nothing else uses its roles.
 2. Add a temporary operator rule (decision N4). The address is the founder's own and is never written to the repository.
@@ -144,7 +154,7 @@ The procedure, once item 9 exists, in order:
    RUN (founder)  doctl databases firewalls list <cluster-id>                                         # note the rule UUID in the resource list
    ```
 
-3. Run the in-scope suite from the operator machine with `verify-full` and the saved CA (names: item 9). In scope: `tests/test_memory_postgres_contract.py` except `test_records_survive_a_database_container_restart`, which needs a local Docker container. Record the result counts. PASS: every in-scope test passes and the only skip is the container-restart test (design 7.4).
+3. Run the in-scope suite from the operator machine with `verify-full` and the saved CA, using the variables above. In scope: `tests/test_memory_postgres_contract.py` except `test_records_survive_a_database_container_restart`, which needs a local Docker container. Record the result counts. PASS: every in-scope test passes and the only skip is the container-restart test (design 7.4).
 4. **Remove the rule in the same session and verify.**
 
    ```text
@@ -152,7 +162,7 @@ The procedure, once item 9 exists, in order:
    RUN (founder)  doctl databases firewalls list <cluster-id>                                         # must show no ip_addr rule
    ```
 
-5. From the operator machine, confirm the cluster now refuses you (the retest R1 evidence says whether this can be relied on; denial was untested until then).
+5. From the operator machine, confirm the cluster now refuses you (the retest R1 evidence (2026-11-23) saw a public laptop refused about 40 seconds after the rule; allow for that delay).
 
 **G2 is met** only with a PASS, the rule removed and the firewall list checked.
 
@@ -180,7 +190,7 @@ Wait for an affirmative answer **for that commit**. "Probably", silence, or an a
 
 ### 4.6 Deploy
 
-**Placeholder: not built.** The Stage app spec (design 6, item 11) is a separate pull request that needs the founder's explicit approval; `deploy/digitalocean/app.yaml` today has the web and six agents and no memory component, no job and no database binding. The bootstrap job (item 6, `MEMORY_STAGE_ROLE=bootstrap`) is not built and waits for the retest. Until both exist there is nothing to deploy, and this step cannot be carried out. When they exist, the steps are:
+**Placeholder: not built (verified against `main`).** The Stage app spec (design 6, item 11) is a separate pull request that needs the founder's explicit approval; `deploy/digitalocean/app.yaml` today has the web and six agents and no memory component, no job and no database binding. The bootstrap job (item 6, `MEMORY_STAGE_ROLE=bootstrap`) is not built: `stage_entry.py` accepts only `serve` and exits 2 otherwise. The retest has run (2026-11-23), but the bootstrap pull request (#354) and the app spec pull request (#356) are unmerged drafts. Until both are merged there is nothing to deploy, and this step cannot be carried out. When they exist, the steps are:
 
 1. Copy the spec to `data/stage-spec-filled.yaml` (gitignored). Put the secret values into that local copy only (the platform encrypts a SECRET on first submission, DOCUMENTED row 7a; creating an app with empty SECRET values and encrypting on first submission were not tested). Never commit it.
 2. Validate and apply:
@@ -201,7 +211,7 @@ Wait for an affirmative answer **for that commit**. "Probably", silence, or an a
    ```
 
    If the first deployment's job failed, expected when trusted sources were already enabled on the cluster (UNVERIFIED), a failing job blocks the deploy and the platform starts an automated rollback that finishes in seconds (TESTED). Add the rule, redeploy, and record both outcomes.
-4. `PORT` for `memory` must be `8443`. The image defaults `PORT` to 8000 (`Dockerfile.memory`, `ENV PORT`), and the launcher only falls back to 8443 when `PORT` is unset, so the spec must set it (`stage_entry.py`, PR #330).
+4. `PORT` for `memory` must be `8443`. The image defaults `PORT` to 8000 (`Dockerfile.memory`, `ENV PORT`), and the launcher only falls back to 8443 when `PORT` is unset, so the spec must set it (`stage_entry.py`, PR #330, merged).
 5. Charlie's memory variables take effect only on a new deployment. Memory is active whenever `VIHARBOT_MEMORY_URL` is set; there is no switch.
 
 ## 5. Reading audit lines (decision N7)
@@ -232,11 +242,11 @@ RUN (founder)  doctl apps logs <app-id> memory-bootstrap --type deploy     # the
 
 Other fields in the line (`destination_agent`, `model_alias`, `duration_ms`) are null for audit lines. **No question, answer, finding, token, key or request body appears**; the audit call has no parameter that could carry content (`docs/memory-service.md`, audit section). Read a sample before you paste anything anywhere, as the app's environment can contain things this runbook does not know about.
 
-**Charlie's line**, event `memory client` (`src/viharbot/memory_client.py`, PR #329): `agent`, `request_id`, `destination_agent` (`memory`), `operation`, `decision` (`ok` or a refusal), `reason` and `duration_ms`. Reasons seen in the drills: `unreachable`, `timeout`, `http_<status>`, `tls_verification_failed`, `denied`, `bad_ca_pem`, `ca_conflict`.
+**Charlie's line**, event `memory client` (`src/viharbot/memory_client.py`, PR #329, merged): `agent`, `request_id`, `destination_agent` (`memory`), `operation`, `decision` (`ok` or a refusal), `reason` and `duration_ms`. Reasons seen in the drills: `unreachable`, `timeout`, `http_<status>`, `tls_verification_failed`, `denied`, `bad_ca_pem`, `ca_conflict`.
 
-**Memory launcher start lines** (PR #330) are JSON with an `event` field: `memory_stage_tls_certificate` (`days_to_expiry`, certificate `fingerprint_sha256`), `memory_stage_tls_certificate_expiring` (a warning, under 30 days, `expired` true if past), `memory_stage_start` (`port`, `database_tls` = `verify-full`). A refusal prints `memory-stage: refusing to start: <fixed text>` naming at most a variable, never a value.
+**Memory launcher start lines** (PR #330, merged) are JSON with an `event` field: `memory_stage_tls_certificate` (`days_to_expiry`, certificate `fingerprint_sha256`), `memory_stage_tls_certificate_expiring` (a warning, under 30 days, `expired` true if past), `memory_stage_start` (`port`, `database_tls` = `verify-full`). A refusal prints `memory-stage: refusing to start: <fixed text>` naming at most a variable, never a value.
 
-Not available yet: a `count` number on `list` lines (design 6, item 8). Until then a restart-and-read drill is judged from `list` with outcome `ok`, plus Charlie's `memory client` line `decision` `ok`.
+A successful `list` line carries a `count` of the records returned (design 6, item 8; PR #333, merged). A restart-and-read drill is judged from a `list` line with outcome `ok` and `count` of at least 1, plus Charlie's `memory client` line `decision` `ok`.
 
 ## 6. Verification (gate G4)
 
@@ -277,7 +287,7 @@ PASS: a 200 `ok` response (way 1) or a `create ... ok` line (way 2). FAIL: 503, 
 
 1. Send one synthesis request through the normal route. Expect memory log `operation` `create`, `outcome` `ok`, `scope` `agent/charlie`, and Charlie's `memory client` `decision` `ok`.
 2. Restart everything (a manual deployment restarts all components, TESTED): `doctl apps create-deployment <app-id>`; wait for ACTIVE.
-3. Send a second request. Expect `operation` `list`, `outcome` `ok` and a Charlie line with `decision` `ok`. The `count` check (item 8) is not available.
+3. Send a second request. Expect `operation` `list`, `outcome` `ok` and `count` of at least 1 and a Charlie line with `decision` `ok`.
 
 PASS: both lines present, no `denied` or `error`, no prompt, answer or token in any log. This is the managed-cluster equivalent of the local test that needs a Docker container.
 
@@ -327,32 +337,29 @@ Cost from the invoice: $______ vs estimate $______
 
 Keep it as a short results section the founder chooses (an issue comment on #40 is acceptable; it must not claim a gate complete) and add what the founder wants kept to `docs/stage-memory-platform-verification.md` in a separate documentation pull request. If the invoice disagrees with section 3, record the invoice and correct the prices.
 
-## 9. Not yet (work items not built or not merged when this was written)
+## 9. Not yet (work items not built, not run, or not accepted)
 
-Re-check each against `main` before a window. When one changes, edit the matching step above.
+Reconciled 2026-11-16 against `main` at `a84f203`. Re-check each against `main` before a window. When one changes, edit the matching step above. Items 1 to 5, 7, 8 and 9 and the probe-kit change are merged and are no longer open.
 
-| Item (design section 6) | State when written | Affects |
+| Item (design section 6) | State on `main` | Affects |
 |---|---|---|
-| 1, 2, 4 Memory launcher: TLS and registry from variables, `verify-full` with a CA from a variable | open draft PR #330, branch `feature/stage-memory-launcher` | 4.3, 4.6, 5. Launcher accepts only `MEMORY_STAGE_ROLE=serve`; other values exit 2. |
-| 3 Charlie trusts a certificate from a variable | open draft PR #329 | 4.3, 6.4 |
-| 7 Stage material generator | open draft PR #329 (`scripts/stage_memory_materials.py`) | 4.3 |
-| 5 Migration runner skips `CREATE SCHEMA` when it exists | open draft PR #328, branch `fix/memory-migrate-existing-schema` | bootstrap (not built) |
-| Probe retest R1 to R3 | kit changes in open draft PR #331; **not run** | pre-window check 2; trusted-source denial and the migrator grants are still unproven |
-| 6 Bootstrap and migrate entry (`MEMORY_STAGE_ROLE=bootstrap`) | **not built**; waits for the retest (N3) | 4.6, 5; no way yet to create the two roles |
-| 8 `count` on the list audit line | **not built** | 5, 6.3 |
-| 9 Conformance support against a managed cluster | **not opened**; variable names for the remote-cluster opt-in and the empty-cluster confirmation unknown | 4.4 |
-| 11 Stage app spec with `memory`, `memory-bootstrap`, `memory-db`, Charlie's variables | **not built**; needs the founder's explicit approval; `deploy/digitalocean/app.yaml` unchanged | 4.6 |
-| 12 Documentation updates (`docs/memory-service.md`, `docs/deployment-strategy.md`, `docs/development-status.md`) | **not built** | none |
+| 6 Bootstrap and migrate entry (`MEMORY_STAGE_ROLE=bootstrap`) | **not built on `main`**; `stage_entry.py` accepts only `serve`; bootstrap PR #354 is an unmerged draft. The retest (N3) has run | 4.6, 5; no way yet to create the two roles |
+| 11 Stage app spec with `memory`, `memory-bootstrap`, `memory-db`, Charlie's variables | **not built on `main`**; app spec PR #356 is an unmerged draft; needs the founder's explicit approval; `deploy/digitalocean/app.yaml` unchanged | 4.6 |
+| 12 Documentation updates (`docs/memory-service.md`, `docs/deployment-strategy.md`, `docs/development-status.md`) | partly done in this reconciliation (status text only); Stage statements wait for the app spec | none |
+| Probe retest R1 to R3 | kit merged in PR #331; **run 2026-11-23**, results in `docs/stage-memory-platform-verification.md`: R1 PASS (public path; private-VPC path untested), R2 PASS, R3 answered | pre-window check 2 done; the private-VPC denial path, app-spec binding names and SCRAM hashing are still untested |
 | Local rehearsal (design 7.2) | **not run** | G3 evidence |
-| AGENTS.md sentence "Stage currently has the web service and six agents" | stale once item 11 deploys; founder-reviewed path, not edited here | none |
+| Conformance run on a managed cluster (G2) | support merged (PR #334); **not run** against any managed cluster | 4.4 |
+| AGENTS.md sentence "Stage currently has the web service and six agents" | true today; stale once item 11 deploys; founder-reviewed path, not edited here | none |
+
+Merged and no longer open: memory launcher (items 1, 2, 4; PR #330), Charlie certificate pin (item 3; PR #329), material generator (item 7; PR #329), migration runner schema skip (item 5; PR #328), `count` on the list audit line (item 8; PR #333), conformance fixture support (item 9; PR #334), probe retest kit (PR #331).
 
 Places where the code differs from the design text (the code's name is used above):
 
 | Design says | Code says |
 |---|---|
-| Client uses `ssl.create_default_context(cadata=...)` (5.3) | PR #329 builds a client context and loads only the supplied certificate; both `VIHARBOT_MEMORY_CA_FILE` and `VIHARBOT_MEMORY_CA_PEM` set and different gives reason `ca_conflict`; bad PEM gives `bad_ca_pem` |
-| `MEMORY_DB_SSLMODE` must be set to `verify-full` (2.3) | with the launcher the mode is forced to `verify-full` when a CA is given; a non-loopback host without `MEMORY_DB_CA_PEM` is refused (PR #330) |
-| The launcher serves `serve` and `bootstrap` (item 6 "one image, role by variable") | PR #330 implements only `serve`; the image runs the launcher whenever `MEMORY_STAGE_ROLE` is non-empty |
+| Client uses `ssl.create_default_context(cadata=...)` (5.3) | PR #329 (merged) builds a client context and loads only the supplied certificate; both `VIHARBOT_MEMORY_CA_FILE` and `VIHARBOT_MEMORY_CA_PEM` set and different gives reason `ca_conflict`; bad PEM gives `bad_ca_pem` |
+| `MEMORY_DB_SSLMODE` must be set to `verify-full` (2.3) | with the launcher the mode is forced to `verify-full` when a CA is given; a non-loopback host without `MEMORY_DB_CA_PEM` is refused (PR #330, merged) |
+| The launcher serves `serve` and `bootstrap` (item 6 "one image, role by variable") | `main` implements only `serve` (PR #330); the image runs the launcher whenever `MEMORY_STAGE_ROLE` is non-empty |
 | Fresh materials per window (N2, N5) | the script's `--passwords-only` changes passwords only; a new certificate means `--force`, which also replaces the signing key and registry |
 
 ## 10. Teardown and nothing-left-billing checklist (gate G5)
