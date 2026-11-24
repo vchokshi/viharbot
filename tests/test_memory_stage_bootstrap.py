@@ -223,6 +223,9 @@ def test_a_second_run_alters_instead_of_creating_and_changes_nothing_else(env, c
     assert run(env, db) == sb.EXIT_OK
     second_roles = [s.split(" WITH ")[0] for s in db.statements if "ROLE" in s]
     assert second_roles == ['ALTER ROLE "memory_migrator"', 'ALTER ROLE "memory_service"']
+    # A non-superuser admin (PostgreSQL 16+) is refused with 42501 if ALTER ROLE names SUPERUSER at all.
+    for line in (s for s in db.statements if s.startswith("ALTER ROLE")):
+        assert "SUPERUSER" not in line and "LOGIN NOCREATEDB NOCREATEROLE" in line
     assert not any(s.startswith("CREATE ROLE") for s in db.statements)
     second = [s for s in db.statements if not s.startswith(("SELECT", "CREATE ROLE", "ALTER ROLE"))]
     assert second == first  # same grants, same schema statements, all repeatable by themselves
