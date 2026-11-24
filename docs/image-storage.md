@@ -1,6 +1,6 @@
 # Image storage (DigitalOcean Spaces)
 
-Status: **code ready; no Space has been created and nothing is uploaded or deployed.** The website images (portraits, logos, the historical grid) are no longer in git. The page loads them from a public base URL.
+Status: **two Spaces exist in the My Team account (sfo3), `viharbot-dev` (local Compose) and `viharbot-stage` (Stage app spec), each with the same 14 public images and a CDN endpoint.** The Stage app spec points at `viharbot-stage` in source only; nothing has been deployed to Stage. The original `viharbot` Space was destroyed when the old team was retired, and its name is held by DigitalOcean for about 7 days. The website images (portraits, logos, the historical grid) are no longer in git. The page loads them from a public base URL.
 
 ## How it works
 
