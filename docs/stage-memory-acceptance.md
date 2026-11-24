@@ -1,6 +1,6 @@
 # Stage memory acceptance and release checklist
 
-**Status: an operator checklist. The only rows with evidence are the probe retest R1 to R3 rows (run 2026-11-23, recorded in `docs/stage-memory-platform-verification.md`); no gate is met.** Every other status in this file is NOT RUN, NOT BUILT or OPEN unless the evidence column names a recorded artifact. Stage has no memory service, nothing is provisioned, no promotion has been requested, and issue #40 stays open. This document authorizes nothing: the only authorization to deploy is the founder's affirmative answer to the AGENTS.md question for one specific build.
+**Status: an operator checklist, updated after the first Stage window (2026-11-24, `main` commit `3bfc6c6`).** Evidence exists for the probe retest R1 to R3 (2026-11-23) and for the first window (recorded in `docs/stage-memory-platform-verification.md`, "First Stage window 2026-11-24"). **G1 is met, G2 is met on the first cluster of the window (not re-run on the rebuilt cluster), G3 was answered yes for `3bfc6c6`, G4 is partially met (health, write/restart/read, two of five failure drills; three drills NOT RUN), and G5 is not applicable yet (nothing torn down).** Stage memory is deployed for Charlie only, in a first 3-day window (about 2026-11-24 06:24 UTC to about 2026-11-27 06:30 UTC). Every other status in this file is NOT RUN, NOT BUILT or OPEN unless the evidence column names a recorded artifact. Issue #40 stays open. This document authorizes nothing: the only authorization to deploy is the founder's affirmative answer to the AGENTS.md question for one specific build.
 
 This is an ordinary document under `docs/`. It collects, in one place, what an operator must show before and after a Stage memory window. It does not replace the procedure (`docs/stage-memory-runbook.md`, which owns the steps and gates G1 to G5), the design (`docs/stage-memory-design.md`) or the platform facts (`docs/stage-memory-platform-verification.md`). If this file disagrees with the code or the runbook, the code wins, then the runbook; fix this file.
 
@@ -12,13 +12,13 @@ Status vocabulary: **PASS** (evidence attached and meets the condition), **FAIL*
 
 Tick each line only with its evidence recorded in the window record (runbook section 8). A line without evidence is unticked.
 
-State of `main` when this was written (baseline `a84f203`): launcher (PR #330), pinned certificate and material generator (PR #329), schema-skip fix (PR #328), list-audit `count` (PR #333), conformance fixture support (PR #334) and the retest kit (PR #331) are merged. **Not built:** the bootstrap entry (`MEMORY_STAGE_ROLE=bootstrap`; `src/viharbot/memory_service/stage_entry.py` accepts only `serve`), and the Stage app spec (`deploy/digitalocean/app.yaml` has the web and six agents only).
+State of `main` at the first window (commit `3bfc6c6`): launcher (PR #330), pinned certificate and material generator (PR #329), schema-skip fix (PR #328), list-audit `count` (PR #333), conformance fixture support (PR #334), the retest kit (PR #331), the bootstrap entry (#354) with its `ALTER ROLE` fix (PR #361) and the Stage app spec (#356) are merged. **Not built:** a path that always calls the synthesis service (see the live-team limitation in section 4).
 
 ### 1.1 Code and build readiness
 
-- [ ] The bootstrap entry (design item 6) is merged. Today: NOT BUILT on `main`; the bootstrap pull request (#354) is an unmerged draft. The retest it waited for has run (2026-11-23).
-- [ ] The Stage app spec (design item 11) is merged with the founder's explicit approval. Today: NOT BUILT on `main`; the app spec pull request (#356) is an unmerged draft.
-- [ ] The commit to deploy is on `main`, its full SHA recorded; no unmerged branch is built or deployed.
+- [x] The bootstrap entry (design item 6) is merged (#354, with the fix in PR #361). It ran twice on Stage on 2026-11-24 (12 steps ok each time).
+- [x] The Stage app spec (design item 11) is merged (#356).
+- [x] The commit to deploy is on `main`, its full SHA recorded; no unmerged branch is built or deployed. First window: `3bfc6c6`.
 - [ ] `python -m pytest -q` passes on that commit; record total, passed, skipped. Database tests skip without a PostgreSQL DSN; that skip is expected here and does not count as database evidence.
 - [ ] CI on that commit is green (Python 3.12 and 3.13, frontend, lint, Docker build and smoke test, CI result). CI does not run PostgreSQL by decision, so a green CI is not conformance evidence (section 3 and section 9).
 - [ ] No deployment trigger exists: `deploy_on_push` stays disabled; a push to `main` updates source only.
@@ -32,11 +32,11 @@ State of `main` when this was written (baseline `a84f203`): launcher (PR #330), 
 
 ### 1.3 Gates (runbook section 2)
 
-- [ ] G1 Materials prepared.
-- [ ] G2 Conformance passed on this window's cluster, operator rule removed and the removal verified.
-- [ ] G3 Promotion question answered "yes" for that commit.
-- [ ] G4 Post-deploy verification passed (health, write/restart/read, failure drills).
-- [ ] G5 Teardown verified (or the founder explicitly extends the window in writing).
+- [x] G1 Materials prepared (generated by the founder; certificate fingerprint and expiry checked).
+- [x] G2 Conformance passed, operator rule removed and the removal verified. **On the window's first cluster only**; not re-run on the rebuilt cluster.
+- [x] G3 Promotion question answered "yes" for that commit (`3bfc6c6`, 2026-11-24).
+- [ ] G4 Post-deploy verification passed (health, write/restart/read, failure drills). **Partial:** health, write/restart/read and two of five failure drills passed; wrong certificate, wrong signing key and expired certificate NOT RUN.
+- [ ] G5 Teardown verified (or the founder explicitly extends the window in writing). Not applicable yet: nothing torn down; teardown only on the founder's explicit instruction at the end of the window.
 
 ### 1.4 Promotion summary (before asking the question)
 
@@ -52,11 +52,11 @@ From the status comment on issue #40 ("Remaining before this can be marked compl
 
 | # | Exit criterion (#40) | Evidence required | Status |
 |---|---|---|---|
-| E1 | Write, new session, retrieve, correct use for each operational binding | For Charlie: contract test `test_write_then_restart_then_retrieve_in_a_new_session` against PostgreSQL (section 3) and the Stage drill (section 4). For Nova, Scout, Cipher, Pixel and Sage: a wiring change per agent plus its own write, new session, retrieve evidence | Charlie local: run locally and recorded on #40 (Compose smoke test, local contract tests); Charlie on Stage: NOT RUN. Other agents: NOT BUILT (only Charlie is wired) |
+| E1 | Write, new session, retrieve, correct use for each operational binding | For Charlie: contract test `test_write_then_restart_then_retrieve_in_a_new_session` against PostgreSQL (section 3) and the Stage drill (section 4). For Nova, Scout, Cipher, Pixel and Sage: a wiring change per agent plus its own write, new session, retrieve evidence | Charlie local: run locally and recorded on #40 (Compose smoke test, local contract tests); Charlie on Stage: **PASS once, 2026-11-24** (read `count` 0, write `create` `ok`, restart of every component, read `count` 1, `create` `ok`; later `count` 2 after the drills), with the limitation that the live team calls synthesis only when the planner schedules it. Not operational validation of correct use. Other agents: NOT BUILT (only Charlie is wired) |
 | E2 | The #48 memory-poisoning and cross-agent isolation suite (wrong tenant, forged identity, malicious instructions, concurrent writes) | #48 closed by the founder with its suite merged and passing; for Stage, the same suite or the in-scope contract tests on the managed cluster | OPEN (#48 still open when #40's comment was written; confirm current state before relying on it). The contract file does cover forged sub, cross-agent partitions, wrapped instruction-like content and concurrent writers locally; that is not #48 |
 | E3 | Per-tenant or engagement isolation | An engagement identity exists and grant-based authorization (#38) is built, with a test per boundary | NOT BUILT (no engagement identity; #38 not built) |
 | E4 | Verification of memory-text handling with a real model, not only stubs | A founder-approved, opt-in live check showing wrapped memory text does not steer a real model. The assistant never makes this call implicitly (AGENTS.md) | NOT RUN; needs the founder's approval. Gateway state for the relevant alias is noted in project memory as broken; check before planning |
-| E5 | A durable Stage backend: Managed PostgreSQL provisioned, Stage TLS and service-authentication key storage designed, contract suite run against a Stage database, Stage spec with the memory service | Gates G1 to G5 (section 2.2) with the window record; the contract suite counts from G2; the app spec merged | NOT RUN. Design exists (`docs/stage-memory-design.md`); launcher and generator merged; bootstrap and app spec NOT BUILT; nothing provisioned |
+| E5 | A durable Stage backend: Managed PostgreSQL provisioned, Stage TLS and service-authentication key storage designed, contract suite run against a Stage database, Stage spec with the memory service | Gates G1 to G5 (section 2.2) with the window record; the contract suite counts from G2; the app spec merged | PARTIAL, window in progress: cluster provisioned and the app spec merged and deployed; contract suite 82 passed, 0 failed, 1 skipped on the window's first cluster; G4 partial and G5 not applicable yet. Not complete |
 | E6 | Documented AWS and GCP storage and deployment gaps for Production | A reviewed document naming each gap per cloud | OPEN (no evidence on `main`; Production has no memory design) |
 
 Not part of #40's exit and not tested here: downstream work #301, #302, #303, #305, and what Charlie should remember long term.
@@ -67,20 +67,21 @@ Procedure and commands are in the runbook; the right-hand column is what this fi
 
 | Gate | Runbook step | Concrete evidence required | Status |
 |---|---|---|---|
-| G1 Materials prepared | 4.3 | Generator run locally (`scripts/stage_memory_materials.py`); the file names present; certificate fingerprint (prefix) and expiry; confirmation the files sit in the password manager; no value anywhere else | NOT RUN |
-| G2 Conformance passed | 4.4 | Counts (total, passed, failed, skipped), date, commit, cluster plan and PostgreSQL major version; the only skip is the container-restart test; firewall list showing no operator `ip_addr` rule after removal; the attempt to connect from the operator machine after removal refused (R1 says whether denial can be relied on) | NOT RUN (fixture support merged in PR #334; never run on a managed cluster) |
-| G3 Promotion question answered | 4.5 | The posted summary (section 1.4) and the founder's literal "yes", recorded with the full commit SHA | NOT RUN (no promotion requested) |
-| G4 Post-deploy verification passed | 6.1 to 6.4 | Newest deployment phase ACTIVE with its ID; bootstrap job success line; `memory` health 200 (or `create ... ok` line); drill table all PASS (section 4 and section 5 here); no content in any log | NOT RUN, and not runnable until the bootstrap entry and the app spec exist |
-| G5 Teardown verified | 10 | The five clean commands summarized (apps, databases, firewalls, registry, balance); billing page after about an hour showing line items stopped; final cost against the estimate | NOT RUN |
+| G1 Materials prepared | 4.3 | Generator run locally (`scripts/stage_memory_materials.py`); the file names present; certificate fingerprint (prefix) and expiry; confirmation the files sit in the password manager; no value anywhere else | MET (generated by the founder; fingerprint and expiry checked; values are not recorded here) |
+| G2 Conformance passed | 4.4 | Counts (total, passed, failed, skipped), date, commit, cluster plan and PostgreSQL major version; the only skip is the container-restart test; firewall list showing no operator `ip_addr` rule after removal; the firewall list is the check that the operator rule is gone (an empty trusted-source list does not refuse anyone, so a refused connection is **not** expected at this step) | MET on the window's first cluster: 82 passed, 0 failed, 1 skipped (container-restart test), 11 min 22 s; operator rule removed with `remove --uuid` and the list checked. **Not re-run on the rebuilt cluster** |
+| G3 Promotion question answered | 4.5 | The posted summary (section 1.4) and the founder's literal "yes", recorded with the full commit SHA | ANSWERED YES for commit `3bfc6c6` (2026-11-24); a different commit needs a new question |
+| G4 Post-deploy verification passed | 6.1 to 6.4 | Newest deployment phase ACTIVE with its ID; bootstrap job success line; `memory` health 200 (or `create ... ok` line); drill table all PASS (section 4 and section 5 here); no content in any log | PARTIAL: deployment ACTIVE, bootstrap ok, health (agents and web; the memory service's own `/health` not observable from outside), write/restart/read PASS, drills 2 of 5 PASS (memory down, database unreachable); wrong certificate, wrong signing key, expired certificate NOT RUN |
+| G5 Teardown verified | 10 | The five clean commands summarized (apps, databases, firewalls, registry, balance); billing page after about an hour showing line items stopped; final cost against the estimate | NOT APPLICABLE YET (nothing torn down; only on the founder's explicit instruction at the end of the window) |
 
 ### 2.3 Supporting checks the gates depend on
 
 | Check | Evidence required | Status |
 |---|---|---|
-| Local rehearsal (design 7.2): launcher and bootstrap in Compose against a local PostgreSQL with a non-superuser admin stand-in, bootstrap run twice, write, restart, read, no secret in a log | Recorded run: date, commit, outcome per step | NOT RUN (the bootstrap does not exist) |
+| Local rehearsal (design 7.2): launcher and bootstrap in Compose against a local PostgreSQL with a non-superuser admin stand-in, bootstrap run twice, write, restart, read, no secret in a log | Recorded run: date, commit, outcome per step | RUN before the first deployment: it found a real defect (on PostgreSQL 16 and later `ALTER ROLE` naming `SUPERUSER` fails for a non-superuser admin, SQLSTATE 42501, which broke the bootstrap's second run), fixed by PR #361. The per-step record is not reproduced here |
 | Offline suite on the deploy commit | `python -m pytest -q` counts | NOT RUN for the future commit |
 | Retest R1 to R3 (design 7.3) | Written results in the verification file | DONE 2026-11-23: R1 PASS (public path; private-VPC path untested), R2 PASS, R3 PASS (answered). Evidence: "Retest 2026-11-23" in the verification file |
-| Cluster CA differs per cluster (design 7.3) | Recorded yes or no after creating a second cluster or the window's cluster | UNVERIFIED |
+| Cluster CA differs per cluster (design 7.3) | Recorded yes or no after creating a second cluster or the window's cluster | ANSWERED 2026-11-24: no. A rebuilt cluster had a byte-identical CA (the SHA-256 of the CA PEM matched). Observed twice on one account; do not generalise; compare the hash each window |
+| Bindable names `HOSTNAME`, `PORT`, `USERNAME`, `DATABASE`, client-side SCRAM role creation, `ip_addr` trusted-source form | Observed on the real Stage app and cluster | PASS 2026-11-24 (verification file, "First Stage window 2026-11-24") |
 
 ## 3. PostgreSQL conformance procedure (gate G2)
 
@@ -100,6 +101,7 @@ The run creates `vbtest_m_<hex>` and `vbtest_s_<hex>` roles and a `vbtest_<hex>`
 
 Steps (the founder's shell; the DSN, with its password, is typed into the environment of that shell and nowhere else):
 
+0. **Order (found in the first window).** The guard refuses to run if the dedicated database from runbook 4.1 already exists, so create the dedicated database **after** this run (or delete the empty one first). The suite takes about 11 minutes against a remote cluster; a 9-minute timeout killed one attempt and left `vbtest_` databases and roles that had to be removed with `doctl databases db delete` and `user delete`.
 1. **Local dry run of the guard.** With the local throwaway container, set `VIHARBOT_MEMORY_TEST_PG_ADMIN_DSN` and `VIHARBOT_MEMORY_TEST_PG_FORCE_REMOTE_GUARD=1`, without the other two; expect a refusal. Add `ALLOW_REMOTE=1` and `CONFIRM_EMPTY=1`; expect the suite to run. Run `python -m pytest tests/test_memory_fixture_guard_unit.py -q` (offline).
 2. **Baseline locally.** Run the full contract file against the local container with `VIHARBOT_MEMORY_TEST_PG_CONTAINER` set; record counts. This is the comparison.
 3. **Add the temporary operator rule** (runbook 4.4 step 2) and record its UUID in the inventory (section 7).
@@ -112,7 +114,7 @@ Steps (the founder's shell; the DSN, with its password, is typed into the enviro
    with the three variables above set (admin DSN with `verify-full` and CA, `ALLOW_REMOTE=1`, `CONFIRM_EMPTY=1`). Use `-ra` so skip reasons are printed.
 5. **Judge.** PASS: every in-scope test passes; the only skip is `test_records_survive_a_database_container_restart`. FAIL: any failure, any other skip, or a refusal from the empty-cluster check (a refusal means the cluster is not the window's fresh one; stop and investigate, do not bypass it).
 6. **Remove the operator rule in the same session** and verify with `doctl databases firewalls list`; no `ip_addr` rule may remain.
-7. **Confirm refusal** from the operator machine (retest R1 context: the 2026-11-23 retest saw refusal from a public laptop about 40 seconds after the rule applied, so allow for that delay when checking).
+7. **Do not expect a refusal here.** With the operator rule removed the trusted-source list is empty, and an empty list means no restriction (TCP connects succeed from anywhere). Refusal exists only once at least one trusted source exists (about 40 seconds after a rule is added). The firewall list from step 6 is the check.
 8. **Record** the result per section 6 (counts, date, commit, plan, PostgreSQL major version; no connection detail).
 
 Cost note: the database bills per started hour with a one-hour minimum; this run adds one to two billed hours.
@@ -123,7 +125,9 @@ Two layers. Both must PASS.
 
 **Layer A, database persistence, local only.** `test_write_then_restart_then_retrieve_in_a_new_session` runs on any PostgreSQL. `test_records_survive_a_database_container_restart` needs a local Docker container and is skipped on a managed cluster; it is the local evidence that rows survive a database restart. Evidence: counts from the local run (step 2 of section 3).
 
-**Layer B, Stage drill with Charlie (runbook 6.3).** Preconditions: the app spec and bootstrap exist and G3 is answered.
+**Layer B, Stage drill with Charlie (runbook 6.3).** Preconditions: the app spec and bootstrap exist and G3 is answered. **First window result: PASS (2026-11-24).** Read before synthesis `count` 0; write `create` `ok`; a manual deployment restarted every component; next read `count` 1 (the earlier record), another `create` `ok`; audit lines name caller `charlie` and scope `agent/charlie`; no content in any log line.
+
+**Limitation (live team).** Stage web sets `CHARLIE_PLANNER_MODEL` and holds a LiteLLM key, so `/api/chat` uses the iterative live team. Memory is exercised only when Charlie's planner schedules the synthesis capability. Two requests (a short question and an open-ended question) finished with research, security and source-quality steps and Charlie approving without calling synthesis, so no memory read or write happened; requests that explicitly asked for research, a security assessment, a privacy review and a synthesis used memory every time. Deterministic memory use needs a path that always calls synthesis; it is not built. The memory service's own `/health` could not be probed from outside (no public route, TCP platform check, no `/health` log lines); its proof of life is the audit lines.
 
 1. Send one synthesis request through the normal route. Evidence: a memory log line with `operation` `create`, `outcome` `ok`, `scope` `agent/charlie`; and Charlie's `memory client` line with `decision` `ok`. Record the timestamps and request IDs (identifiers only).
 2. Record the deployment ID, then restart every component (`doctl apps create-deployment <app-id>`; wait for ACTIVE). Record the new deployment ID. A restart of the app does not restart the managed database, so this proves the app path and rehydration, not database-level durability on Stage; do not claim the latter. A managed-database restart is not driven from here (the Stage drill covers the application only).
@@ -136,14 +140,14 @@ One at a time, with drill materials from a separate generator run (`--out data/s
 
 | Drill | Induce | PASS evidence | Recovery proof | Status |
 |---|---|---|---|---|
-| Memory down | Wrong `MEMORY_DB_PASSWORD` on `memory`, redeploy | Charlie answers; one content-free `memory client` line with `reason` `http_503` (or `unreachable`, `timeout`); `/health` 503 | Restore the value, redeploy, `/health` 200, 6.3 passes | NOT RUN |
-| Wrong certificate | Drill `memory.crt.b64` into Charlie's `VIHARBOT_MEMORY_CA_PEM` | Answers; `reason` `tls_verification_failed`; no request sent | Restore, redeploy `synthesis`, 6.3 passes | NOT RUN |
-| Expired certificate | A certificate with a past `notAfter`; the generator's `--days` accepts 1 to 3650 only, so this needs a one-off method (runbook 6.4 note) | Same as wrong certificate | Same | NOT RUN or SKIPPED (record which) |
-| Wrong signing key | Drill `charlie-signing.key` into Charlie's `VIHARBOT_SIGNING_KEY` | Answers; memory audit `denied` with `reason` `authentication_failed`; Charlie `reason` `denied`; no record written by the wrong key | Restore, redeploy, 6.3 passes | NOT RUN |
-| Database unreachable | Remove the app's trusted-source rule (`firewalls remove --uuid`) | `/health` 503; Charlie answers with `http_503` or `timeout` | `append --rule app:<app-id>`, `/health` 200 | NOT RUN |
-| Bootstrap job fails | Per runbook 11: deliberately fail the job once | Deployment ERROR, old version keeps serving, rollback follows; the number of runs per failed deployment recorded (retest R3) | Correct the cause, redeploy; second run is idempotent | NOT RUN, and NOT BUILT (no bootstrap) |
+| Memory down | Wrong `MEMORY_DB_PASSWORD` on `memory`, redeploy | Charlie answers; one content-free `memory client` line with `reason` `http_503` (or `unreachable`, `timeout`); `/health` 503 | Restore the value, redeploy, `/health` 200, 6.3 passes | PASS 2026-11-24 (HTTP 200 with a synthesis; memory service logged `memory store connect failed` and `storage_unavailable`; Charlie `http_503` for read and write; after restoring, read `count` 2). The service's `/health` itself was not observable from outside |
+| Wrong certificate | Drill `memory.crt.b64` into Charlie's `VIHARBOT_MEMORY_CA_PEM` | Answers; `reason` `tls_verification_failed`; no request sent | Restore, redeploy `synthesis`, 6.3 passes | NOT RUN (needs drill materials) |
+| Expired certificate | A certificate with a past `notAfter`; the generator's `--days` accepts 1 to 3650 only, so this needs a one-off method (runbook 6.4 note) | Same as wrong certificate | Same | NOT RUN (the generator cannot produce an already-expired certificate; needs another method, or SKIPPED with the founder's written acceptance) |
+| Wrong signing key | Drill `charlie-signing.key` into Charlie's `VIHARBOT_SIGNING_KEY` | Answers; memory audit `denied` with `reason` `authentication_failed`; Charlie `reason` `denied`; no record written by the wrong key | Restore, redeploy, 6.3 passes | NOT RUN (needs drill materials) |
+| Database unreachable | **Placeholder swap, never an empty list:** add a placeholder `ip_addr` rule for a non-routable address, remove the app rule, test, then add the app rule back and remove the placeholder (an empty list opens the cluster instead of blocking it) | Charlie answers with `http_503` or `timeout`; the memory service logs `storage_unavailable` | Restore in that order so the list is never empty | PASS 2026-11-24 (HTTP 200 with a synthesis; Charlie's client skipped both calls with reason `timeout`, about 1.5 s each) |
+| Bootstrap job fails | Per runbook 11: deliberately fail the job once | Deployment ERROR, old version keeps serving, rollback follows; the number of runs per failed deployment recorded (retest R3) | Correct the cause, redeploy; second run is idempotent | NOT RUN on Stage (the bootstrap exists and its second run was idempotent: 12 steps ok, migrate applied nothing) |
 
-After the drills restore the live values, redeploy, and re-run 6.3 once.
+After the drills restore the live values, redeploy, and re-run 6.3 once. First window: **2 of 5 drills PASS; wrong certificate, wrong signing key and expired certificate NOT RUN**, so G4 is partial. An earlier accidental fail-open observation (the first cluster deleted in the console, HTTP 200 with memory skipped, `http_503`) is not a planned drill and is not counted.
 
 ## 6. Window record and results
 
@@ -183,6 +187,8 @@ Cost tracking (runbook estimate: about $0.030 per hour; database $0.02254, one e
 | Total | $___ | | | $___ | $___ |
 
 Per-window estimate (runbook table): 24 hours $0.72, 3 days $2.16, 7 days $5.04, forgotten for 28 days $20.15. Note "balance get" month-to-date at creation, at close and after about an hour post-teardown. If the invoice disagrees, record the invoice and correct the prices in the runbook.
+
+First window (labels only): `cluster-A` was created, deleted in the console by the founder (about 06:17 to 06:20 UTC on 2026-11-24) and rebuilt (created about 06:24 UTC); the app was added as the cluster's only trusted source; the temporary operator rule was removed and the list checked. Rule: all DigitalOcean resources belong in the `viharbot` project on the My Team team (`doctl apps create` assigns the app to the default project; assign and verify). Cost: estimated about $0.082 per hour for 8 services at an assumed default $5 instance size (the spec sets no size; unconfirmed) plus about $0.0225 per hour for the database, plus model-call cost (roughly ten full requests during verification); not read from an invoice. Seven per-component LiteLLM keys (six agents, the web planner) exist, one model alias each, no budget or expiry.
 
 ## 8. Rollback, teardown and final acceptance
 
@@ -236,3 +242,13 @@ Read from `.github/workflows/ci.yml` and `docs/continuous-integration.md` at bas
 - Prices are list prices, not invoices.
 - It says nothing about Production, AWS or GCP.
 - Exit criteria E1 to E6 are taken from the status comment on issue #40; re-read the issue before relying on them.
+
+## 11. Stale statement in a protected file (for the founder)
+
+`AGENTS.md` (a founder-reviewed path, not edited here) says: "Stage currently has the web service and six agents; Pixel and Sage are dev-stack only." As of 2026-11-24 Stage (`viharbot-stage`) also runs the governed memory service and the memory-bootstrap pre-deploy job (eight services plus one job), backed by a managed PostgreSQL cluster. The clause "Pixel and Sage are dev-stack only" is still true. The founder decides whether and how to change that sentence.
+
+## 12. Known limitations added after the first window
+
+- The first window's evidence is one account on one day. Nothing here is operational validation beyond what was observed, and issue #40 stays open.
+- Three failure drills are NOT RUN; conformance was not re-run on the rebuilt cluster; the memory service's own `/health` was not observed; the window cost is not read from an invoice.
+- Memory use on Stage depends on the planner scheduling synthesis; a quiet memory log after an ordinary question is not a fault.
