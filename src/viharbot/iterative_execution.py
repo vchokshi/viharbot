@@ -15,7 +15,7 @@ from typing import Callable
 
 from pydantic import BaseModel, ConfigDict
 
-from . import demo, orchestration_planner
+from . import demo, orchestration_planner, working_memory
 from .deadline import DeadlineExceeded, RequestDeadline
 from .delegation import (
     DelegationError,
@@ -203,6 +203,7 @@ def run_iterative_pipeline(
         execution_budget=budget,
         started_at=started,
     )
+    working_memory.registry.track(state)  # read-only founder inspection; a no-op unless enabled
     activity: list[AgentActivity] = []
     notice = None
 

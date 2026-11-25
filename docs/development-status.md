@@ -44,6 +44,7 @@ An evidence-based snapshot. Maturity levels are kept separate, because each says
 | Fact Check citation guard | yes | yes (unit and service tests) | yes | no | the downgrade path was never triggered by a live model |
 | Privacy Review, Synthesis (live inference) | yes | yes (mocked) | yes | no | no evidence in this audit |
 | AgentCore compatibility | adapters | partly | no | no | no |
+| Agent Memory Explorer, phase 1 ([doc](agent-memory-explorer.md)) | Charlie working-memory projection and page shell | yes (offline, 35 tests) | yes (off by default) | no | **no real-browser check recorded** |
 | Stage deployment | template | shipped-config tests | n/a | deleted | n/a |
 
 ## Feature flags
@@ -57,6 +58,7 @@ All default to `false`. None is set in the committed `compose.yaml` defaults or 
 | `VIHARBOT_PERSONALITY_INFERENCE_ENABLED` | identity prompts on services | identity routing |
 | `VIHARBOT_PERSONA_PROMPT_ENABLED` | adds the persona section (Epic #157 Phase B) on top of identity prompts; ignored unless the personality flag is also on in the same service | `VIHARBOT_PERSONALITY_INFERENCE_ENABLED` |
 | `VIHARBOT_PEER_REVIEW_ENABLED` | records typed peer-review exchanges for delegations the orchestrator already authorizes (Epic #157 C2); changes nothing that is delegated or returned | iterative mode |
+| `MEMORY_EXPLORER_ENABLED` | founder-only read-only Agent Memory Explorer and in-process working-memory references | founder and content tokens, see `docs/agent-memory-explorer.md` |
 | `VIHARBOT_DEV_DIAGNOSTICS_ENABLED` | planner rationale and model aliases in the stream | iterative mode |
 
 A developer's `.env` can turn these on and changes test outcomes (see below).

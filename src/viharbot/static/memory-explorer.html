@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex" />
+<title>ViharBot Agent Memory Explorer</title>
+<style>
+  :root { --bg:#f6f4ef; --card:#fff; --ink:#26231f; --mute:#6c665c; --line:#e6e1d7; --accent:#4a55a8; --ok:#2f7a4d; --warn:#9a6a14; --bad:#a33a3a; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  a { color: var(--accent); }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 16px; }
+  header.top { display:flex; flex-wrap:wrap; gap:14px; align-items:center; padding:14px 16px; background:var(--card); border:1px solid var(--line); border-radius:16px; }
+  header.top img { width:64px; height:72px; object-fit:cover; border-radius:12px; border:1px solid var(--line); background:#eee; }
+  header.top .id { flex:1 1 220px; min-width:0; }
+  h1 { margin:0; font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--mute); }
+  h2 { margin:2px 0 0; font-size:20px; }
+  .role { color:var(--mute); }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+  .chip { padding:2px 9px; border:1px solid var(--line); border-radius:999px; font-size:12px; background:#faf8f4; }
+  .chip.ok { color:var(--ok); border-color:#b9dcc6; } .chip.warn { color:var(--warn); border-color:#e6d2a3; } .chip.bad { color:var(--bad); border-color:#e3b9b9; }
+  .tools { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:12px 0; }
+  label { font-size:13px; color:var(--mute); }
+  select, input, button { font:inherit; padding:7px 10px; border:1px solid var(--line); border-radius:10px; background:#fff; color:var(--ink); min-height:40px; }
+  button { cursor:pointer; background:var(--accent); color:#fff; border-color:var(--accent); }
+  :focus-visible { outline:3px solid #6b7bd6; outline-offset:2px; }
+  .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap:12px; }
+  section.panel { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:14px 16px; min-width:0; }
+  section.panel h3 { margin:0 0 8px; font-size:15px; }
+  .state { padding:8px 10px; border-radius:10px; background:#faf8f4; border:1px dashed var(--line); color:var(--mute); }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:4px 6px; border-bottom:1px solid var(--line); vertical-align:top; overflow-wrap:anywhere; }
+  th { color:var(--mute); font-weight:600; }
+  dl { display:grid; grid-template-columns: max-content 1fr; gap:3px 12px; margin:0; font-size:13px; }
+  dt { color:var(--mute); } dd { margin:0; overflow-wrap:anywhere; }
+  .untrusted { white-space:pre-wrap; font-family:ui-monospace, Menlo, monospace; font-size:12.5px; background:#faf8f4; border:1px solid var(--line); border-radius:8px; padding:6px 8px; }
+  .full { grid-column: 1 / -1; }
+  .note { font-size:12px; color:var(--mute); margin-top:8px; }
+  .visually-hidden { position:absolute; left:-9999px; }
+  @media (max-width: 560px) { .wrap { padding: 10px; } header.top img { width:52px; height:60px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top" id="head">
+    <img id="portrait" alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" />
+    <div class="id">
+      <h1>ViharBot Agent Memory Explorer</h1>
+      <h2 id="agent-name">Loading…</h2>
+      <div class="role" id="agent-role"></div>
+      <div class="chips" id="chips" aria-label="Status"></div>
+    </div>
+    <nav aria-label="Navigation"><a id="central" href="#" aria-disabled="true">Command Central</a></nav>
+  </header>
+
+  <form class="tools" id="auth" autocomplete="off">
+    <label for="agent-select">Agent</label>
+    <select id="agent-select" disabled></select>
+    <label for="token">Founder token</label>
+    <input id="token" type="password" autocomplete="off" placeholder="Held in this tab's memory only" />
+    <button type="submit">Connect</button>
+    <button type="button" id="refresh" style="background:#fff;color:var(--accent)">Refresh</button>
+  </form>
+  <div class="state" id="banner" role="status" aria-live="polite">Locked. Enter the founder token to inspect agent state.</div>
+
+  <div class="grid" style="margin-top:12px">
+    <section class="panel full" aria-labelledby="wm-h"><h3 id="wm-h">Working memory</h3><div id="wm"></div></section>
+    <section class="panel" aria-labelledby="pm-h"><h3 id="pm-h">Persistent memory</h3><div id="pm"></div></section>
+    <section class="panel" aria-labelledby="ev-h"><h3 id="ev-h">Events</h3><div id="ev"></div></section>
+    <section class="panel" aria-labelledby="rt-h"><h3 id="rt-h">Runtime and capabilities</h3><div id="rt"></div></section>
+    <section class="panel" aria-labelledby="sec-h"><h3 id="sec-h">Memory structures</h3><div id="sec"></div></section>
+  </div>
+  <p class="note">Read-only. This shows application-managed state and structured decisions, never model reasoning. All displayed text is untrusted data and is rendered as plain text.</p>
+</div>
+<script>
+(function () {
+  "use strict";
+  var token = "";                 // memory only: never stored, never put in a URL
+  var agents = [];
+  var seq = 0;                    // bumps on every agent switch so late responses are dropped
+  var inflight = null;
+  var $ = function (id) { return document.getElementById(id); };
+  var BLANK = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+
+  function el(tag, text, cls) { var n = document.createElement(tag); if (text !== undefined && text !== null) n.textContent = String(text); if (cls) n.className = cls; return n; }
+  function clear(n) { while (n.firstChild) n.removeChild(n.firstChild); }
+  function state(text) { return el("div", text, "state"); }
+  function chip(text, kind) { return el("span", text, "chip" + (kind ? " " + kind : "")); }
+  function dl(pairs) { var d = el("dl"); pairs.forEach(function (p) { d.appendChild(el("dt", p[0])); d.appendChild(el("dd", p[1] === null || p[1] === undefined ? "none" : p[1])); }); return d; }
+  function table(head, rows) {
+    var t = el("table"), h = el("tr");
+    head.forEach(function (c) { var th = el("th", c); th.scope = "col"; h.appendChild(th); });
+    t.appendChild(h);
+    rows.forEach(function (r) { var tr = el("tr"); r.forEach(function (c) { tr.appendChild(el("td", c === null || c === undefined ? "" : c)); }); t.appendChild(tr); });
+    return t;
+  }
+  function agentFromPath() { var m = location.pathname.match(/^\/agents\/([a-z][a-z0-9_]{0,31})\/?$/); return m ? m[1] : "charlie"; }
+  function banner(text) { $("banner").textContent = text; }
+
+  function api(path) {
+    if (inflight) inflight.abort();
+    inflight = new AbortController();
+    return fetch(path, { headers: { "Authorization": "Bearer " + token }, cache: "no-store", signal: inflight.signal, credentials: "omit" })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (b) { return { status: r.status, body: b }; }); });
+  }
+  function apiAll(paths) {  // independent requests: do not abort one with another
+    return Promise.all(paths.map(function (p) {
+      return fetch(p, { headers: { "Authorization": "Bearer " + token }, cache: "no-store", credentials: "omit" })
+        .then(function (r) { return r.json().catch(function () { return {}; }).then(function (b) { return { status: r.status, body: b }; }); });
+    }));
+  }
+
+  function resetPanels(msg) {
+    ["wm", "pm", "ev", "rt", "sec"].forEach(function (id) { clear($(id)); $(id).appendChild(state(msg)); });
+  }
+
+  function renderHead(a) {
+    $("agent-name").textContent = a.name;
+    $("agent-role").textContent = a.title;
+    var img = $("portrait"); img.src = a.portrait || BLANK; img.alt = a.portrait ? a.portrait_alt : "";
+    var c = $("chips"); clear(c);
+    c.appendChild(chip(a.id));
+    c.appendChild(chip(a.runtime === "bound" ? "Execution bound" : "No execution binding", a.runtime === "bound" ? "ok" : "warn"));
+    c.appendChild(chip("Environment: " + (cfg.environment || "local")));
+    c.appendChild(chip("Auth: " + (cfg.permission === "content" ? "content access" : "metadata only"), cfg.permission === "content" ? "warn" : "ok"));
+    c.appendChild(chip("Fetched " + new Date().toLocaleTimeString()));
+  }
+
+  function renderRuntime(a) {
+    var p = $("rt"); clear(p);
+    p.appendChild(dl([["Identity", a.id], ["Runtime", a.runtime === "bound" ? "bound to an execution service" : "identity only; runs nothing"],
+      ["Declared capabilities", a.capabilities.join(", ")], ["Bound capabilities", a.bound_capabilities.join(", ") || "none"]]));
+    p.appendChild(el("p", "Model alias, health, tokens, cost and resource telemetry are not connected (see #47, #231, #348).", "note"));
+  }
+
+  function renderSections(list) {
+    var p = $("sec"); clear(p);
+    p.appendChild(table(["Structure", "State"], list.map(function (s) { return [s.label, s.state.replace("_", " ")]; })));
+    p.appendChild(el("p", "Unconnected structures show no records; none are simulated.", "note"));
+  }
+
+  function renderWorking(v, agent) {
+    var p = $("wm"); clear(p);
+    if (v.state === "not_connected") { p.appendChild(state("Not connected. No working-state contract exists for " + agent + ".")); return; }
+    if (!v.runs.length) {
+      p.appendChild(state("Idle. No request has been observed since this web process started. Earlier history is unavailable, not empty."));
+      return;
+    }
+    if (!v.content_included) p.appendChild(state("Metadata only. Questions, goals and evidence summaries need the content token."));
+    v.runs.forEach(function (r) {
+      var box = el("div"); box.style.marginTop = "10px";
+      box.appendChild(el("strong", "Request " + r.request_id + " · " + r.lifecycle));
+      box.appendChild(dl([["Status", r.status], ["Decisions", r.decision_count + " of " + r.budget.max_decisions + " (" + r.budget.remaining_decisions + " left)"],
+        ["Executions", r.steps.length + " of " + r.budget.max_executions + " (" + r.budget.remaining_executions + " left)"],
+        ["Time", r.elapsed_ms === null ? r.budget.remaining_seconds + " s left of " + r.budget.max_seconds : (r.elapsed_ms / 1000).toFixed(1) + " s elapsed"],
+        ["Completion", r.completion_kind ? r.completion_kind + " (" + r.completion_reason + ")" : "not finished"],
+        ["Rejected actions", r.rejected_actions], ["Pending evidence gaps", r.pending_gap_count], ["Peer reviews", r.peer_review_count]]));
+      if (r.content) {
+        box.appendChild(el("div", "Question (untrusted)", "note")); box.appendChild(el("div", r.content.original_question, "untrusted"));
+        box.appendChild(el("div", "Current goal (untrusted)", "note")); box.appendChild(el("div", r.content.current_goal, "untrusted"));
+        r.content.pending_gaps.forEach(function (g) { box.appendChild(el("div", "Gap: " + g, "untrusted")); });
+      }
+      box.appendChild(el("div", "Completed specialist tasks", "note"));
+      box.appendChild(r.steps.length ? table(["#", "Agent", "Capability", "v", "Current", "ms", "Based on"].concat(r.content ? ["Summary (untrusted)"] : []),
+        r.steps.map(function (s) { return [s.sequence, s.identity, s.capability, s.version, s.current ? "yes" : "superseded", Math.round(s.duration_ms), JSON.stringify(s.based_on)].concat(r.content ? [s.summary] : []); })) : state("No specialist has completed yet."));
+      box.appendChild(el("div", "Decision records", "note"));
+      box.appendChild(r.decisions.length ? table(["#", "Action", "Capability", "Status", "Reason code"],
+        r.decisions.map(function (d) { return [d.decision_number, d.requested_action, d.capability, d.status, d.reason_code]; })) : state("No decisions recorded."));
+      p.appendChild(box);
+    });
+  }
+
+  function renderUnconnected(id, body, what) {
+    var p = $(id); clear(p);
+    p.appendChild(state("Not connected. " + (body.reason || what)));
+    if (body.namespace) p.appendChild(dl([["Canonical namespace", body.namespace]]));
+  }
+
+  function failure(r) {
+    if (r.status === 401) { banner("Unauthorized. The token was missing or not accepted."); resetPanels("Unauthorized."); return true; }
+    if (r.status === 503) { banner("Unavailable. The explorer is disabled or not configured on this server."); resetPanels("Unavailable."); return true; }
+    if (r.status === 404) { banner("Unknown agent."); resetPanels("Unknown agent."); return true; }
+    if (r.status >= 400) { banner("Request failed (" + r.status + ")."); resetPanels("Error."); return true; }
+    return false;
+  }
+
+  var cfg = {};
+  function load(agentId) {
+    var mine = ++seq;
+    resetPanels("Loading…");           // the previous agent's data is gone before the next arrives
+    var base = "/api/memory-explorer/agents/" + encodeURIComponent(agentId);
+    apiAll([base, base + "/working-memory", base + "/persistent-memory", base + "/events"]).then(function (rs) {
+      if (mine !== seq) return;        // a newer switch superseded this one
+      for (var i = 0; i < rs.length; i++) if (failure(rs[i])) return;
+      var a = rs[0].body;
+      renderHead(a); renderRuntime(a); renderSections(a.sections);
+      renderWorking(rs[1].body, agentId);
+      renderUnconnected("pm", rs[2].body, "Persistent records are not connected.");
+      renderUnconnected("ev", rs[3].body, "No founder event stream is connected.");
+      banner("Connected. Read-only view of " + a.name + ".");
+    }).catch(function () { if (mine === seq) { banner("Disconnected. Could not reach the server."); resetPanels("Disconnected."); } });
+  }
+
+  function select(agentId, push) {
+    if (push) history.pushState({}, "", "/agents/" + encodeURIComponent(agentId));
+    $("agent-select").value = agentId;
+    load(agentId);
+  }
+
+  function connect() {
+    var mine = ++seq;
+    fetch("/api/memory-explorer/config", { headers: { "Authorization": "Bearer " + token }, cache: "no-store", credentials: "omit" })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (b) { return { status: r.status, body: b }; }); })
+      .then(function (r) {
+        if (failure(r)) return null;
+        cfg = r.body;
+        var c = $("central");
+        if (cfg.command_central && cfg.command_central.url) { c.href = cfg.command_central.url; c.removeAttribute("aria-disabled"); c.textContent = "Command Central"; }
+        else { c.removeAttribute("href"); c.setAttribute("aria-disabled", "true"); c.textContent = "Command Central (planned)"; }
+        return fetch("/api/memory-explorer/agents", { headers: { "Authorization": "Bearer " + token }, cache: "no-store", credentials: "omit" }).then(function (x) { return x.json(); });
+      })
+      .then(function (b) {
+        if (!b || mine !== seq) return;
+        agents = b.agents;
+        var s = $("agent-select"); clear(s);
+        agents.forEach(function (a) { var o = el("option", a.name + (a.runtime === "bound" ? "" : " (identity only)")); o.value = a.id; s.appendChild(o); });
+        s.disabled = false;
+        var want = agentFromPath();
+        select(agents.some(function (a) { return a.id === want; }) ? want : "charlie", false);
+      })
+      .catch(function () { banner("Disconnected. Could not reach the server."); });
+  }
+
+  $("auth").addEventListener("submit", function (e) { e.preventDefault(); token = $("token").value; $("token").value = ""; connect(); });
+  $("refresh").addEventListener("click", function () { if (token) load($("agent-select").value); });
+  $("agent-select").addEventListener("change", function (e) { select(e.target.value, true); });
+  window.addEventListener("popstate", function () { if (token && agents.length) select(agentFromPath(), false); });
+  $("central").addEventListener("click", function (e) { if (!$("central").getAttribute("href")) e.preventDefault(); });
+  $("central").removeAttribute("href");
+  $("agent-name").textContent = agentFromPath().charAt(0).toUpperCase() + agentFromPath().slice(1);
+  $("agent-role").textContent = "Locked";
+  resetPanels("Locked.");
+})();
+</script>
+</body>
+</html>

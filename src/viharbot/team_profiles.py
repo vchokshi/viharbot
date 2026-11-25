@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from html import escape
 from urllib.parse import quote
 
+from .explorer_links import explorer_url
 from .execution_bindings import IN_PROCESS_CAPABILITIES, default_bindings
 from .identity_registry import default_registry
 
@@ -230,6 +231,10 @@ PLATFORM = Application(
     "does not run.")
 
 
+# Identities with an Agent Memory Explorer entry point. Phase 1 wires Charlie only.
+EXPLORER_AGENTS = frozenset({"charlie"})
+
+
 @dataclass(frozen=True)
 class Profile:
     id: str
@@ -346,14 +351,24 @@ def render_sidebar(profiles: tuple[Profile, ...]) -> str:
 def render_profiles(profiles: tuple[Profile, ...]) -> str:
     def card(p: Profile) -> str:
         skills = "".join(f"<li>{escape(s)}</li>" for s in p.skills)
+        portrait = _img(p, "profile-portrait")
+        explore = ""
+        if p.id in EXPLORER_AGENTS:  # entry to the founder-only Agent Memory Explorer
+            href = escape(explorer_url(p.id))
+            label = f"Explore {p.name.split()[0]}'s Memory"
+            portrait = (f'<a class="explorer-portrait-link" href="{href}" '
+                        f'aria-label="{escape(label)}">{portrait}</a>')
+            explore = (f'<a class="explorer-link" href="{href}">{escape(label)} '
+                       f'<span aria-hidden="true">↗</span></a>')
         return (
             f'<article class="profile-card" id="{escape(p.anchor)}" tabindex="-1" '
-            f'aria-labelledby="{escape(p.anchor)}-name">{_img(p, "profile-portrait")}'
+            f'aria-labelledby="{escape(p.anchor)}-name">{portrait}'
             f'<div class="profile-info"><div class="profile-name-line">'
             f'<h3 id="{escape(p.anchor)}-name">{escape(p.name)}</h3>'
             f'<span class="profile-status {p.status_kind}">{escape(p.status)}</span></div>'
             f'<p class="profile-title">{escape(p.title)}</p>'
             f'<p class="profile-bio">{escape(p.bio)}</p>'
+            f'{explore}'
             f'<details class="profile-more"><summary>Skills, personality and limits</summary>'
             f'<p><strong>Personality:</strong> {escape(p.personality)}</p>'
             f'<ul class="profile-skills" aria-label="Skills">{skills}</ul>'
