@@ -27,6 +27,7 @@ from .chat_models import AgentActivity, ChatRequest, ChatResponse, ChatTurn, Dec
 from .pixel.theme import tokens_css
 from .pixel_execution import fetch_deck, pixel_url, ppt_generation_enabled, run_pixel_stage, wants_deck
 from .team_models import team_models
+from . import memory_explorer
 from .team_profiles import render_profiles, render_sidebar, team_profiles
 from .live_hooks import CancelToken
 from .orchestration_state import CANONICAL_ORDER
@@ -131,6 +132,18 @@ def home(_: None = Depends(require_web_access)) -> HTMLResponse:
     if base:  # every image the page names, in markup and in its script, comes from the public store
         page = page.replace("/images/", base + "/")
     return HTMLResponse(page.replace(TOKENS_MARKER, tokens_css()))
+
+
+# Agent Memory Explorer: a read-only, founder-only inspection surface on this same web app.
+# The page shell holds no data; every /api/memory-explorer/* route enforces its own server-side gate.
+app.include_router(memory_explorer.router)
+
+
+@app.get("/agents/{agent_id}", include_in_schema=False)
+def memory_explorer_page(agent_id: str, _: None = Depends(require_web_access)) -> HTMLResponse:
+    if not re.fullmatch(r"[a-z][a-z0-9_]{0,31}", agent_id):
+        raise HTTPException(status_code=404, detail="Not found")
+    return memory_explorer.shell_html(images_base_url())
 
 
 @app.get("/api/team-models", include_in_schema=False)
